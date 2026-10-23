@@ -1,0 +1,170 @@
+// Client TypeScript Data Types
+
+export interface User {
+  id: number;
+  username: string;
+  full_name: string;
+  role: 'admin' | 'manager' | 'salesperson' | 'accounts';
+  email?: string;
+  phone?: string;
+  monthly_target?: number;
+  is_active?: boolean;
+}
+
+export interface Customer {
+  id: number;
+  name: string;
+  mobile_number: string;
+  email?: string;
+  delivery_address: string;
+  site_location?: string;
+  gstin?: string;
+  notes?: string;
+  is_active: boolean;
+  quotations_count?: number;
+  total_quoted?: number;
+}
+
+export interface TileBrand {
+  id: number;
+  name: string;
+  description?: string;
+  is_active: boolean;
+}
+
+export interface BrandSizeCoverage {
+  id: number;
+  brand_id: number;
+  brand_name?: string;
+  size: string;
+  coverage_sqft: number;
+  pieces_per_box: number;
+  default_rate_sqft: number;
+  default_rate_box: number;
+  is_active: boolean;
+}
+
+export interface QuotationItem {
+  id?: number;
+  area_id?: number;
+  sl_no: number;
+  description: string;
+  size: string;
+  brand: string;
+  coverage_area: number;
+  quantity_sqft: number;
+  rate_per_sqft: number;
+  quantity_boxes: number;
+  rate_per_box: number;
+  total_amount: number;
+}
+
+export interface QuotationArea {
+  id?: number;
+  quotation_id?: number;
+  area_name: string;
+  display_order: number;
+  items: QuotationItem[];
+}
+
+export interface Quotation {
+  id: number;
+  quotation_number: string;
+  quotation_date: string;
+  customer_id?: number;
+  customer_name: string;
+  customer_phone: string;
+  customer_gstin?: string;
+  delivery_address: string;
+  site_location?: string;
+  sales_person_id: number;
+  sales_person_name: string;
+  project_name?: string;
+  status: 'draft' | 'in_review' | 'approved' | 'rejected' | 'closed';
+  manager_approval_note?: string;
+  approved_by_id?: number;
+  approved_by_name?: string;
+  approved_at?: string;
+  gross_total: number;
+  discount_percent: number;
+  discount_amount: number;
+  taxable_amount: number;
+  tax_type: 'cgst_sgst' | 'igst' | 'exempt';
+  cgst_rate: number;
+  cgst_amount: number;
+  sgst_rate: number;
+  sgst_amount: number;
+  igst_rate: number;
+  igst_amount: number;
+  round_off: number;
+  net_total: number;
+  special_notes?: string;
+  version: number;
+  created_at: string;
+  total_paid?: number;
+  balance_due?: number;
+}
+
+export interface Payment {
+  id: number;
+  payment_number: string;
+  quotation_id: number;
+  quotation_number?: string;
+  customer_name?: string;
+  quotation_net_total?: number;
+  amount: number;
+  payment_mode: 'Cash' | 'Cheque' | 'Bank Transfer (NEFT/RTGS/IMPS)' | 'UPI (GPay/PhonePe/Paytm)' | 'Card';
+  payment_date: string;
+  status: 'Recorded' | 'Cleared' | 'Bounced' | 'Refunded';
+  reference_number?: string;
+  notes?: string;
+  recorded_by_id?: number;
+  recorded_by_name?: string;
+  created_at: string;
+}
+
+export interface SalesTarget {
+  id: number;
+  sales_person_id: number;
+  sales_person_name?: string;
+  target_type: 'Daily' | 'Weekly' | 'Monthly' | 'Custom';
+  start_date: string;
+  end_date: string;
+  period_label: string;
+  target_amount: number;
+  notes?: string;
+}
+
+export interface CompanySettings {
+  id: number;
+  company_name: string;
+  tagline: string;
+  logo_base64?: string;
+  address_line1: string;
+  address_line2: string;
+  phone: string;
+  email: string;
+  website: string;
+  gstin: string;
+  state: string;
+  state_code: string;
+  bank_name: string;
+  account_name: string;
+  account_number: string;
+  ifsc_code: string;
+  branch: string;
+  account_type: string;
+  upi_details: string;
+  store_manager_title: string;
+  store_manager_name: string;
+  store_manager_phone: string;
+  sales_associate_title: string;
+  terms_json: string[];
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}

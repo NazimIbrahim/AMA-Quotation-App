@@ -1,0 +1,119 @@
+import React, { useState } from 'react';
+import { useServer } from '../context/ServerContext';
+import { Server, Wifi, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const ServerSetupModal: React.FC<Props> = ({ isOpen, onClose }) => {
+  const { serverUrl, setServerUrl, testConnection, status } = useServer();
+  const [inputUrl, setInputUrl] = useState(serverUrl);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; latency?: number } | null>(null);
+
+  if (!isOpen) return null;
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await testConnection(inputUrl);
+      setTestResult(res);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await setServerUrl(inputUrl);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 border border-gray-200">
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+            <Server size={24} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">LAN Central Server Connection</h2>
+            <p className="text-xs text-gray-500">Configure central PostgreSQL & API server address</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Server Address (IP or Hostname with Port)
+            </label>
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                className="input flex-1"
+                placeholder="http://192.168.1.100:4000"
+                value={inputUrl}
+                onChange={(e) => setInputUrl(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                className="btn btn-secondary flex items-center space-x-1"
+                onClick={handleTest}
+                disabled={testing}
+              >
+                {testing ? <RefreshCw size={14} className="animate-spin" /> : <Wifi size={14} />}
+                <span>Test</span>
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Enter the IP address of the designated server PC hosting PostgreSQL (e.g. http://172.20.10.2:4000).
+            </p>
+          </div>
+
+          {testResult && (
+            <div
+              className={`p-3 rounded-md text-sm flex items-start space-x-2 ${
+                testResult.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+              }`}
+            >
+              {testResult.ok ? <CheckCircle2 size={18} className="mt-0.5 shrink-0" /> : <AlertCircle size={18} className="mt-0.5 shrink-0" />}
+              <div>
+                <p className="font-semibold">{testResult.ok ? 'Connection Succeeded!' : 'Connection Failed'}</p>
+                <p className="text-xs mt-0.5">{testResult.message}</p>
+                {testResult.latency !== undefined && (
+                  <p className="text-xs text-gray-500 mt-1">Network Latency: {testResult.latency} ms</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-gray-50 p-3 rounded border text-xs text-gray-600 space-y-1">
+            <div className="flex justify-between">
+              <span>Current Status:</span>
+              <span className={`font-semibold capitalize ${status === 'connected' ? 'text-green-600' : 'text-red-600'}`}>
+                {status}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Client Architecture:</span>
+              <span>Zero client database footprint (4 GB RAM optimized)</span>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-2 border-t">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary">
+              Save & Connect
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};

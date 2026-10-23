@@ -1,0 +1,213 @@
+import { Router, Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
+import { query } from '../db/connection';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { recordAuditLog } from '../utils/audit';
+
+export const usersRouter = Router();
+
+usersRouter.use(authenticateToken);
+
+// List all users
+usersRouter.get('/', async (req: Request, res: Response) => {
+  try {
+    const { role } = req.query;
+    let sql = `SELECT id, username, full_name, role, email, phone, monthly_target, is_active, created_at, updated_at
+               FROM users`;
+    const params: any[] = [];
+    if (role) {
+      sql += ' WHERE role = $1';
+      params.push(role);
+    }
+    sql += ' ORDER BY full_name ASC';
+    const rows = await query(sql, params);
+    res.json({ users: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new user (Admin or Manager)
+usersRouter.post('/', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+  try {
+    const { username, password, full_name, role = 'salesperson', email, phone, monthly_target } = req.body;
+
+    if (!username || !password || !full_name) {
+      res.status(400).json({ error: 'Username, password, and full name are required' });
+      return;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(password, salt);
+
+    const rows = await query(
+      `INSERT INTO users (username, password_hash, full_name, role, email, phone, monthly_target)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, username, full_name, role, email, phone, monthly_target, is_active, created_at`,
+      [username.trim(), hash, full_name.trim(), role, email, phone, monthly_target || 0]
+    );
+
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'USER_CREATED',
+      entityType: 'user',
+      entityId: rows[0].id,
+      details: { username, role, full_name },
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json({ user: rows[0] });
+  } catch (error: any) {
+    if (error.code === '23505') {
+      res.status(409).json({ error: 'Username already exists' });
+      return;
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update user (Admin or Manager for target)
+usersRouter.put('/:id', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id as string, 10);
+    const { full_name, role, email, phone, monthly_target, is_active, password } = req.body;
+
+    let updateFields: string[] = [];
+    let params: any[] = [];
+    let idx = 1;
+
+    if (full_name !== undefined) {
+      updateFields.push(`full_name = $${idx++}`);
+      params.push(full_name);
+    }
+    if (role !== undefined && req.user!.role === 'admin') {
+      updateFields.push(`role = $${idx++}`);
+      params.push(role);
+    }
+    if (email !== undefined) {
+      updateFields.push(`email = $${idx++}`);
+      params.push(email);
+    }
+    if (phone !== undefined) {
+      updateFields.push(`phone = $${idx++}`);
+      params.push(phone);
+    }
+    if (monthly_target !== undefined) {
+      updateFields.push(`monthly_target = $${idx++}`);
+      params.push(monthly_target);
+    }
+    if (is_active !== undefined && req.user!.role === 'admin') {
+      updateFields.push(`is_active = $${idx++}`);
+      params.push(is_active);
+    }
+    if (password && req.user!.role === 'admin') {
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(password, salt);
+      updateFields.push(`password_hash = $${idx++}`);
+      params.push(hash);
+    }
+
+    if (updateFields.length === 0) {
+      res.status(400).json({ error: 'No update parameters provided' });
+      return;
+    }
+
+    updateFields.push(`updated_at = NOW()`);
+    params.push(userId);
+
+    const sql = `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${idx} RETURNING id, username, full_name, role, email, phone, monthly_target, is_active`;
+    const rows = await query(sql, params);
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'USER_UPDATED',
+      entityType: 'user',
+      entityId: userId,
+      ipAddress: req.ip,
+    });
+
+    res.json({ user: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get Salesperson Detailed Statistics & Performance
+usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id as string, 10);
+    const userRows = await query(
+      'SELECT id, username, full_name, role, email, phone, monthly_target, is_active FROM users WHERE id = $1',
+      [userId]
+    );
+    if (userRows.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const salesperson = userRows[0];
+
+    // Status-wise quotation summary
+    const statusRows = await query(
+      `SELECT status, count(*) as count, COALESCE(sum(net_total), 0) as total_val
+       FROM quotations
+       WHERE sales_person_id = $1
+       GROUP BY status`,
+      [userId]
+    );
+
+    const statusMap: Record<string, { count: number; val: number }> = {};
+    let totalQuotes = 0;
+    let totalQuoted = 0;
+    let approvedRevenue = 0;
+
+    statusRows.forEach((r: any) => {
+      const c = parseInt(r.count, 10);
+      const v = parseFloat(r.total_val);
+      statusMap[r.status] = { count: c, val: v };
+      totalQuotes += c;
+      totalQuoted += v;
+      if (['approved', 'closed'].includes(r.status)) {
+        approvedRevenue += v;
+      }
+    });
+
+    // Payments collected
+    const payRows = await query(
+      `SELECT COALESCE(sum(p.amount), 0) as total_collected
+       FROM payments p
+       JOIN quotations q ON q.id = p.quotation_id
+       WHERE q.sales_person_id = $1 AND p.status = 'Cleared'`,
+      [userId]
+    );
+    const totalCollected = parseFloat(payRows[0].total_collected);
+    const outstanding = Math.max(0, approvedRevenue - totalCollected);
+
+    const target = parseFloat(salesperson.monthly_target) || 0;
+    const targetPercent = target > 0 ? parseFloat(((approvedRevenue / target) * 100).toFixed(1)) : 0;
+
+    res.json({
+      salesperson,
+      metrics: {
+        totalQuotes,
+        totalQuoted,
+        approvedRevenue,
+        totalCollected,
+        outstanding,
+        target,
+        targetPercent,
+        statusMap,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
