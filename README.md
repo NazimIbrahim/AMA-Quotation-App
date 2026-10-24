@@ -56,7 +56,7 @@ Engineered from the ground up to deliver **sub-500ms response times** and operat
 You can set up the host server automatically using **either** of the following single setup methods:
 
 #### Method A: 1-Click Setup Executable (Easiest)
-1. Download [**`AMA-Ceramics-Host-Server-Setup-1.0.0.exe`**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases/download/v1.0.0/AMA-Ceramics-Host-Server-Setup-1.0.0.exe) from [**Releases**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases).
+1. Download [**`AMA-Ceramics-Host-Server-Setup-1.2.0.exe`**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases/download/v1.2/AMA-Ceramics-Host-Server-Setup-1.2.0.exe) from [**Latest Releases (v1.2)**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases/tag/v1.2).
 2. Run the installer as Administrator.
 3. The installer automatically:
    - Configures PostgreSQL 16 database & initializes the `ama_quotations` schema and seed data.
@@ -74,7 +74,7 @@ You can set up the host server automatically using **either** of the following s
 
 ### 2. Client Installation (Run on all Office / Sales Workstations)
 
-1. Download [**`AMA.Ceramics.Quotation.System-Setup-1.0.0.exe`**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases/download/v1.0.0/AMA.Ceramics.Quotation.System-Setup-1.0.0.exe) from [**Releases**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases).
+1. Download [**`AMA-Ceramics-Quotation-System-Setup-1.2.0.exe`**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases/download/v1.2/AMA-Ceramics-Quotation-System-Setup-1.2.0.exe) from [**Latest Releases (v1.2)**](https://github.com/NazimIbrahim/AMA-Quotation-App/releases/tag/v1.2).
 2. Run the installer on each Windows workstation (supports Windows 10/11 x64, 4 GB RAM machines).
 3. Launch **AMA Ceramics Quotation System** from the Desktop shortcut.
 4. On first launch, enter your Host Server LAN address:
