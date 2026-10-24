@@ -48,12 +48,32 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  background-color: var(--bg-main);
+  background-color: #E2E6EA;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(65, 90, 119, 0.22) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(27, 38, 59, 0.18) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(13, 27, 42, 0.15) 0px, transparent 50%),
+    radial-gradient(at 25% 85%, rgba(119, 141, 169, 0.28) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(224, 225, 221, 0.65) 0px, transparent 60%);
+  background-attachment: fixed;
+  background-size: cover;
   color: var(--text-main);
   overflow-x: hidden;
   user-select: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.app-liquid-bg {
+  background-color: #E2E6EA;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(65, 90, 119, 0.22) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(27, 38, 59, 0.18) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(13, 27, 42, 0.15) 0px, transparent 50%),
+    radial-gradient(at 25% 85%, rgba(119, 141, 169, 0.28) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(224, 225, 221, 0.65) 0px, transparent 60%);
+  background-attachment: fixed;
+  background-size: cover;
 }
 
 input, select, textarea {
@@ -373,29 +393,60 @@ th, td {
 .transition-colors { transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
 .transition-all { transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
 
-/* High-End Enterprise Cards with Micro-hover */
-.card {
-  background-color: #FFFFFF;
-  border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px 0 rgba(13, 27, 42, 0.04);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
-}
-.card-hover:hover, .card-interactive:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(13, 27, 42, 0.08);
-  border-color: #778DA9;
+/* Liquid Glass Cards */
+.card, .glass-card {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.65) !important;
+  border-radius: 1rem;
+  box-shadow: 0 10px 30px -5px rgba(13, 27, 42, 0.07),
+              0 0 0 1px rgba(255, 255, 255, 0.45),
+              inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.9) !important;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease,
+              background-color 0.2s ease;
 }
 
-/* Elegant Table Rows Hover */
+.card:hover, .card-hover:hover, .card-interactive:hover {
+  background: rgba(255, 255, 255, 0.85) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px -6px rgba(13, 27, 42, 0.12),
+              0 0 0 1px rgba(255, 255, 255, 0.7),
+              inset 0 1px 2px 0 rgba(255, 255, 255, 1) !important;
+  border-color: rgba(119, 141, 169, 0.5) !important;
+}
+
+/* Liquid Glass Header */
+.glass-header {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 4px 24px rgba(13, 27, 42, 0.04), inset 0 -1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Liquid Glass Dark Sidebar */
+.glass-sidebar {
+  background: linear-gradient(180deg, rgba(13, 27, 42, 0.90) 0%, rgba(27, 38, 59, 0.88) 100%) !important;
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 6px 0 28px rgba(13, 27, 42, 0.22), inset -1px 0 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Liquid Glass Table Hover */
 table tbody tr {
-  transition: background-color 0.12s ease;
+  transition: background-color 0.15s ease, backdrop-filter 0.15s ease;
 }
 table tbody tr:hover {
-  background-color: rgba(224, 225, 221, 0.35) !important;
+  background-color: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
-/* Luxury Interactive Buttons */
+/* Liquid Glass Interactive Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -404,45 +455,48 @@ table tbody tr:hover {
   padding: 0.45rem 0.85rem;
   font-size: 0.8125rem;
   font-weight: 500;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              background-color 0.15s ease,
-              border-color 0.15s ease,
-              color 0.15s ease;
+  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.16s ease,
+              border-color 0.16s ease,
+              color 0.16s ease;
   line-height: 1.25rem;
   white-space: nowrap;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   will-change: transform;
 }
 .btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(13, 27, 42, 0.12);
+  transform: translateY(-1.5px);
 }
 .btn:active {
   transform: translateY(0.5px);
-  box-shadow: 0 1px 2px rgba(13, 27, 42, 0.08);
 }
 .btn-primary {
-  background-color: #1B263B;
-  color: #FFFFFF;
-  border-color: #0D1B2A;
+  background: linear-gradient(135deg, rgba(27, 38, 59, 0.95) 0%, rgba(13, 27, 42, 0.98) 100%) !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 4px 14px rgba(13, 27, 42, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.35) !important;
 }
 .btn-primary:hover {
-  background-color: #0D1B2A;
-  border-color: #0D1B2A;
-  box-shadow: 0 4px 14px rgba(27, 38, 59, 0.28);
+  background: linear-gradient(135deg, rgba(41, 58, 88, 0.95) 0%, rgba(18, 38, 60, 0.98) 100%) !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  box-shadow: 0 6px 20px rgba(13, 27, 42, 0.35), inset 0 1px 1.5px rgba(255, 255, 255, 0.45) !important;
 }
 .btn-secondary {
-  background-color: #FFFFFF;
-  color: #1B263B;
-  border-color: #CBD5E1;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: #1B263B !important;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 2px 8px rgba(13, 27, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.95) !important;
 }
 .btn-secondary:hover {
-  background-color: #F8F9FA;
-  border-color: #778DA9;
-  color: #0D1B2A;
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(119, 141, 169, 0.5) !important;
+  color: #0D1B2A !important;
+  box-shadow: 0 6px 16px rgba(13, 27, 42, 0.09), inset 0 1px 1.5px rgba(255, 255, 255, 1) !important;
 }
 .btn-outline-primary {
   background-color: transparent;
@@ -450,28 +504,28 @@ table tbody tr:hover {
   border-color: #CBD5E1;
 }
 .btn-outline-primary:hover {
-  background-color: #F4F6F8;
+  background-color: rgba(244, 246, 248, 0.8);
   border-color: #1B263B;
 }
 .btn-success {
-  background-color: #059669;
-  color: #FFFFFF;
-  border-color: #059669;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.35) !important;
 }
 .btn-success:hover {
-  background-color: #047857;
-  border-color: #047857;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+  background: linear-gradient(135deg, #047857 0%, #065F46 100%) !important;
+  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.35) !important;
 }
 .btn-danger {
-  background-color: #DC2626;
-  color: #FFFFFF;
-  border-color: #DC2626;
+  background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%) !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.35) !important;
 }
 .btn-danger:hover {
-  background-color: #B91C1C;
-  border-color: #B91C1C;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+  background: linear-gradient(135deg, #B91C1C 0%, #991B1B 100%) !important;
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.35) !important;
 }
 .btn-sm {
   padding: 0.3rem 0.6rem;
@@ -484,25 +538,30 @@ table tbody tr:hover {
   gap: 0.2rem;
 }
 
-/* Crisp Minimalist Form Inputs & Selects */
+/* Liquid Glass Form Inputs & Selects */
 .input, select, .select, textarea {
   width: 100%;
-  padding: 0.35rem 0.6rem;
+  padding: 0.35rem 0.65rem;
   font-size: 0.8125rem;
-  border: 1px solid #CBD5E1;
-  border-radius: 0.375rem;
-  background-color: #FFFFFF;
-  color: #0D1B2A;
+  border: 1px solid rgba(119, 141, 169, 0.35) !important;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #0D1B2A !important;
   outline: none;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 0 1px 2px rgba(13, 27, 42, 0.04), 0 1px 2px rgba(255, 255, 255, 0.8) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 .input:hover, select:hover, textarea:hover {
-  border-color: #778DA9;
+  background: rgba(255, 255, 255, 0.90) !important;
+  border-color: rgba(65, 90, 119, 0.6) !important;
 }
 .input:focus, select:focus, textarea:focus {
-  border-color: #415A77;
-  box-shadow: 0 0 0 3px rgba(65, 90, 119, 0.18);
+  background: #FFFFFF !important;
+  border-color: #415A77 !important;
+  box-shadow: 0 0 0 3px rgba(65, 90, 119, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.9) !important;
 }
 .input::placeholder, textarea::placeholder {
   color: #778DA9;
@@ -518,60 +577,72 @@ table tbody tr:hover {
   font-size: 0.7rem;
 }
 
-/* Status Badges */
+/* Liquid Glass Status Badges */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.125rem 0.5rem;
+  padding: 0.15rem 0.55rem;
   border-radius: 9999px;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: capitalize;
   line-height: 1.15rem;
-  border: 1px solid transparent;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
   transition: transform 0.15s ease;
 }
 .badge-draft {
-  background-color: #E0E1DD;
+  background-color: rgba(224, 225, 221, 0.85);
   color: #1B263B;
-  border-color: #778DA9;
+  border: 1px solid rgba(119, 141, 169, 0.5);
 }
 .badge-in_review {
-  background-color: #FFFBEB;
+  background-color: rgba(254, 243, 199, 0.85);
   color: #92400E;
-  border-color: #FDE68A;
+  border: 1px solid rgba(253, 230, 138, 0.7);
 }
 .badge-approved {
-  background-color: #ECFDF5;
+  background-color: rgba(209, 250, 229, 0.85);
   color: #065F46;
-  border-color: #A7F3D0;
+  border: 1px solid rgba(167, 243, 208, 0.7);
 }
 .badge-rejected {
-  background-color: #FFF1F2;
+  background-color: rgba(255, 228, 230, 0.85);
   color: #9F1239;
-  border-color: #FECDD3;
+  border: 1px solid rgba(254, 205, 211, 0.7);
 }
 .badge-closed {
-  background-color: rgba(65, 90, 119, 0.12);
+  background-color: rgba(65, 90, 119, 0.20);
   color: #0D1B2A;
-  border-color: rgba(65, 90, 119, 0.3);
+  border: 1px solid rgba(65, 90, 119, 0.4);
 }
 
-/* Clean Modal Overlay & Pop-in Opening Animation */
+/* Liquid Glass Modal Overlay & Pop-in Opening Animation */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(13, 27, 42, 0.55);
-  backdrop-filter: blur(3px);
+  background-color: rgba(13, 27, 42, 0.50) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
+  padding: 1rem;
   animation: modalBackdropFade 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .modal-overlay > div, .modal-dialog, .modal-window {
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(28px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.85) !important;
+  border-radius: 1.25rem !important;
+  box-shadow: 0 25px 60px -10px rgba(13, 27, 42, 0.32),
+              0 0 0 1px rgba(255, 255, 255, 0.6),
+              inset 0 1.5px 2px 0 rgba(255, 255, 255, 1) !important;
   animation: modalScalePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform, opacity;
 }

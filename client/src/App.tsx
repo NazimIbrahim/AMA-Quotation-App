@@ -154,12 +154,12 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#f4f5f7] overflow-hidden select-none">
+    <div className="h-screen flex flex-col app-liquid-bg overflow-hidden select-none">
       <Header onOpenServerSettings={() => setOpenServerWizard(true)} />
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#f4f5f7]">
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
           <div
             key={activeTab + (selectedQuotationId ? `-${selectedQuotationId}` : '') + (isEditingQuotation ? '-edit' : '')}
             className="flex-1 flex flex-col min-w-0 overflow-hidden animate-page-enter"

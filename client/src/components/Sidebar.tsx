@@ -79,12 +79,12 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer text-left group border-0 ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer text-left group border ${
                 isActive
-                  ? 'bg-[#1B263B] text-white font-semibold shadow-sm translate-x-1 border-l-2 border-[#778DA9]'
+                  ? 'bg-white/18 backdrop-blur-md text-white font-semibold border-white/30 shadow-lg shadow-black/25 translate-x-1'
                   : item.isAction
-                  ? 'text-[#E0E1DD] font-semibold bg-[#415A77]/30 hover:bg-[#415A77]/50 hover:translate-x-1'
-                  : 'text-[#E0E1DD]/80 hover:bg-[#1B263B]/70 hover:text-white hover:translate-x-1'
+                  ? 'text-[#E0E1DD] font-semibold bg-[#415A77]/40 backdrop-blur-sm border-[#778DA9]/35 hover:bg-[#415A77]/60 hover:border-white/20 hover:translate-x-1'
+                  : 'text-[#E0E1DD]/80 border-transparent hover:bg-white/10 hover:border-white/10 hover:text-white hover:translate-x-1'
               }`}
             >
               <div className="flex items-center space-x-2.5">
@@ -111,7 +111,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
   );
 
   return (
-    <aside className="w-56 bg-[#0D1B2A] border-r border-[#1B263B] flex flex-col justify-between shrink-0 select-none z-10 text-[#E0E1DD]">
+    <aside className="w-56 glass-sidebar flex flex-col justify-between shrink-0 select-none z-10 text-[#E0E1DD]">
       <div className="p-3 overflow-y-auto">
         {renderNavGroup('Operations', operationsNav)}
         {renderNavGroup('Performance', analyticsNav)}
@@ -119,19 +119,19 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
       </div>
 
       {/* System Footnote */}
-      <div className="p-3 border-t border-[#1B263B] bg-[#09131F] text-[11px] text-[#778DA9] space-y-1.5 shrink-0">
+      <div className="p-3 border-t border-white/10 bg-[#09131F]/80 backdrop-blur-md text-[11px] text-[#778DA9] space-y-1.5 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-1.5">
             <Cpu size={12} className="text-emerald-400" />
             <span className="text-[#E0E1DD]/90 font-medium">Memory Mode</span>
           </div>
-          <span className="font-semibold text-emerald-400 font-mono text-[10px] bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded">
+          <span className="font-semibold text-emerald-300 font-mono text-[10px] bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 rounded-full shadow-xs">
             4GB RAM Opt.
           </span>
         </div>
         <div className="flex justify-between items-center text-[#778DA9] text-[10px] pt-0.5">
           <span>App Build:</span>
-          <span className="font-mono text-[#E0E1DD]/70">v1.2.0 (Win64)</span>
+          <span className="font-mono text-[#E0E1DD]/80">v1.3.0 (Win64)</span>
         </div>
       </div>
     </aside>

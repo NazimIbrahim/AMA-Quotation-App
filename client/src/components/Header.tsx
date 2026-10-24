@@ -17,12 +17,12 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings }) => {
         <button
           onClick={onOpenServerSettings}
           title={`Central Server: ${serverUrl}\nClick to change connection`}
-          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-colors cursor-pointer"
+          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50/80 backdrop-blur-md text-emerald-800 border border-emerald-300/70 hover:bg-emerald-100/90 shadow-xs transition-colors cursor-pointer"
         >
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span className="font-semibold">LAN Online</span>
           {latencyMs !== null && (
-            <span className="text-emerald-600/80 font-mono text-[11px]">({latencyMs}ms)</span>
+            <span className="text-emerald-700/80 font-mono text-[11px]">({latencyMs}ms)</span>
           )}
         </button>
       );
@@ -31,7 +31,7 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings }) => {
       return (
         <button
           onClick={onOpenServerSettings}
-          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200 cursor-pointer"
+          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50/80 backdrop-blur-md text-amber-900 border border-amber-300/70 cursor-pointer"
         >
           <RefreshCw size={11} className="animate-spin text-amber-600" />
           <span>Connecting...</span>
@@ -42,7 +42,7 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings }) => {
       <button
         onClick={onOpenServerSettings}
         title="Cannot connect to central server. Click to configure IP."
-        className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors cursor-pointer"
+        className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50/80 backdrop-blur-md text-rose-800 border border-rose-300/70 hover:bg-rose-100 transition-colors cursor-pointer"
       >
         <WifiOff size={11} className="text-rose-500" />
         <span>LAN Offline (Configure)</span>
@@ -51,11 +51,11 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings }) => {
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 px-6 py-2.5 flex items-center justify-between shadow-sm select-none shrink-0 z-20">
+    <header className="glass-header px-6 py-2.5 flex items-center justify-between select-none shrink-0 z-20">
       <div className="flex items-center space-x-4">
         {/* Brand Logo & Name */}
         <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-md bg-[#0D1B2A] text-[#E0E1DD] flex items-center justify-center font-bold text-xs tracking-wider shadow-sm border border-[#1B263B] transition-transform duration-200 hover:scale-105 cursor-default">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1B263B] to-[#0D1B2A] text-[#E0E1DD] flex items-center justify-center font-bold text-xs tracking-wider shadow-md border border-white/20 transition-transform duration-200 hover:scale-105 cursor-default">
             AMA
           </div>
           <div>
