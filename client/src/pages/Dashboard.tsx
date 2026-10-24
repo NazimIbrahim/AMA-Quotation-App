@@ -14,6 +14,7 @@ import {
   Eye,
   Printer,
   Plus,
+  ShieldAlert,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
@@ -29,7 +30,13 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
   const [loading, setLoading] = useState<boolean>(true);
 
   // PDF Preview State
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; title: string; fileName: string; quotationId?: number } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{
+    url: string;
+    title: string;
+    fileName: string;
+    quotationId?: number;
+    initialEncrypted?: boolean;
+  } | null>(null);
 
   const loadDashboard = async () => {
     try {
@@ -68,14 +75,19 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
     });
   };
 
-  const handleOpenPdf = (quotation: any, e: React.MouseEvent) => {
+  const handleOpenPdf = (quotation: any, e: React.MouseEvent, encrypted: boolean = false) => {
     e.stopPropagation();
-    const url = getPdfUrl(quotation.id);
+    const url = getPdfUrl(quotation.id, encrypted);
     setPreviewPdf({
       url,
-      title: `Quotation ${quotation.quotation_number} — ${quotation.customer_name}`,
-      fileName: `Quotation_${quotation.quotation_number}.pdf`,
+      title: encrypted
+        ? `Quotation ${quotation.quotation_number} — ${quotation.customer_name} (Encrypted)`
+        : `Quotation ${quotation.quotation_number} — ${quotation.customer_name}`,
+      fileName: encrypted
+        ? `Quotation_${quotation.quotation_number}_Encrypted.pdf`
+        : `Quotation_${quotation.quotation_number}.pdf`,
       quotationId: quotation.id,
+      initialEncrypted: encrypted,
     });
   };
 
@@ -376,15 +388,27 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
                           ₹ {formatCurrency(q.net_total)}
                         </td>
                         <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center space-x-1.5">
+                          <div className="flex items-center justify-center space-x-1.5 flex-nowrap">
                             <button
-                              onClick={(e) => handleOpenPdf(q, e)}
-                              className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"
-                              title="Preview PDF"
+                              type="button"
+                              onClick={(e) => handleOpenPdf(q, e, false)}
+                              title="Export / Print Standard PDF"
+                              className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors shadow-xs"
                             >
-                              <Printer size={13} />
+                              <Printer size={11} className="mr-1 text-slate-600" />
+                              <span>PDF</span>
                             </button>
                             <button
+                              type="button"
+                              onClick={(e) => handleOpenPdf(q, e, true)}
+                              title="Export Encrypted PDF (Masked codes, hidden brand)"
+                              className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 transition-colors shadow-xs"
+                            >
+                              <ShieldAlert size={11} className="mr-1 text-amber-400" />
+                              <span>Encrypted</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => onSelectQuotation(q.id)}
                               className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                               title="View Details"
@@ -476,6 +500,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
           title={previewPdf.title}
           fileName={previewPdf.fileName}
           quotationId={previewPdf.quotationId}
+          initialEncrypted={previewPdf.initialEncrypted}
         />
       )}
     </div>

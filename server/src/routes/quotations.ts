@@ -99,8 +99,13 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
     }
 
     if (status) {
-      whereClauses.push(`q.status = $${idx++}`);
-      params.push(status);
+      const st = status.toLowerCase();
+      if (st === 'not_closed' || st === 'open') {
+        whereClauses.push(`q.status IN ('draft', 'in_review', 'approved')`);
+      } else {
+        whereClauses.push(`q.status = $${idx++}`);
+        params.push(status);
+      }
     }
 
     if (search) {

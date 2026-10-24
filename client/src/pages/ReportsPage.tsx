@@ -15,7 +15,7 @@ export const ReportsPage: React.FC = () => {
   const [pStartDate, setPStartDate] = useState('');
   const [pEndDate, setPEndDate] = useState('');
 
-  const handleDownload = (type: 'quotations' | 'payments', format: 'xlsx' | 'csv') => {
+  const handleDownload = async (type: 'quotations' | 'payments', format: 'xlsx' | 'csv') => {
     const params = new URLSearchParams({ format });
     if (type === 'quotations') {
       if (qStatus) params.append('status', qStatus);
@@ -27,23 +27,34 @@ export const ReportsPage: React.FC = () => {
     }
 
     const downloadUrl = `${serverUrl}/api/reports/${type}/export?${params.toString()}`;
+    const filename = `${type}_export_${new Date().toISOString().split('T')[0]}.${format}`;
 
-    // Trigger download
-    fetch(downloadUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.blob())
-      .then((blob) => {
+    try {
+      if (window.electronAPI) {
+        const res = await window.electronAPI.downloadFile(downloadUrl, filename);
+        if (res.success) {
+          alert(`Export saved successfully to:\n${res.filePath}`);
+        } else if (res.error && res.error !== 'Canceled by user') {
+          alert('Export failed: ' + res.error);
+        }
+      } else {
+        const res = await fetch(downloadUrl, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${type}_export_${new Date().toISOString().split('T')[0]}.${format}`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-      })
-      .catch((err) => alert('Export failed: ' + err.message));
+      }
+    } catch (err: any) {
+      alert('Export failed: ' + err.message);
+    }
   };
 
   return (
@@ -78,6 +89,7 @@ export const ReportsPage: React.FC = () => {
                 <option value="in_review">In-Review</option>
                 <option value="approved">Approved</option>
                 <option value="closed">Closed / Paid</option>
+                <option value="not_closed">Not Closed (Active Pipeline)</option>
                 <option value="rejected">Rejected</option>
               </select>
             </div>

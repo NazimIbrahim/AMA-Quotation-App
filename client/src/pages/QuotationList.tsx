@@ -19,6 +19,8 @@ import {
   X,
   Users,
   ShieldAlert,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
@@ -33,7 +35,7 @@ export const QuotationList: React.FC<Props> = ({
   onEditQuotation,
   onCreateQuotation,
 }) => {
-  const { fetchApi, getPdfUrl, subscribeToEvents } = useServer();
+  const { serverUrl, fetchApi, getPdfUrl, subscribeToEvents } = useServer();
   const { user } = useAuth();
 
   const [quotations, setQuotations] = useState<Quotation[]>([]);
@@ -43,6 +45,7 @@ export const QuotationList: React.FC<Props> = ({
     totalAmount: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -160,6 +163,48 @@ export const QuotationList: React.FC<Props> = ({
     }
   };
 
+  const handleExportList = async (format: 'xlsx' | 'csv') => {
+    setExportingFormat(format);
+    try {
+      const params = new URLSearchParams({ format });
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (status) params.append('status', status);
+      if (selectedSalesPersonId) params.append('sales_person_id', String(selectedSalesPersonId));
+
+      const downloadUrl = `${serverUrl}/api/reports/quotations/export?${params.toString()}`;
+      const statusLabel = status ? `_${status}` : '';
+      const filename = `Quotations${statusLabel}_${new Date().toISOString().split('T')[0]}.${format}`;
+
+      if (window.electronAPI) {
+        const res = await window.electronAPI.downloadFile(downloadUrl, filename);
+        if (res.success) {
+          alert(`Export saved successfully to:\n${res.filePath}`);
+        } else if (res.error && res.error !== 'Canceled by user') {
+          throw new Error(res.error);
+        }
+      } else {
+        const token = localStorage.getItem('ama_token');
+        const res = await fetch(downloadUrl, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(blobUrl);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to export quotations');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('en-IN', {
       maximumFractionDigits: 2,
@@ -171,10 +216,11 @@ export const QuotationList: React.FC<Props> = ({
 
   const statusChips = [
     { id: '', label: 'All Quotations' },
+    { id: 'closed', label: 'Closed' },
+    { id: 'not_closed', label: 'Not Closed (Active)' },
     { id: 'draft', label: 'Draft' },
     { id: 'in_review', label: 'In Review' },
     { id: 'approved', label: 'Approved' },
-    { id: 'closed', label: 'Closed' },
     { id: 'rejected', label: 'Rejected' },
   ];
 
@@ -189,10 +235,43 @@ export const QuotationList: React.FC<Props> = ({
           </p>
         </div>
 
-        <button onClick={onCreateQuotation} className="btn btn-primary btn-sm">
-          <Plus size={14} />
-          <span>New Quotation</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          {/* Export Register Dropdown */}
+          <div className="relative group">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm flex items-center space-x-1.5"
+              disabled={Boolean(exportingFormat)}
+              title="Export filtered quotations register to Excel (.xlsx) or CSV"
+            >
+              <FileSpreadsheet size={14} className="text-emerald-700" />
+              <span>{exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}...` : 'Export Register'}</span>
+            </button>
+            <div className="dropdown-menu absolute right-0 top-full mt-1 hidden group-hover:block z-30 bg-white border border-slate-200 rounded-md shadow-lg p-1 min-w-[175px]">
+              <button
+                type="button"
+                onClick={() => handleExportList('xlsx')}
+                className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded flex items-center space-x-2"
+              >
+                <FileSpreadsheet size={13} className="text-emerald-600" />
+                <span>Export to Excel (.xlsx)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportList('csv')}
+                className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded flex items-center space-x-2"
+              >
+                <Download size={13} className="text-blue-600" />
+                <span>Export to CSV (.csv)</span>
+              </button>
+            </div>
+          </div>
+
+          <button onClick={onCreateQuotation} className="btn btn-primary btn-sm">
+            <Plus size={14} />
+            <span>New Quotation</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
@@ -369,29 +448,42 @@ export const QuotationList: React.FC<Props> = ({
                       ₹ {formatCurrency(q.balance_due || 0)}
                     </td>
                     <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center space-x-1">
+                      <div className="flex items-center justify-center space-x-1.5">
+                        {/* Standard PDF Export Button */}
                         <button
+                          type="button"
                           onClick={(e) => handleOpenPdf(q, e, false)}
-                          title="Preview & Print Standard PDF"
-                          className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"
+                          title="Preview & Export Standard PDF (With brand & original product names)"
+                          className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:text-blue-700 hover:border-blue-300"
                         >
-                          <Printer size={13} />
+                          <Printer size={11} className="mr-1 text-slate-500" />
+                          <span>PDF</span>
                         </button>
+
+                        {/* Encrypted PDF Export Button */}
                         <button
+                          type="button"
                           onClick={(e) => handleOpenPdf(q, e, true)}
-                          title="Export Encrypted PDF (Masked codes, no brand)"
-                          className="p-1 rounded text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          title="Export Encrypted PDF: Brand removed, Product name replaced with random code (e.g. HSDS-AMA)"
+                          className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-slate-900 hover:bg-black text-amber-300 hover:text-amber-200 border-transparent shadow-xs"
                         >
-                          <ShieldAlert size={13} />
+                          <ShieldAlert size={11} className="mr-1 text-amber-400" />
+                          <span>Encrypted</span>
                         </button>
+
+                        {/* View Details */}
                         <button
+                          type="button"
                           onClick={() => onSelectQuotation(q.id)}
                           title="View Details"
                           className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                         >
                           <Eye size={13} />
                         </button>
+
+                        {/* Edit Quotation */}
                         <button
+                          type="button"
                           onClick={() => onEditQuotation(q.id)}
                           title="Edit Quotation"
                           className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"

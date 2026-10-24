@@ -25,6 +25,8 @@ import {
   CheckCircle,
   Plus,
   ShieldAlert,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
@@ -39,7 +41,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
   onEditQuotation,
   onCreateQuotation,
 }) => {
-  const { fetchApi, getPdfUrl, subscribeToEvents } = useServer();
+  const { serverUrl, fetchApi, getPdfUrl, subscribeToEvents } = useServer();
   const { user } = useAuth();
 
   // Salespersons list
@@ -238,6 +240,10 @@ export const SalespersonDashboard: React.FC<Props> = ({
     }
   };
 
+  // Export State
+  const [exportingFormat, setExportingFormat] = useState<'xlsx' | 'csv' | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
   const handleOpenPdf = (q: Quotation, e: React.MouseEvent, encrypted: boolean = false) => {
     e.stopPropagation();
     const url = getPdfUrl(q.id, encrypted);
@@ -254,6 +260,51 @@ export const SalespersonDashboard: React.FC<Props> = ({
     });
   };
 
+  const handleExportList = async (format: 'xlsx' | 'csv') => {
+    setExportingFormat(format);
+    try {
+      const params = new URLSearchParams({ format });
+      if (selectedSalespersonId) {
+        params.append('sales_person_id', String(selectedSalespersonId));
+      }
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (status) params.append('status', status);
+
+      const downloadUrl = `${serverUrl}/api/reports/quotations/export?${params.toString()}`;
+      const spName = selectedUser ? `_${selectedUser.full_name.replace(/\s+/g, '_')}` : '';
+      const statusLabel = status ? `_${status}` : '';
+      const filename = `Quotations${spName}${statusLabel}_${new Date().toISOString().split('T')[0]}.${format}`;
+
+      if (window.electronAPI) {
+        const res = await window.electronAPI.downloadFile(downloadUrl, filename);
+        if (res.success) {
+          alert(`Export saved successfully to:\n${res.filePath}`);
+        } else if (res.error && res.error !== 'Canceled by user') {
+          throw new Error(res.error);
+        }
+      } else {
+        const token = localStorage.getItem('ama_token');
+        const res = await fetch(downloadUrl, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(blobUrl);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to export quotations');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('en-IN', {
       maximumFractionDigits: 2,
@@ -266,10 +317,11 @@ export const SalespersonDashboard: React.FC<Props> = ({
 
   const statusChips = [
     { id: '', label: 'All Quotations' },
-    { id: 'draft', label: 'Draft' },
-    { id: 'in_review', label: 'In Review' },
+    { id: 'closed', label: 'Closed Quotations' },
+    { id: 'not_closed', label: 'Not Closed (Active Pipeline)' },
     { id: 'approved', label: 'Approved' },
-    { id: 'closed', label: 'Closed' },
+    { id: 'in_review', label: 'In Review' },
+    { id: 'draft', label: 'Draft' },
     { id: 'rejected', label: 'Rejected' },
   ];
 
@@ -458,9 +510,12 @@ export const SalespersonDashboard: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="flex space-x-2 text-[10px] mt-3 pt-2 border-t border-slate-100">
+          <div className="flex flex-wrap gap-1.5 text-[10px] mt-3 pt-2 border-t border-slate-100">
             <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200">
               {salespersonStats?.metrics?.statusMap?.['approved']?.count || 0} Approved
+            </span>
+            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold border border-blue-200">
+              {salespersonStats?.metrics?.statusMap?.['closed']?.count || 0} Closed
             </span>
             <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-semibold border border-amber-200">
               {salespersonStats?.metrics?.statusMap?.['in_review']?.count || 0} Review
@@ -468,6 +523,11 @@ export const SalespersonDashboard: React.FC<Props> = ({
             <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">
               {salespersonStats?.metrics?.statusMap?.['draft']?.count || 0} Draft
             </span>
+            {Boolean(salespersonStats?.metrics?.statusMap?.['rejected']?.count) && (
+              <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-800 font-semibold border border-rose-200">
+                {salespersonStats?.metrics?.statusMap?.['rejected']?.count} Rejected
+              </span>
+            )}
           </div>
         </div>
 
@@ -585,9 +645,62 @@ export const SalespersonDashboard: React.FC<Props> = ({
             {selectedUser ? `${selectedUser.full_name}'s Quotations` : 'All Salesperson Quotations'} (
             {pagination.total} records)
           </span>
-          <span className="text-xs text-slate-500 tabular-nums">
-            Total Quoted: ₹ {formatCurrency(summary.totalAmount)}
-          </span>
+          <div className="flex items-center space-x-3">
+            <span className="text-xs text-slate-500 tabular-nums">
+              Total Quoted: ₹ {formatCurrency(summary.totalAmount)}
+            </span>
+
+            {/* Export Table Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                disabled={exportingFormat !== null}
+                className="btn btn-secondary btn-sm flex items-center space-x-1.5 text-xs py-1 px-2.5"
+                title="Export closed, not-closed, or filtered quotations to Excel / CSV"
+              >
+                {exportingFormat ? (
+                  <RefreshCw size={12} className="animate-spin text-slate-700" />
+                ) : (
+                  <Download size={12} className="text-slate-700" />
+                )}
+                <span>{exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}...` : 'Export'}</span>
+              </button>
+
+              {exportMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-20"
+                    onClick={() => setExportMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportMenuOpen(false);
+                        handleExportList('xlsx');
+                      }}
+                      className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-100 flex items-center space-x-2"
+                    >
+                      <FileSpreadsheet size={14} className="text-emerald-600" />
+                      <span>Export to Excel (.xlsx)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportMenuOpen(false);
+                        handleExportList('csv');
+                      }}
+                      className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-100 flex items-center space-x-2"
+                    >
+                      <FileText size={14} className="text-blue-600" />
+                      <span>Export to CSV (.csv)</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -678,29 +791,42 @@ export const SalespersonDashboard: React.FC<Props> = ({
                       ₹ {formatCurrency(q.balance_due || 0)}
                     </td>
                     <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center space-x-1">
+                      <div className="flex items-center justify-center space-x-1.5 flex-nowrap">
+                        {/* Explicit Standard PDF Export */}
                         <button
+                          type="button"
                           onClick={(e) => handleOpenPdf(q, e, false)}
-                          title="Preview & Print Standard PDF"
-                          className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"
+                          title="Export / Print Standard PDF"
+                          className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors shadow-xs"
                         >
-                          <Printer size={13} />
+                          <Printer size={11} className="mr-1 text-slate-600" />
+                          <span>PDF</span>
                         </button>
+
+                        {/* Explicit Encrypted PDF Export */}
                         <button
+                          type="button"
                           onClick={(e) => handleOpenPdf(q, e, true)}
-                          title="Export Encrypted PDF (Masked codes, no brand)"
-                          className="p-1 rounded text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          title="Export Encrypted PDF (Masked codes, hidden brand)"
+                          className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 transition-colors shadow-xs"
                         >
-                          <ShieldAlert size={13} />
+                          <ShieldAlert size={11} className="mr-1 text-amber-400" />
+                          <span>Encrypted</span>
                         </button>
+
+                        {/* View Details */}
                         <button
+                          type="button"
                           onClick={() => onSelectQuotation(q.id)}
                           title="View Details"
                           className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                         >
                           <Eye size={13} />
                         </button>
+
+                        {/* Edit Quotation */}
                         <button
+                          type="button"
                           onClick={() => onEditQuotation(q.id)}
                           title="Edit Quotation"
                           className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"
