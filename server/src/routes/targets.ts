@@ -108,27 +108,80 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
       [startDate, endDate]
     );
 
-    // Get actual achieved sales (approved/closed quotations created in this period)
+    // Get actual achieved sales (approved/closed quotations created in this period, split-aware)
     const achievements = await query(
-      `SELECT sales_person_id,
-              count(*) as quotations_count,
-              COALESCE(SUM(net_total), 0) as total_achieved
-       FROM quotations
-       WHERE quotation_date >= $1 AND quotation_date <= $2
-         AND status IN ('approved', 'closed')
-       GROUP BY sales_person_id`,
+      `SELECT
+          sp_id as sales_person_id,
+          count(*) as quotations_count,
+          COALESCE(SUM(credited_amount), 0) as total_achieved
+       FROM (
+         -- Primary salesperson achievements
+         SELECT
+           q.sales_person_id as sp_id,
+           q.id as quotation_id,
+           CASE
+             WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+             WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+             ELSE q.net_total
+           END as credited_amount
+         FROM quotations q
+         WHERE q.quotation_date >= $1 AND q.quotation_date <= $2
+           AND q.status IN ('approved', 'closed')
+
+         UNION ALL
+
+         -- Assisted salesperson achievements
+         SELECT
+           q.assisted_sales_person_id as sp_id,
+           q.id as quotation_id,
+           CASE
+             WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+             WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+             ELSE 0
+           END as credited_amount
+         FROM quotations q
+         WHERE q.quotation_date >= $1 AND q.quotation_date <= $2
+           AND q.status IN ('approved', 'closed')
+           AND q.assisted_sales_person_id IS NOT NULL
+       ) combined_sales
+       GROUP BY sp_id`,
       [startDate, endDate]
     );
 
-    // Get payments collected in this period by salesperson's quotations
+    // Get payments collected in this period by salesperson's quotations (split-aware)
     const collections = await query(
-      `SELECT q.sales_person_id,
-              COALESCE(SUM(p.amount), 0) as total_collected
-       FROM payments p
-       JOIN quotations q ON q.id = p.quotation_id
-       WHERE p.payment_date >= $1 AND p.payment_date <= $2
-         AND p.status = 'Cleared'
-       GROUP BY q.sales_person_id`,
+      `SELECT
+         sp_id as sales_person_id,
+         COALESCE(SUM(credited_paid), 0) as total_collected
+       FROM (
+         SELECT
+           q.sales_person_id as sp_id,
+           CASE
+             WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((p.amount * q.primary_sales_share_percent / 100.0)::numeric, 2)
+             WHEN q.assisted_sales_person_id IS NOT NULL AND q.net_total > 0 THEN ROUND((p.amount * (q.primary_sales_share_amount / q.net_total))::numeric, 2)
+             ELSE p.amount
+           END as credited_paid
+         FROM payments p
+         JOIN quotations q ON q.id = p.quotation_id
+         WHERE p.payment_date >= $1 AND p.payment_date <= $2
+           AND p.status = 'Cleared'
+
+         UNION ALL
+
+         SELECT
+           q.assisted_sales_person_id as sp_id,
+           CASE
+             WHEN q.assisted_sales_share_percent > 0 THEN ROUND((p.amount * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+             WHEN q.net_total > 0 THEN ROUND((p.amount * (q.assisted_sales_share_amount / q.net_total))::numeric, 2)
+             ELSE 0
+           END as credited_paid
+         FROM payments p
+         JOIN quotations q ON q.id = p.quotation_id
+         WHERE p.payment_date >= $1 AND p.payment_date <= $2
+           AND p.status = 'Cleared'
+           AND q.assisted_sales_person_id IS NOT NULL
+       ) combined_payments
+       GROUP BY sp_id`,
       [startDate, endDate]
     );
 

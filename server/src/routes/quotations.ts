@@ -80,13 +80,15 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
     const params: any[] = [];
     let idx = 1;
 
-    // Role-based scoping: Salespersons only see their own quotations unless specified
+    // Role-based scoping: Salespersons see quotations where they are primary or assisted
     if (req.user!.role === 'salesperson') {
-      whereClauses.push(`q.sales_person_id = $${idx++}`);
+      whereClauses.push(`(q.sales_person_id = $${idx} OR q.assisted_sales_person_id = $${idx})`);
       params.push(req.user!.id);
+      idx++;
     } else if (salesPersonId) {
-      whereClauses.push(`q.sales_person_id = $${idx++}`);
+      whereClauses.push(`(q.sales_person_id = $${idx} OR q.assisted_sales_person_id = $${idx})`);
       params.push(salesPersonId);
+      idx++;
     }
 
     if (status) {
@@ -96,7 +98,7 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
 
     if (search) {
       whereClauses.push(
-        `(q.quotation_number ILIKE $${idx} OR q.customer_name ILIKE $${idx} OR q.customer_phone ILIKE $${idx} OR q.project_name ILIKE $${idx})`
+        `(q.quotation_number ILIKE $${idx} OR q.customer_name ILIKE $${idx} OR q.customer_phone ILIKE $${idx} OR q.project_name ILIKE $${idx} OR q.assisted_sales_person_name ILIKE $${idx})`
       );
       params.push(`%${search}%`);
       idx++;
@@ -135,6 +137,13 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
         q.customer_phone,
         q.sales_person_id,
         q.sales_person_name,
+        q.assisted_sales_person_id,
+        q.assisted_sales_person_name,
+        q.split_share_type,
+        q.primary_sales_share_percent,
+        q.primary_sales_share_amount,
+        q.assisted_sales_share_percent,
+        q.assisted_sales_share_amount,
         q.project_name,
         q.status,
         q.gross_total,
@@ -204,8 +213,12 @@ quotationsRouter.get('/:id', async (req: Request, res: Response) => {
 
     const quotation = qRows[0];
 
-    // Enforce role scope
-    if (req.user!.role === 'salesperson' && quotation.sales_person_id !== req.user!.id) {
+    // Enforce role scope: allow if salesperson is primary OR assisted
+    if (
+      req.user!.role === 'salesperson' &&
+      quotation.sales_person_id !== req.user!.id &&
+      quotation.assisted_sales_person_id !== req.user!.id
+    ) {
       res.status(403).json({ error: 'Access denied to this quotation' });
       return;
     }
@@ -313,6 +326,13 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
       discount_percent,
       discount_amount,
       tax_type = 'cgst_sgst',
+      assisted_sales_person_id,
+      assisted_sales_person_name,
+      split_share_type = 'percentage',
+      primary_sales_share_percent,
+      primary_sales_share_amount,
+      assisted_sales_share_percent,
+      assisted_sales_share_amount,
       areas = [],
     } = req.body;
 
@@ -338,21 +358,55 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
     const result = await withTransaction(async (client) => {
       const qNumber = await generateNextQuotationNumber(client);
 
+      // Compute Sales Split Shares
+      let finalAssistedId: number | null = null;
+      let finalAssistedName: string | null = null;
+      let finalSplitType: string | null = null;
+      let primaryPct = 100.0;
+      let primaryAmt = totals.netTotal;
+      let assistedPct = 0.0;
+      let assistedAmt = 0.0;
+
+      if (assisted_sales_person_id) {
+        finalAssistedId = parseInt(assisted_sales_person_id, 10);
+        const assistedUser = await client.query('SELECT full_name FROM users WHERE id = $1', [finalAssistedId]);
+        finalAssistedName = assistedUser.rows[0]?.full_name || assisted_sales_person_name || 'Assisted Salesperson';
+        finalSplitType = split_share_type === 'amount' ? 'amount' : 'percentage';
+
+        if (finalSplitType === 'amount') {
+          assistedAmt = Math.min(totals.netTotal, Math.max(0, parseFloat(assisted_sales_share_amount) || 0));
+          primaryAmt = Math.max(0, parseFloat((totals.netTotal - assistedAmt).toFixed(2)));
+          primaryPct = totals.netTotal > 0 ? parseFloat(((primaryAmt / totals.netTotal) * 100).toFixed(2)) : 100;
+          assistedPct = totals.netTotal > 0 ? parseFloat(((assistedAmt / totals.netTotal) * 100).toFixed(2)) : 0;
+        } else {
+          assistedPct = Math.min(100, Math.max(0, parseFloat(assisted_sales_share_percent) || 0));
+          primaryPct = parseFloat((100 - assistedPct).toFixed(2));
+          primaryAmt = parseFloat(((totals.netTotal * primaryPct) / 100).toFixed(2));
+          assistedAmt = parseFloat((totals.netTotal - primaryAmt).toFixed(2));
+        }
+      }
+
       const qRes = await client.query(
         `INSERT INTO quotations (
           quotation_number, quotation_date, customer_id, sales_person_id,
           customer_name, customer_phone, customer_gstin, delivery_address, site_location,
-          sales_person_name, project_name, status, gross_total, discount_percent,
+          sales_person_name, assisted_sales_person_id, assisted_sales_person_name,
+          split_share_type, primary_sales_share_percent, primary_sales_share_amount,
+          assisted_sales_share_percent, assisted_sales_share_amount,
+          project_name, status, gross_total, discount_percent,
           discount_amount, taxable_amount, tax_type, cgst_rate, cgst_amount,
           sgst_rate, sgst_amount, igst_rate, igst_amount, round_off, net_total,
           special_notes, version
         ) VALUES (
           $1, $2, $3, $4,
           $5, $6, $7, $8, $9,
-          $10, $11, 'draft', $12, $13,
-          $14, $15, $16, $17, $18,
-          $19, $20, $21, $22, $23, $24,
-          $25, 1
+          $10, $11, $12,
+          $13, $14, $15,
+          $16, $17,
+          $18, 'draft', $19, $20,
+          $21, $22, $23, $24, $25,
+          $26, $27, $28, $29, $30, $31,
+          $32, 1
         ) RETURNING *`,
         [
           qNumber,
@@ -365,6 +419,13 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
           delivery_address?.trim() || '',
           site_location?.trim() || '',
           req.user!.full_name,
+          finalAssistedId,
+          finalAssistedName,
+          finalSplitType,
+          primaryPct,
+          primaryAmt,
+          assistedPct,
+          assistedAmt,
           project_name?.trim() || '',
           totals.grossTotal,
           parseFloat(discount_percent) || 0,
@@ -467,6 +528,13 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
       discount_percent,
       discount_amount,
       tax_type = 'cgst_sgst',
+      assisted_sales_person_id,
+      assisted_sales_person_name,
+      split_share_type = 'percentage',
+      primary_sales_share_percent,
+      primary_sales_share_amount,
+      assisted_sales_share_percent,
+      assisted_sales_share_amount,
       areas = [],
     } = req.body;
 
@@ -504,6 +572,34 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
         throw conflictErr;
       }
 
+      // Compute Sales Split Shares
+      let finalAssistedId: number | null = null;
+      let finalAssistedName: string | null = null;
+      let finalSplitType: string | null = null;
+      let primaryPct = 100.0;
+      let primaryAmt = totals.netTotal;
+      let assistedPct = 0.0;
+      let assistedAmt = 0.0;
+
+      if (assisted_sales_person_id) {
+        finalAssistedId = parseInt(assisted_sales_person_id, 10);
+        const assistedUser = await client.query('SELECT full_name FROM users WHERE id = $1', [finalAssistedId]);
+        finalAssistedName = assistedUser.rows[0]?.full_name || assisted_sales_person_name || 'Assisted Salesperson';
+        finalSplitType = split_share_type === 'amount' ? 'amount' : 'percentage';
+
+        if (finalSplitType === 'amount') {
+          assistedAmt = Math.min(totals.netTotal, Math.max(0, parseFloat(assisted_sales_share_amount) || 0));
+          primaryAmt = Math.max(0, parseFloat((totals.netTotal - assistedAmt).toFixed(2)));
+          primaryPct = totals.netTotal > 0 ? parseFloat(((primaryAmt / totals.netTotal) * 100).toFixed(2)) : 100;
+          assistedPct = totals.netTotal > 0 ? parseFloat(((assistedAmt / totals.netTotal) * 100).toFixed(2)) : 0;
+        } else {
+          assistedPct = Math.min(100, Math.max(0, parseFloat(assisted_sales_share_percent) || 0));
+          primaryPct = parseFloat((100 - assistedPct).toFixed(2));
+          primaryAmt = parseFloat(((totals.netTotal * primaryPct) / 100).toFixed(2));
+          assistedAmt = parseFloat((totals.netTotal - primaryAmt).toFixed(2));
+        }
+      }
+
       // Update Quotation Header and bump version
       const nextVersion = current.rows[0].version + 1;
       const qRes = await client.query(
@@ -516,23 +612,30 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
              delivery_address = $6,
              site_location = $7,
              project_name = $8,
-             gross_total = $9,
-             discount_percent = $10,
-             discount_amount = $11,
-             taxable_amount = $12,
-             tax_type = $13,
-             cgst_rate = $14,
-             cgst_amount = $15,
-             sgst_rate = $16,
-             sgst_amount = $17,
-             igst_rate = $18,
-             igst_amount = $19,
-             round_off = $20,
-             net_total = $21,
-             special_notes = $22,
-             version = $23,
+             assisted_sales_person_id = $9,
+             assisted_sales_person_name = $10,
+             split_share_type = $11,
+             primary_sales_share_percent = $12,
+             primary_sales_share_amount = $13,
+             assisted_sales_share_percent = $14,
+             assisted_sales_share_amount = $15,
+             gross_total = $16,
+             discount_percent = $17,
+             discount_amount = $18,
+             taxable_amount = $19,
+             tax_type = $20,
+             cgst_rate = $21,
+             cgst_amount = $22,
+             sgst_rate = $23,
+             sgst_amount = $24,
+             igst_rate = $25,
+             igst_amount = $26,
+             round_off = $27,
+             net_total = $28,
+             special_notes = $29,
+             version = $30,
              updated_at = NOW()
-         WHERE id = $24 AND version = $25
+         WHERE id = $31 AND version = $32
          RETURNING *`,
         [
           quotation_date,
@@ -543,6 +646,13 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
           delivery_address || '',
           site_location || '',
           project_name || '',
+          finalAssistedId,
+          finalAssistedName,
+          finalSplitType,
+          primaryPct,
+          primaryAmt,
+          assistedPct,
+          assistedAmt,
           totals.grossTotal,
           parseFloat(discount_percent) || 0,
           totals.discountAmount,

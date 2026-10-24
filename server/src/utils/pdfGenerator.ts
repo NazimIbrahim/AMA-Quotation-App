@@ -10,6 +10,7 @@ export interface QuotationPdfData {
     delivery_address: string;
     project_name?: string;
     sales_person_name: string;
+    assisted_sales_person_name?: string;
     status: string;
     gross_total: number;
     discount_amount: number;
@@ -169,12 +170,16 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
     .fillColor(primaryColor)
     .text('Project & Sales Associate:', 320, customerBoxY + 6);
 
+  const salesAssociateLabel = quotation.assisted_sales_person_name
+    ? `Sales: ${quotation.sales_person_name} (Assisted: ${quotation.assisted_sales_person_name})`
+    : `Sales Associate: ${quotation.sales_person_name}`;
+
   doc
     .fontSize(8.5)
     .font('Helvetica')
     .fillColor(textColor)
     .text(`Project: ${quotation.project_name || 'Standard Residential'}`, 320, customerBoxY + 18)
-    .text(`Sales Associate: ${quotation.sales_person_name}`, 320, customerBoxY + 30)
+    .text(salesAssociateLabel, 320, customerBoxY + 30, { width: 240, ellipsis: true })
     .text(`Store Manager: ${company.store_manager_name}`, 320, customerBoxY + 42);
 
   // Table setup
@@ -353,7 +358,14 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
     .font('Helvetica-Bold')
     .fillColor(textColor)
     .text(`${company.sales_associate_title}`, 320, currentY + 18)
-    .text(`${quotation.sales_person_name}`, 320, currentY + 30)
+    .text(
+      quotation.assisted_sales_person_name
+        ? `${quotation.sales_person_name} & ${quotation.assisted_sales_person_name}`
+        : `${quotation.sales_person_name}`,
+      320,
+      currentY + 30,
+      { width: 120, ellipsis: true }
+    )
     .text(`Signature: ________________`, 320, currentY + 44);
 
   doc

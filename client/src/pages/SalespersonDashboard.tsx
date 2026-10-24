@@ -615,12 +615,38 @@ export const SalespersonDashboard: React.FC<Props> = ({
                       <div className="text-[10px] text-slate-500 font-mono">{q.customer_phone}</div>
                     </td>
                     <td className="py-2.5 px-3 text-slate-600">{q.project_name || 'Standard'}</td>
-                    <td className="py-2.5 px-3 font-medium text-slate-800">{q.sales_person_name}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-medium text-slate-800">{q.sales_person_name}</div>
+                      {q.assisted_sales_person_id ? (
+                        q.assisted_sales_person_id === selectedSalespersonId ? (
+                          <div className="text-[10px] text-indigo-700 font-medium inline-flex items-center space-x-1 mt-0.5">
+                            <span className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-sans">
+                              🤝 Co-Closer ({Number(q.assisted_sales_share_percent || 50).toFixed(0)}%)
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-blue-700 font-medium inline-flex items-center space-x-1 mt-0.5">
+                            <span className="bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-sans">
+                              ⭐ Lead Closer ({Number(q.primary_sales_share_percent || 50).toFixed(0)}% w/ {q.assisted_sales_person_name})
+                            </span>
+                          </div>
+                        )
+                      ) : null}
+                    </td>
                     <td className="py-2.5 px-3">
                       <span className={`badge badge-${q.status}`}>{q.status}</span>
                     </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-slate-900 tabular-nums">
-                      ₹ {formatCurrency(q.net_total)}
+                    <td className="py-2.5 px-3 text-right tabular-nums">
+                      <div className="font-bold text-slate-900">₹ {formatCurrency(q.net_total)}</div>
+                      {q.assisted_sales_person_id && (
+                        <div className="text-[10px] text-indigo-700 font-semibold font-mono">
+                          Credited: ₹ {formatCurrency(
+                            q.assisted_sales_person_id === selectedSalespersonId
+                              ? (q.assisted_sales_share_amount || 0)
+                              : (q.primary_sales_share_amount || q.net_total)
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums">
                       ₹ {formatCurrency(q.total_paid || 0)}

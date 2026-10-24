@@ -102,6 +102,13 @@ CREATE TABLE IF NOT EXISTS quotations (
     delivery_address TEXT NOT NULL,
     site_location VARCHAR(150),
     sales_person_name VARCHAR(120) NOT NULL,
+    assisted_sales_person_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    assisted_sales_person_name VARCHAR(120),
+    split_share_type VARCHAR(20) DEFAULT 'percentage',
+    primary_sales_share_percent NUMERIC(5, 2) DEFAULT 100.00,
+    primary_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00,
+    assisted_sales_share_percent NUMERIC(5, 2) DEFAULT 0.00,
+    assisted_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00,
     project_name VARCHAR(150),
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'in_review', 'approved', 'rejected', 'closed')),
     manager_approval_note TEXT,
@@ -130,6 +137,7 @@ CREATE INDEX IF NOT EXISTS idx_quotations_status ON quotations (status);
 CREATE INDEX IF NOT EXISTS idx_quotations_date ON quotations (quotation_date);
 CREATE INDEX IF NOT EXISTS idx_quotations_customer ON quotations (customer_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_sales_person ON quotations (sales_person_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_assisted_sales_person ON quotations (assisted_sales_person_id);
 
 CREATE TABLE IF NOT EXISTS quotation_areas (
     id SERIAL PRIMARY KEY,

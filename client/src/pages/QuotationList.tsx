@@ -271,7 +271,16 @@ export const QuotationList: React.FC<Props> = ({
                       <div className="font-semibold text-slate-900">{q.customer_name}</div>
                       <div className="text-[10px] text-slate-500 font-mono">{q.customer_phone}</div>
                     </td>
-                    <td className="py-2.5 px-3 text-slate-700">{q.sales_person_name}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-medium text-slate-800">{q.sales_person_name}</div>
+                      {q.assisted_sales_person_name && (
+                        <div className="text-[10px] text-indigo-700 font-medium inline-flex items-center space-x-1 mt-0.5">
+                          <span className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-sans">
+                            🤝 +{q.assisted_sales_person_name} ({Number(q.assisted_sales_share_percent || 50).toFixed(0)}%)
+                          </span>
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3">
                       <span className={`badge badge-${q.status}`}>{q.status}</span>
                     </td>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
-import { Quotation, QuotationArea, QuotationItem, Customer, TileBrand, BrandSizeCoverage } from '../types';
+import { Quotation, QuotationArea, QuotationItem, Customer, TileBrand, BrandSizeCoverage, User } from '../types';
 import {
   Save,
   ArrowLeft,
@@ -20,6 +20,10 @@ import {
   CheckCircle2,
   X,
   Loader2,
+  Users,
+  User as UserIcon,
+  Award,
+  Percent,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { numberToWordsIndian } from '../utils/numberToWords';
@@ -55,6 +59,18 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
   const [version, setVersion] = useState<number>(1);
   const [quotationNumber, setQuotationNumber] = useState<string>('');
+
+  // Split Sales / Assisted Salesperson State
+  const [enableSplitSale, setEnableSplitSale] = useState(false);
+  const [primarySalesPersonName, setPrimarySalesPersonName] = useState<string>('');
+  const [assistedSalesPersonId, setAssistedSalesPersonId] = useState<number | null>(null);
+  const [assistedSalesPersonName, setAssistedSalesPersonName] = useState<string>('');
+  const [splitShareType, setSplitShareType] = useState<'percentage' | 'amount'>('percentage');
+  const [primarySalesSharePercent, setPrimarySalesSharePercent] = useState<number>(50);
+  const [primarySalesShareAmount, setPrimarySalesShareAmount] = useState<number>(0);
+  const [assistedSalesSharePercent, setAssistedSalesSharePercent] = useState<number>(50);
+  const [assistedSalesShareAmount, setAssistedSalesShareAmount] = useState<number>(0);
+  const [salesTeam, setSalesTeam] = useState<User[]>([]);
 
   // Customer Autocomplete & Live Lookup State
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
@@ -283,6 +299,10 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     fetchApi('/api/customers?limit=100').then((res) => setCustomers(res.customers || [])).catch(() => {});
     fetchApi('/api/products/brands').then((res) => setBrands(res.brands || [])).catch(() => {});
     fetchApi('/api/products/coverages').then((res) => setCoverages(res.coverages || [])).catch(() => {});
+    fetchApi('/api/users').then((res) => {
+      const all: User[] = res.users || [];
+      setSalesTeam(all.filter((u) => u.is_active));
+    }).catch(() => {});
   }, []);
 
   // Load Existing Quotation if editing
@@ -305,6 +325,25 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           setTaxType(q.tax_type || 'cgst_sgst');
           setVersion(q.version || 1);
           setQuotationNumber(q.quotation_number);
+          setPrimarySalesPersonName(q.sales_person_name || '');
+
+          if (q.assisted_sales_person_id) {
+            setEnableSplitSale(true);
+            setAssistedSalesPersonId(q.assisted_sales_person_id);
+            setAssistedSalesPersonName(q.assisted_sales_person_name || '');
+            setSplitShareType((q.split_share_type as any) || 'percentage');
+            setPrimarySalesSharePercent(parseFloat(String(q.primary_sales_share_percent)) || 50);
+            setPrimarySalesShareAmount(parseFloat(String(q.primary_sales_share_amount)) || 0);
+            setAssistedSalesSharePercent(parseFloat(String(q.assisted_sales_share_percent)) || 50);
+            setAssistedSalesShareAmount(parseFloat(String(q.assisted_sales_share_amount)) || 0);
+          } else {
+            setEnableSplitSale(false);
+            setAssistedSalesPersonId(null);
+            setAssistedSalesPersonName('');
+            setSplitShareType('percentage');
+            setPrimarySalesSharePercent(100);
+            setAssistedSalesSharePercent(0);
+          }
 
           if (Array.isArray(res.areas) && res.areas.length > 0) {
             setAreas(
@@ -459,6 +498,107 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   const roundOff = parseFloat((netTotal - rawTotal).toFixed(2));
   const amountInWords = numberToWordsIndian(netTotal);
 
+  // Synchronize split amounts whenever netTotal changes
+  useEffect(() => {
+    if (!enableSplitSale) {
+      setPrimarySalesShareAmount(netTotal);
+      setAssistedSalesShareAmount(0);
+      return;
+    }
+    if (splitShareType === 'percentage') {
+      const pPct = primarySalesSharePercent || 50;
+      const pAmt = Math.round((netTotal * pPct) / 100);
+      setPrimarySalesShareAmount(pAmt);
+      setAssistedSalesShareAmount(netTotal - pAmt);
+    } else {
+      const pAmt = Math.min(netTotal, primarySalesShareAmount);
+      setPrimarySalesShareAmount(pAmt);
+      setAssistedSalesShareAmount(Math.max(0, netTotal - pAmt));
+      const pPct = netTotal > 0 ? parseFloat(((pAmt / netTotal) * 100).toFixed(2)) : 50;
+      setPrimarySalesSharePercent(pPct);
+      setAssistedSalesSharePercent(parseFloat((100 - pPct).toFixed(2)));
+    }
+  }, [netTotal, enableSplitSale]);
+
+  const handleToggleSplitSale = (enabled: boolean) => {
+    setEnableSplitSale(enabled);
+    if (enabled) {
+      const pAmt = Math.round(netTotal * 0.5);
+      const aAmt = netTotal - pAmt;
+      setPrimarySalesSharePercent(50);
+      setAssistedSalesSharePercent(50);
+      setPrimarySalesShareAmount(pAmt);
+      setAssistedSalesShareAmount(aAmt);
+      if (!assistedSalesPersonId && salesTeam.length > 0) {
+        const primaryId = quotationId ? undefined : user?.id;
+        const candidate = salesTeam.find((u) => u.id !== primaryId);
+        if (candidate) {
+          setAssistedSalesPersonId(candidate.id);
+          setAssistedSalesPersonName(candidate.full_name);
+        }
+      }
+    } else {
+      setAssistedSalesPersonId(null);
+      setAssistedSalesPersonName('');
+      setPrimarySalesSharePercent(100);
+      setAssistedSalesSharePercent(0);
+      setPrimarySalesShareAmount(netTotal);
+      setAssistedSalesShareAmount(0);
+    }
+  };
+
+  const handleSelectAssistedSalesperson = (salesPersonIdNum: number) => {
+    setAssistedSalesPersonId(salesPersonIdNum);
+    const found = salesTeam.find((u) => u.id === salesPersonIdNum);
+    setAssistedSalesPersonName(found?.full_name || '');
+  };
+
+  const handleUpdateSplitPercent = (field: 'primary' | 'assisted', val: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(val * 100) / 100));
+    if (field === 'primary') {
+      const other = Math.max(0, parseFloat((100 - clamped).toFixed(2)));
+      setPrimarySalesSharePercent(clamped);
+      setAssistedSalesSharePercent(other);
+      const pAmt = Math.round((netTotal * clamped) / 100);
+      setPrimarySalesShareAmount(pAmt);
+      setAssistedSalesShareAmount(netTotal - pAmt);
+    } else {
+      const other = Math.max(0, parseFloat((100 - clamped).toFixed(2)));
+      setAssistedSalesSharePercent(clamped);
+      setPrimarySalesSharePercent(other);
+      const aAmt = Math.round((netTotal * clamped) / 100);
+      setAssistedSalesShareAmount(aAmt);
+      setPrimarySalesShareAmount(netTotal - aAmt);
+    }
+  };
+
+  const handleUpdateSplitAmount = (field: 'primary' | 'assisted', val: number) => {
+    const clamped = Math.max(0, Math.min(netTotal, Math.round(val)));
+    if (field === 'primary') {
+      const other = Math.max(0, netTotal - clamped);
+      setPrimarySalesShareAmount(clamped);
+      setAssistedSalesShareAmount(other);
+      const pPct = netTotal > 0 ? parseFloat(((clamped / netTotal) * 100).toFixed(2)) : 0;
+      setPrimarySalesSharePercent(pPct);
+      setAssistedSalesSharePercent(parseFloat((100 - pPct).toFixed(2)));
+    } else {
+      const other = Math.max(0, netTotal - clamped);
+      setAssistedSalesShareAmount(clamped);
+      setPrimarySalesShareAmount(other);
+      const aPct = netTotal > 0 ? parseFloat(((clamped / netTotal) * 100).toFixed(2)) : 0;
+      setAssistedSalesSharePercent(aPct);
+      setPrimarySalesSharePercent(parseFloat((100 - aPct).toFixed(2)));
+    }
+  };
+
+  const handlePresetSplit = (primaryPct: number, assistedPct: number) => {
+    setPrimarySalesSharePercent(primaryPct);
+    setAssistedSalesSharePercent(assistedPct);
+    const pAmt = Math.round((netTotal * primaryPct) / 100);
+    setPrimarySalesShareAmount(pAmt);
+    setAssistedSalesShareAmount(netTotal - pAmt);
+  };
+
   // Save Quotation Handler
   const handleSaveQuotation = async () => {
     setError(null);
@@ -469,6 +609,17 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     if (!customerPhone.trim()) {
       setError('Customer phone number is required.');
       return;
+    }
+
+    if (enableSplitSale) {
+      if (!assistedSalesPersonId) {
+        setError('Please select an assisted salesperson or disable the split sale option.');
+        return;
+      }
+      if (Math.abs((primarySalesSharePercent + assistedSalesSharePercent) - 100) > 0.5) {
+        setError('The total split percentage between primary and assisted salespersons must equal 100%.');
+        return;
+      }
     }
 
     setSaving(true);
@@ -486,6 +637,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         special_notes: specialNotes,
         discount_percent: discountPercent,
         discount_amount: finalDiscount,
+        assisted_sales_person_id: enableSplitSale ? assistedSalesPersonId : null,
+        assisted_sales_person_name: enableSplitSale ? assistedSalesPersonName : null,
+        split_share_type: enableSplitSale ? splitShareType : 'percentage',
+        primary_sales_share_percent: enableSplitSale ? primarySalesSharePercent : 100,
+        primary_sales_share_amount: enableSplitSale ? primarySalesShareAmount : netTotal,
+        assisted_sales_share_percent: enableSplitSale ? assistedSalesSharePercent : 0,
+        assisted_sales_share_amount: enableSplitSale ? assistedSalesShareAmount : 0,
         version: quotationId ? version : 1,
         areas: areas.map((a, i) => ({
           area_name: a.name,
@@ -826,6 +984,321 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             />
           </div>
         </div>
+      </div>
+
+      {/* Section 1.5: Sales Attribution & Assisted Salesperson Split */}
+      <div className="card p-4 space-y-4 border border-slate-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <div className="flex items-center space-x-2">
+              <Users size={16} className="text-indigo-600" />
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Sales Attribution & Co-Closer Split
+              </h2>
+              {enableSplitSale && (
+                <span className="badge badge-sm bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold">
+                  Split Deal Active
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Split revenue credit and monthly target achievements when a quotation is closed with another salesperson
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => handleToggleSplitSale(!enableSplitSale)}
+              className={`btn btn-xs inline-flex items-center space-x-1.5 transition-all ${
+                enableSplitSale
+                  ? 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100'
+                  : 'btn-secondary text-indigo-700 border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100'
+              }`}
+            >
+              {enableSplitSale ? (
+                <>
+                  <X size={12} />
+                  <span>Remove Split Sale (100% Single Closer)</span>
+                </>
+              ) : (
+                <>
+                  <Users size={12} />
+                  <span>+ Add Assisted Salesperson</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {!enableSplitSale ? (
+          <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-md px-3 py-2 text-xs text-slate-600">
+            <div className="flex items-center space-x-2">
+              <UserIcon size={13} className="text-slate-500" />
+              <span>
+                Primary Closer:{' '}
+                <strong className="text-slate-900 font-semibold">
+                  {primarySalesPersonName || user?.full_name || user?.username || 'Current User'}
+                </strong>
+                <span className="text-slate-500 ml-1.5">(100% Sales & Target Attribution)</span>
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400">Single Salesperson Deal</span>
+          </div>
+        ) : (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Top Controls: Assisted Selection, Split Method, Quick Presets */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-indigo-50/40 p-3 rounded-lg border border-indigo-100">
+              {/* Assisted Salesperson Select */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Assisted Salesperson (Co-Closer) <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  className="input input-sm w-full font-medium"
+                  value={assistedSalesPersonId || ''}
+                  onChange={(e) => handleSelectAssistedSalesperson(Number(e.target.value))}
+                >
+                  <option value="">-- Choose Colleague --</option>
+                  {salesTeam
+                    .filter((u) => u.id !== (quotationId ? undefined : user?.id))
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name} ({u.role})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Share Type Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Split Share Mode
+                </label>
+                <div className="inline-flex rounded-md shadow-sm w-full border border-slate-300 overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setSplitShareType('percentage')}
+                    className={`flex-1 py-1.5 px-2 text-xs font-semibold flex items-center justify-center space-x-1 transition-colors ${
+                      splitShareType === 'percentage'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Percent size={12} />
+                    <span>Percentage (%)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitShareType('amount')}
+                    className={`flex-1 py-1.5 px-2 text-xs font-semibold flex items-center justify-center space-x-1 transition-colors ${
+                      splitShareType === 'amount'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>₹ Amount (Fixed)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Ratio Presets */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Quick Ratio Presets
+                </label>
+                <div className="grid grid-cols-4 gap-1">
+                  {[
+                    [50, 50],
+                    [60, 40],
+                    [70, 30],
+                    [80, 20],
+                  ].map(([p, a]) => {
+                    const isSelected =
+                      splitShareType === 'percentage' &&
+                      primarySalesSharePercent === p &&
+                      assistedSalesSharePercent === a;
+                    return (
+                      <button
+                        key={`${p}-${a}`}
+                        type="button"
+                        onClick={() => handlePresetSplit(p, a)}
+                        className={`text-[11px] font-semibold py-1.5 rounded border transition-colors ${
+                          isSelected
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {p}:{a}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Split Cards: Lead vs Assisted */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Primary Salesperson Card */}
+              <div className="border border-indigo-200 bg-white rounded-lg p-3.5 space-y-2.5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                    <span className="text-xs font-bold text-slate-900">
+                      {primarySalesPersonName || user?.full_name || 'Lead Closer'}
+                    </span>
+                  </div>
+                  <span className="badge badge-sm bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
+                    Lead Closer
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 font-medium mb-1">
+                      Share Percentage
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        disabled={splitShareType === 'amount'}
+                        value={primarySalesSharePercent}
+                        onChange={(e) =>
+                          handleUpdateSplitPercent('primary', parseFloat(e.target.value) || 0)
+                        }
+                        className="input input-sm w-full pr-6 font-mono font-bold text-slate-900"
+                      />
+                      <span className="absolute right-2 top-2 text-slate-400 text-xs font-mono">%</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-500 font-medium mb-1">
+                      Attributed Revenue
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-2 text-slate-400 text-xs font-mono">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={netTotal}
+                        step="1"
+                        disabled={splitShareType === 'percentage'}
+                        value={primarySalesShareAmount}
+                        onChange={(e) =>
+                          handleUpdateSplitAmount('primary', parseFloat(e.target.value) || 0)
+                        }
+                        className="input input-sm w-full pl-6 font-mono font-bold text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-500 flex justify-between pt-1 border-t border-slate-100">
+                  <span>Credited to Targets:</span>
+                  <strong className="text-blue-700 font-mono">
+                    ₹ {formatCurrency(primarySalesShareAmount)} ({primarySalesSharePercent}%)
+                  </strong>
+                </div>
+              </div>
+
+              {/* Assisted Salesperson Card */}
+              <div className="border border-emerald-200 bg-white rounded-lg p-3.5 space-y-2.5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+                    <span className="text-xs font-bold text-slate-900">
+                      {assistedSalesPersonName || 'Select Assisted Colleague Above'}
+                    </span>
+                  </div>
+                  <span className="badge badge-sm bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                    Co-Closer (Assisted)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 font-medium mb-1">
+                      Share Percentage
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        disabled={splitShareType === 'amount'}
+                        value={assistedSalesSharePercent}
+                        onChange={(e) =>
+                          handleUpdateSplitPercent('assisted', parseFloat(e.target.value) || 0)
+                        }
+                        className="input input-sm w-full pr-6 font-mono font-bold text-slate-900"
+                      />
+                      <span className="absolute right-2 top-2 text-slate-400 text-xs font-mono">%</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-500 font-medium mb-1">
+                      Attributed Revenue
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-2 text-slate-400 text-xs font-mono">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={netTotal}
+                        step="1"
+                        disabled={splitShareType === 'percentage'}
+                        value={assistedSalesShareAmount}
+                        onChange={(e) =>
+                          handleUpdateSplitAmount('assisted', parseFloat(e.target.value) || 0)
+                        }
+                        className="input input-sm w-full pl-6 font-mono font-bold text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-500 flex justify-between pt-1 border-t border-slate-100">
+                  <span>Credited to Targets:</span>
+                  <strong className="text-emerald-700 font-mono">
+                    ₹ {formatCurrency(assistedSalesShareAmount)} ({assistedSalesSharePercent}%)
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Split Distribution Bar */}
+            <div className="space-y-1.5 bg-slate-50 p-2.5 rounded border border-slate-200">
+              <div className="flex justify-between text-[11px] font-semibold text-slate-700">
+                <span className="text-blue-700">
+                  Lead ({primarySalesSharePercent}%): ₹ {formatCurrency(primarySalesShareAmount)}
+                </span>
+                <span className="text-slate-500 font-mono">Net Quotation: ₹ {formatCurrency(netTotal)}</span>
+                <span className="text-emerald-700">
+                  Assisted ({assistedSalesSharePercent}%): ₹ {formatCurrency(assistedSalesShareAmount)}
+                </span>
+              </div>
+
+              <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden flex shadow-inner">
+                <div
+                  className="bg-blue-600 transition-all duration-300"
+                  style={{ width: `${Math.max(0, Math.min(100, primarySalesSharePercent))}%` }}
+                  title={`Lead Closer: ${primarySalesSharePercent}%`}
+                />
+                <div
+                  className="bg-emerald-600 transition-all duration-300"
+                  style={{ width: `${Math.max(0, Math.min(100, assistedSalesSharePercent))}%` }}
+                  title={`Assisted Closer: ${assistedSalesSharePercent}%`}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Section 2: Room / Areas & Tile Line Items */}

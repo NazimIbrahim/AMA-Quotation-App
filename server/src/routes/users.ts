@@ -154,12 +154,31 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
 
     const salesperson = userRows[0];
 
-    // Status-wise quotation summary
+    // Status-wise quotation summary (split-aware for both primary and assisted salesperson)
     const statusRows = await query(
-      `SELECT status, count(*) as count, COALESCE(sum(net_total), 0) as total_val
-       FROM quotations
-       WHERE sales_person_id = $1
-       GROUP BY status`,
+      `SELECT
+        q.status,
+        count(*) as count,
+        COALESCE(SUM(
+          CASE
+            WHEN q.sales_person_id = $1 THEN
+              CASE
+                WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+                WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+                ELSE q.net_total
+              END
+            WHEN q.assisted_sales_person_id = $1 THEN
+              CASE
+                WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+                WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+                ELSE 0
+              END
+            ELSE 0
+          END
+        ), 0) as total_val
+       FROM quotations q
+       WHERE (q.sales_person_id = $1 OR q.assisted_sales_person_id = $1)
+       GROUP BY q.status`,
       [userId]
     );
 
@@ -179,12 +198,28 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
       }
     });
 
-    // Payments collected
+    // Payments collected (split-aware)
     const payRows = await query(
-      `SELECT COALESCE(sum(p.amount), 0) as total_collected
-       FROM payments p
-       JOIN quotations q ON q.id = p.quotation_id
-       WHERE q.sales_person_id = $1 AND p.status = 'Cleared'`,
+      `SELECT COALESCE(SUM(
+        CASE
+          WHEN q.sales_person_id = $1 THEN
+            CASE
+              WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((p.amount * q.primary_sales_share_percent / 100.0)::numeric, 2)
+              WHEN q.assisted_sales_person_id IS NOT NULL AND q.net_total > 0 THEN ROUND((p.amount * (q.primary_sales_share_amount / q.net_total))::numeric, 2)
+              ELSE p.amount
+            END
+          WHEN q.assisted_sales_person_id = $1 THEN
+            CASE
+              WHEN q.assisted_sales_share_percent > 0 THEN ROUND((p.amount * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+              WHEN q.net_total > 0 THEN ROUND((p.amount * (q.assisted_sales_share_amount / q.net_total))::numeric, 2)
+              ELSE 0
+            END
+          ELSE 0
+        END
+      ), 0) as total_collected
+      FROM payments p
+      JOIN quotations q ON q.id = p.quotation_id
+      WHERE (q.sales_person_id = $1 OR q.assisted_sales_person_id = $1) AND p.status = 'Cleared'`,
       [userId]
     );
     const totalCollected = parseFloat(payRows[0].total_collected);

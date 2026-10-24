@@ -9,6 +9,7 @@ import {
   CreditCard,
   Building,
   User,
+  Users,
   IndianRupee,
   RefreshCw,
   Receipt,
@@ -186,8 +187,35 @@ export const QuotationDetail: React.FC<Props> = ({
           <p className="font-bold text-slate-900 text-sm">
             {quotation.project_name || 'Standard Residential Order'}
           </p>
-          <p className="text-slate-600">Sales Associate: {quotation.sales_person_name}</p>
-          <p className="text-slate-600">
+          <div className="space-y-1 pt-0.5">
+            <div className="flex items-center justify-between text-slate-700">
+              <span>Lead Closer:</span>
+              <span className="font-semibold text-slate-900">{quotation.sales_person_name}</span>
+            </div>
+
+            {quotation.assisted_sales_person_name && (
+              <div className="p-2 bg-indigo-50/70 rounded border border-indigo-100 text-[11px] space-y-1.5 my-1">
+                <div className="flex items-center justify-between font-medium text-indigo-950">
+                  <span className="inline-flex items-center space-x-1">
+                    <Users size={12} className="text-indigo-600" />
+                    <span>Assisted Sale (Co-Closer):</span>
+                  </span>
+                  <span className="font-bold">{quotation.assisted_sales_person_name}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-600 border-t border-indigo-100/80 pt-1">
+                  <div>
+                    <span className="text-slate-500">Lead ({Number(quotation.primary_sales_share_percent || 50).toFixed(0)}%):</span>{' '}
+                    <strong className="text-blue-700 font-mono">₹{formatCurrency(quotation.primary_sales_share_amount || 0)}</strong>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-500">Assisted ({Number(quotation.assisted_sales_share_percent || 50).toFixed(0)}%):</span>{' '}
+                    <strong className="text-emerald-700 font-mono">₹{formatCurrency(quotation.assisted_sales_share_amount || 0)}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <p className="text-slate-600 pt-0.5">
             Quotation Date: {new Date(quotation.quotation_date).toLocaleDateString('en-GB')}
           </p>
           {quotation.approved_by_name && (

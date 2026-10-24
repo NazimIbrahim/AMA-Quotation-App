@@ -79,6 +79,13 @@ export interface Quotation {
   site_location?: string;
   sales_person_id: number;
   sales_person_name: string;
+  assisted_sales_person_id?: number | null;
+  assisted_sales_person_name?: string | null;
+  split_share_type?: 'percentage' | 'amount' | null;
+  primary_sales_share_percent?: number;
+  primary_sales_share_amount?: number;
+  assisted_sales_share_percent?: number;
+  assisted_sales_share_amount?: number;
   project_name?: string;
   status: 'draft' | 'in_review' | 'approved' | 'rejected' | 'closed';
   manager_approval_note?: string;
