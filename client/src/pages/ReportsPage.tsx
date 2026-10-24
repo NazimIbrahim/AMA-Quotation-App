@@ -1,15 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useServer } from '../context/ServerContext';
-import { BarChart3, Download, FileSpreadsheet, Calendar, CheckCircle2 } from 'lucide-react';
+import { User, Quotation } from '../types';
+import {
+  BarChart3,
+  Download,
+  FileSpreadsheet,
+  Calendar,
+  CheckCircle2,
+  Users,
+  UserCheck,
+  TrendingUp,
+  Award,
+  Filter,
+  RefreshCw,
+  Printer,
+  ShieldAlert,
+  Eye,
+  DollarSign,
+  ChevronRight,
+  Search,
+} from 'lucide-react';
+import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
-export const ReportsPage: React.FC = () => {
-  const { serverUrl } = useServer();
+const formatCurrency = (val: number) => {
+  return Number(val || 0).toLocaleString('en-IN', {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  });
+};
+
+interface Props {
+  onSelectQuotation?: (id: number) => void;
+}
+
+export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
+  const { serverUrl, fetchApi, getPdfUrl } = useServer();
   const token = localStorage.getItem('ama_token');
 
-  // Quotation export filters
+  // Active Tab: 'salesperson' | 'quotations' | 'payments'
+  const [activeTab, setActiveTab] = useState<'salesperson' | 'quotations' | 'payments'>('salesperson');
+
+  // Sales team state
+  const [salesTeam, setSalesTeam] = useState<User[]>([]);
+  const [selectedSpId, setSelectedSpId] = useState<string>('');
+  const [spStatus, setSpStatus] = useState<string>('');
+  const [spStartDate, setSpStartDate] = useState<string>('');
+  const [spEndDate, setSpEndDate] = useState<string>('');
+  const [spSummary, setSpSummary] = useState<any[]>([]);
+  const [spQuotations, setSpQuotations] = useState<Quotation[]>([]);
+  const [loadingSummary, setLoadingSummary] = useState<boolean>(false);
+  const [loadingQuotes, setLoadingQuotes] = useState<boolean>(false);
+
+  // General Quotation export filters
   const [qStatus, setQStatus] = useState('');
+  const [qSalespersonId, setQSalespersonId] = useState('');
   const [qStartDate, setQStartDate] = useState('');
   const [qEndDate, setQEndDate] = useState('');
+  const [qExportMode, setQExportMode] = useState<'standard' | 'encrypted'>('standard');
+  const [qItemized, setQItemized] = useState<boolean>(false);
 
   // Payment export filters
   const [pStartDate, setPStartDate] = useState('');
@@ -17,27 +65,100 @@ export const ReportsPage: React.FC = () => {
 
   const [exportingKey, setExportingKey] = useState<string | null>(null);
 
-  const handleDownload = async (type: 'quotations' | 'payments', format: 'xlsx' | 'csv') => {
-    const key = `${type}-${format}`;
+  // PDF Preview State
+  const [previewPdf, setPreviewPdf] = useState<{
+    url: string;
+    title: string;
+    fileName: string;
+    quotationId?: number;
+    initialEncrypted?: boolean;
+  } | null>(null);
+
+  // Fetch sales team users on mount
+  useEffect(() => {
+    fetchApi('/api/users')
+      .then((res) => {
+        const all: User[] = res.users || [];
+        setSalesTeam(all.filter((u) => u.is_active));
+      })
+      .catch((err) => console.error('Failed to load users for report:', err));
+  }, []);
+
+  // Fetch Salesperson Summary
+  const loadSalespersonSummary = () => {
+    setLoadingSummary(true);
+    const params = new URLSearchParams();
+    if (spStartDate) params.append('start_date', spStartDate);
+    if (spEndDate) params.append('end_date', spEndDate);
+    if (selectedSpId) params.append('sales_person_id', selectedSpId);
+
+    fetchApi(`/api/reports/salespersons/summary?${params.toString()}`)
+      .then((res) => {
+        setSpSummary(res.summary || []);
+      })
+      .catch((err) => console.error('Failed to load summary:', err))
+      .finally(() => setLoadingSummary(false));
+  };
+
+  // Fetch Salesperson Quotations list
+  const loadSalespersonQuotations = () => {
+    setLoadingQuotes(true);
+    const params = new URLSearchParams({ limit: '100' });
+    if (selectedSpId) params.append('sales_person_id', selectedSpId);
+    if (spStatus) params.append('status', spStatus);
+
+    fetchApi(`/api/quotations?${params.toString()}`)
+      .then((res) => {
+        let list: Quotation[] = res.quotations || [];
+        // Apply local date filtering if provided
+        if (spStartDate) {
+          list = list.filter((q) => q.quotation_date >= spStartDate);
+        }
+        if (spEndDate) {
+          list = list.filter((q) => q.quotation_date <= spEndDate);
+        }
+        setSpQuotations(list);
+      })
+      .catch((err) => console.error('Failed to load salesperson quotations:', err))
+      .finally(() => setLoadingQuotes(false));
+  };
+
+  useEffect(() => {
+    loadSalespersonSummary();
+    loadSalespersonQuotations();
+  }, [selectedSpId, spStatus, spStartDate, spEndDate]);
+
+  // Generic Download Handler
+  const handleDownload = async (
+    type: 'quotations' | 'payments' | 'salespersons',
+    format: 'xlsx' | 'csv',
+    customParams?: Record<string, string>
+  ) => {
+    const key = `${type}-${format}${customParams?.encrypted ? '-enc' : ''}`;
     setExportingKey(key);
-    const params = new URLSearchParams({ format });
-    if (type === 'quotations') {
+
+    const params = new URLSearchParams({ format, ...(customParams || {}) });
+    if (type === 'quotations' && !customParams) {
       if (qStatus) params.append('status', qStatus);
+      if (qSalespersonId) params.append('sales_person_id', qSalespersonId);
       if (qStartDate) params.append('start_date', qStartDate);
       if (qEndDate) params.append('end_date', qEndDate);
-    } else {
+      if (qExportMode === 'encrypted') params.append('encrypted', 'true');
+      if (qItemized) params.append('itemized', 'true');
+    } else if (type === 'payments' && !customParams) {
       if (pStartDate) params.append('start_date', pStartDate);
       if (pEndDate) params.append('end_date', pEndDate);
     }
 
     const downloadUrl = `${serverUrl}/api/reports/${type}/export?${params.toString()}`;
-    const filename = `${type}_export_${new Date().toISOString().split('T')[0]}.${format}`;
+    const encTag = customParams?.encrypted || qExportMode === 'encrypted' ? '_Encrypted' : '';
+    const filename = `${type}_report${encTag}_${new Date().toISOString().split('T')[0]}.${format}`;
 
     try {
       if (window.electronAPI) {
         const res = await window.electronAPI.downloadFile(downloadUrl, filename);
         if (res.success) {
-          alert(`Export saved successfully to:\n${res.filePath}`);
+          alert(`Report successfully exported to:\n${res.filePath}`);
         } else if (res.error && res.error !== 'Canceled by user') {
           alert('Export failed: ' + res.error);
         }
@@ -63,156 +184,805 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
+  const handleOpenPdf = (quotation: Quotation, encrypted: boolean) => {
+    const url = getPdfUrl(quotation.id, encrypted);
+    setPreviewPdf({
+      url,
+      title: encrypted
+        ? `Quotation ${quotation.quotation_number} — ${quotation.customer_name} (Encrypted)`
+        : `Quotation ${quotation.quotation_number} — ${quotation.customer_name}`,
+      fileName: encrypted
+        ? `Quotation_${quotation.quotation_number}_Encrypted.pdf`
+        : `Quotation_${quotation.quotation_number}.pdf`,
+      quotationId: quotation.id,
+      initialEncrypted: encrypted,
+    });
+  };
+
+  // Selected salesperson summary stats
+  const activeSummary = selectedSpId
+    ? spSummary.find((s) => String(s.user_id) === String(selectedSpId))
+    : null;
+
+  // Total aggregated stats across sales team
+  const aggregateStats = {
+    totalQuotes: spSummary.reduce((acc, s) => acc + (s.total_quotations || 0), 0),
+    closedQuotes: spSummary.reduce((acc, s) => acc + (s.closed_quotations || 0), 0),
+    closedValue: spSummary.reduce((acc, s) => acc + (s.closed_value || 0), 0),
+    pipelineValue: spSummary.reduce((acc, s) => acc + (s.pipeline_value || 0), 0),
+    totalValue: spSummary.reduce((acc, s) => acc + (s.total_value || 0), 0),
+  };
+
   return (
     <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-6 overflow-y-auto w-full min-w-0">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Reports & Data Exports</h1>
-        <p className="text-xs text-gray-500">
-          Stream comprehensive financial statements and quotation datasets directly into Excel (.xlsx) and CSV
-        </p>
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Reports & Business Intelligence</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Salesperson performance analysis, encrypted item quotations, and audited financial statements
+          </p>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex items-center bg-slate-200/80 p-1 rounded-lg border border-slate-300 text-xs">
+          <button
+            onClick={() => setActiveTab('salesperson')}
+            className={`px-3 py-1.5 rounded-md font-semibold transition-all flex items-center space-x-1.5 ${
+              activeTab === 'salesperson'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <Users size={14} />
+            <span>Salesperson Reports</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('quotations')}
+            className={`px-3 py-1.5 rounded-md font-semibold transition-all flex items-center space-x-1.5 ${
+              activeTab === 'quotations'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <FileSpreadsheet size={14} />
+            <span>Quotations Register</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`px-3 py-1.5 rounded-md font-semibold transition-all flex items-center space-x-1.5 ${
+              activeTab === 'payments'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            <BarChart3 size={14} />
+            <span>Payments Register</span>
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        {/* Quotations Export Card */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 space-y-4">
-          <div className="flex items-center space-x-2.5 pb-2 border-b">
-            <div className="p-2 bg-blue-50 text-primary rounded">
-              <FileSpreadsheet size={20} />
+      {/* TAB 1: SALESPERSON WISE QUOTATION REPORTS */}
+      {activeTab === 'salesperson' && (
+        <div className="space-y-4 lg:space-y-5">
+          {/* Salesperson Filter & Action Bar */}
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div className="flex items-center space-x-2 text-slate-900 font-bold text-sm">
+                <Filter size={15} className="text-slate-700" />
+                <span>Sales Associate Report Filters</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSpId('');
+                    setSpStatus('');
+                    setSpStartDate('');
+                    setSpEndDate('');
+                  }}
+                  className="btn btn-secondary btn-xs text-[10px]"
+                >
+                  Reset Filters
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    loadSalespersonSummary();
+                    loadSalespersonQuotations();
+                  }}
+                  className="btn btn-secondary btn-xs text-[10px] flex items-center space-x-1"
+                >
+                  <RefreshCw size={11} className={loadingSummary || loadingQuotes ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </button>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-gray-900">Quotations Register Export</h2>
-              <p className="text-[11px] text-gray-500">All customer quotations, area totals, taxes & status</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              {/* Salesperson Select */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Sales Associate</label>
+                <select
+                  className="select select-sm w-full font-medium"
+                  value={selectedSpId}
+                  onChange={(e) => setSelectedSpId(e.target.value)}
+                >
+                  <option value="">All Sales Associates (Team View)</option>
+                  {salesTeam.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name} ({u.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Quotation Status</label>
+                <select
+                  className="select select-sm w-full"
+                  value={spStatus}
+                  onChange={(e) => setSpStatus(e.target.value)}
+                >
+                  <option value="">All Statuses (Closed, Pipeline, Draft, In-Review)</option>
+                  <option value="closed">Closed / Won</option>
+                  <option value="not_closed">Not Closed (Active Pipeline)</option>
+                  <option value="approved">Approved</option>
+                  <option value="in_review">In Review</option>
+                  <option value="draft">Draft</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+
+              {/* Start Date */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">From Date</label>
+                <input
+                  type="date"
+                  className="input input-sm w-full"
+                  value={spStartDate}
+                  onChange={(e) => setSpStartDate(e.target.value)}
+                />
+              </div>
+
+              {/* End Date */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">To Date</label>
+                <input
+                  type="date"
+                  className="input input-sm w-full"
+                  value={spEndDate}
+                  onChange={(e) => setSpEndDate(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
-          <div className="space-y-3 text-xs">
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="card p-3.5 space-y-1 bg-white">
+              <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+                <span>Total Quotations</span>
+                <FileSpreadsheet size={14} className="text-slate-400" />
+              </div>
+              <div className="text-lg font-bold text-slate-900">
+                {activeSummary ? activeSummary.total_quotations : aggregateStats.totalQuotes}
+              </div>
+              <p className="text-[10px] text-slate-500">
+                ₹ {formatCurrency(activeSummary ? activeSummary.total_value : aggregateStats.totalValue)} Total
+              </p>
+            </div>
+
+            <div className="card p-3.5 space-y-1 bg-emerald-50/60 border-emerald-200">
+              <div className="flex items-center justify-between text-emerald-800 text-[11px] font-semibold">
+                <span>Closed / Won Sales</span>
+                <CheckCircle2 size={14} className="text-emerald-600" />
+              </div>
+              <div className="text-lg font-bold text-emerald-900">
+                ₹ {formatCurrency(activeSummary ? activeSummary.closed_value : aggregateStats.closedValue)}
+              </div>
+              <p className="text-[10px] text-emerald-700 font-medium">
+                {activeSummary ? activeSummary.closed_quotations : aggregateStats.closedQuotes} closed deals
+              </p>
+            </div>
+
+            <div className="card p-3.5 space-y-1 bg-blue-50/60 border-blue-200">
+              <div className="flex items-center justify-between text-blue-800 text-[11px] font-semibold">
+                <span>Active Pipeline</span>
+                <TrendingUp size={14} className="text-blue-600" />
+              </div>
+              <div className="text-lg font-bold text-blue-900">
+                ₹ {formatCurrency(activeSummary ? activeSummary.pipeline_value : aggregateStats.pipelineValue)}
+              </div>
+              <p className="text-[10px] text-blue-700 font-medium">
+                {activeSummary ? activeSummary.pipeline_quotations : 0} proposals active
+              </p>
+            </div>
+
+            <div className="card p-3.5 space-y-1 bg-amber-50/60 border-amber-200">
+              <div className="flex items-center justify-between text-amber-800 text-[11px] font-semibold">
+                <span>Win / Conversion Rate</span>
+                <Award size={14} className="text-amber-600" />
+              </div>
+              <div className="text-lg font-bold text-amber-900">
+                {activeSummary
+                  ? `${activeSummary.win_rate}%`
+                  : aggregateStats.totalQuotes > 0
+                  ? `${((aggregateStats.closedQuotes / aggregateStats.totalQuotes) * 100).toFixed(1)}%`
+                  : '0%'}
+              </div>
+              <p className="text-[10px] text-amber-700 font-medium">Closed deals / Total quotes</p>
+            </div>
+
+            <div className="card p-3.5 space-y-1 bg-purple-50/60 border-purple-200">
+              <div className="flex items-center justify-between text-purple-800 text-[11px] font-semibold">
+                <span>Split Collaboration</span>
+                <Users size={14} className="text-purple-600" />
+              </div>
+              <div className="text-lg font-bold text-purple-900">
+                {activeSummary ? activeSummary.assisted_count : 0} Deals
+              </div>
+              <p className="text-[10px] text-purple-700 font-medium">
+                {activeSummary ? `${activeSummary.primary_count} Primary` : 'Multi-associate deals'}
+              </p>
+            </div>
+          </div>
+
+          {/* Export Action Bar for Salesperson Report */}
+          <div className="card p-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
             <div>
-              <label className="block text-gray-700 font-semibold mb-1">Filter by Status</label>
-              <select className="input input-sm" value={qStatus} onChange={(e) => setQStatus(e.target.value)}>
-                <option value="">All Statuses (Draft, In-Review, Approved, Closed, Rejected)</option>
-                <option value="draft">Draft</option>
-                <option value="in_review">In-Review</option>
-                <option value="approved">Approved</option>
-                <option value="closed">Closed / Paid</option>
-                <option value="not_closed">Not Closed (Active Pipeline)</option>
-                <option value="rejected">Rejected</option>
-              </select>
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-sm tracking-tight text-white">
+                  {selectedSpId
+                    ? `Export ${salesTeam.find((u) => String(u.id) === String(selectedSpId))?.full_name}'s Quotation Report`
+                    : 'Export Sales Team Quotation Performance Report'}
+                </span>
+                <span className="badge bg-amber-400 text-slate-950 font-bold text-[10px]">
+                  {spQuotations.length} Records
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Download spreadsheet with full salesperson commission credits, assisted splits, payment collections, and status.
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1">From Date</label>
-                <input
-                  type="date"
-                  className="input input-sm"
-                  value={qStartDate}
-                  onChange={(e) => setQStartDate(e.target.value)}
-                />
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() =>
+                  handleDownload(
+                    'quotations',
+                    'xlsx',
+                    selectedSpId ? { sales_person_id: selectedSpId, ...(spStatus ? { status: spStatus } : {}) } : undefined
+                  )
+                }
+                disabled={exportingKey !== null}
+                className="btn btn-sm bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-none shadow flex items-center space-x-1.5"
+              >
+                <Download size={13} />
+                <span>Export Excel (.xlsx)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleDownload(
+                    'quotations',
+                    'csv',
+                    selectedSpId ? { sales_person_id: selectedSpId, ...(spStatus ? { status: spStatus } : {}) } : undefined
+                  )
+                }
+                disabled={exportingKey !== null}
+                className="btn btn-sm bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700 flex items-center space-x-1.5"
+              >
+                <Download size={13} />
+                <span>Export CSV</span>
+              </button>
+
+              {/* Encrypted Export for Salesperson Report */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleDownload(
+                    'quotations',
+                    'xlsx',
+                    {
+                      encrypted: 'true',
+                      itemized: 'true',
+                      ...(selectedSpId ? { sales_person_id: selectedSpId } : {}),
+                      ...(spStatus ? { status: spStatus } : {}),
+                    }
+                  )
+                }
+                disabled={exportingKey !== null}
+                className="btn btn-sm bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold border-none shadow flex items-center space-x-1.5"
+                title="Export report with item product names masked with random code -AMA and brand hidden"
+              >
+                <ShieldAlert size={13} className="text-slate-950" />
+                <span>Encrypted Export</span>
+              </button>
+            </div>
+          </div>
+
+          {/* If No specific salesperson selected: Show Team Summary Matrix */}
+          {!selectedSpId && spSummary.length > 0 && (
+            <div className="card overflow-hidden">
+              <div className="p-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Award size={15} className="text-slate-700" />
+                  <span className="font-bold text-xs text-slate-900 uppercase tracking-wider">
+                    Sales Associates Performance Matrix
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDownload('salespersons', 'xlsx')}
+                  className="btn btn-secondary btn-xs text-[10px] flex items-center space-x-1"
+                >
+                  <Download size={11} />
+                  <span>Download Summary (.xlsx)</span>
+                </button>
               </div>
-              <div>
-                <label className="block text-gray-700 font-semibold mb-1">To Date</label>
-                <input
-                  type="date"
-                  className="input input-sm"
-                  value={qEndDate}
-                  onChange={(e) => setQEndDate(e.target.value)}
-                />
+
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-100/75 text-slate-700 font-semibold text-[11px] uppercase">
+                      <th className="py-2.5 px-3">Salesperson</th>
+                      <th className="py-2.5 px-3">Role</th>
+                      <th className="py-2.5 px-3 text-right">Target (₹)</th>
+                      <th className="py-2.5 px-3 text-right">Achieved (%)</th>
+                      <th className="py-2.5 px-3 text-center">Quotes</th>
+                      <th className="py-2.5 px-3 text-center">Closed</th>
+                      <th className="py-2.5 px-3 text-center">Win Rate</th>
+                      <th className="py-2.5 px-3 text-right">Closed Revenue</th>
+                      <th className="py-2.5 px-3 text-right">Pipeline</th>
+                      <th className="py-2.5 px-3 text-right">Total Quoted</th>
+                      <th className="py-2.5 px-3 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {spSummary.map((s) => (
+                      <tr
+                        key={s.user_id}
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        onClick={() => setSelectedSpId(String(s.user_id))}
+                      >
+                        <td className="py-2.5 px-3 font-bold text-slate-900 flex items-center space-x-1.5">
+                          <UserCheck size={13} className="text-slate-500" />
+                          <span>{s.sales_person_name}</span>
+                        </td>
+                        <td className="py-2.5 px-3 capitalize text-slate-600 font-medium">{s.role}</td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                          ₹ {formatCurrency(s.monthly_target)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[11px] ${
+                              s.target_achievement_percent >= 100
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : s.target_achievement_percent >= 50
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {s.target_achievement_percent}%
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-800">{s.total_quotations}</td>
+                        <td className="py-2.5 px-3 text-center font-bold text-emerald-700">{s.closed_quotations}</td>
+                        <td className="py-2.5 px-3 text-center font-mono font-semibold text-slate-800">
+                          {s.win_rate}%
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-emerald-800 tabular-nums">
+                          ₹ {formatCurrency(s.closed_value)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-blue-800 font-medium tabular-nums">
+                          ₹ {formatCurrency(s.pipeline_value)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-900 tabular-nums">
+                          ₹ {formatCurrency(s.total_value)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSpId(String(s.user_id))}
+                            className="btn btn-secondary btn-xs text-[10px] px-2 py-0.5"
+                          >
+                            <span>View Quotes →</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
+          )}
 
-            <div className="flex space-x-2 pt-3 border-t border-[#E0E1DD]">
-              <button
-                onClick={() => handleDownload('quotations', 'xlsx')}
-                disabled={exportingKey !== null}
-                className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
-                  exportingKey === 'quotations-xlsx' ? 'btn-exporting' : ''
-                }`}
-              >
-                <Download size={13} className={exportingKey === 'quotations-xlsx' ? 'animate-bounce' : ''} />
-                <span>{exportingKey === 'quotations-xlsx' ? 'Exporting Excel...' : 'Download Excel (.xlsx)'}</span>
-              </button>
-              <button
-                onClick={() => handleDownload('quotations', 'csv')}
-                disabled={exportingKey !== null}
-                className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
-                  exportingKey === 'quotations-csv' ? 'btn-exporting' : ''
-                }`}
-              >
-                <Download size={13} className={exportingKey === 'quotations-csv' ? 'animate-bounce' : ''} />
-                <span>{exportingKey === 'quotations-csv' ? 'Exporting CSV...' : 'Download CSV'}</span>
-              </button>
+          {/* Quotations Register Table for Selected Salesperson */}
+          <div className="card overflow-hidden">
+            <div className="p-3.5 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center space-x-2">
+                <FileSpreadsheet size={15} className="text-slate-700" />
+                <span className="font-bold text-xs text-slate-900 uppercase tracking-wider">
+                  {selectedSpId
+                    ? `Quotations Ledger: ${salesTeam.find((u) => String(u.id) === String(selectedSpId))?.full_name}`
+                    : 'All Active Quotations Ledger'}
+                </span>
+                <span className="badge badge-draft text-[10px]">{spQuotations.length} records</span>
+              </div>
+              {selectedSpId && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSpId('')}
+                  className="text-xs text-blue-700 font-semibold hover:underline"
+                >
+                  ← Show All Sales Associates
+                </button>
+              )}
+            </div>
+
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-100/75 text-slate-700 font-semibold text-[11px] uppercase">
+                    <th className="py-2.5 px-3 font-mono">Quotation #</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Customer & Mobile</th>
+                    <th className="py-2.5 px-3">Sales Associate</th>
+                    <th className="py-2.5 px-3">Role</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Net Total</th>
+                    <th className="py-2.5 px-3 text-right">Salesperson Credit</th>
+                    <th className="py-2.5 px-3 text-right">Paid</th>
+                    <th className="py-2.5 px-3 text-right">Balance Due</th>
+                    <th className="py-2.5 px-3 text-center">Actions & PDF</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loadingQuotes ? (
+                    <tr>
+                      <td colSpan={11} className="py-10 text-center text-slate-400">
+                        <RefreshCw className="animate-spin inline mr-2 text-slate-600" size={16} />
+                        Loading salesperson quotations...
+                      </td>
+                    </tr>
+                  ) : spQuotations.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="py-10 text-center text-slate-400">
+                        No quotations match current salesperson and date filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    spQuotations.map((q) => {
+                      const isAssisted = selectedSpId && String(q.assisted_sales_person_id) === String(selectedSpId);
+                      const creditedAmount = isAssisted
+                        ? (q.assisted_sales_share_amount || Math.round((q.net_total * (q.assisted_sales_share_percent || 0)) / 100))
+                        : (q.primary_sales_share_amount || Math.round((q.net_total * (q.primary_sales_share_percent || 100)) / 100));
+
+                      return (
+                        <tr
+                          key={q.id}
+                          className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                          onClick={() => onSelectQuotation && onSelectQuotation(q.id)}
+                        >
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{q.quotation_number}</td>
+                          <td className="py-2.5 px-3 text-slate-600 font-mono">
+                            {new Date(q.quotation_date).toLocaleDateString('en-GB')}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-semibold text-slate-900">{q.customer_name}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">{q.customer_phone}</div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-medium text-slate-800">{q.sales_person_name}</div>
+                            {q.assisted_sales_person_name && (
+                              <div className="text-[10px] text-indigo-700 font-semibold font-mono">
+                                🤝 +{q.assisted_sales_person_name} ({Number(q.assisted_sales_share_percent || 50).toFixed(0)}%)
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                isAssisted
+                                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                  : 'bg-blue-100 text-blue-800 border border-blue-200'
+                              }`}
+                            >
+                              {isAssisted ? 'Assisted' : 'Primary'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className={`badge badge-${q.status}`}>{q.status}</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 tabular-nums">
+                            ₹ {formatCurrency(q.net_total)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-emerald-800 font-mono tabular-nums">
+                            ₹ {formatCurrency(creditedAmount)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums">
+                            ₹ {formatCurrency(q.total_paid || 0)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-amber-700 font-semibold tabular-nums">
+                            ₹ {formatCurrency(q.balance_due || 0)}
+                          </td>
+                          <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center space-x-1">
+                              {/* Standard PDF */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPdf(q, false)}
+                                title="Export Standard PDF with tile & brand names"
+                                className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px]"
+                              >
+                                <Printer size={11} className="mr-0.5 text-slate-500" />
+                                <span>PDF</span>
+                              </button>
+
+                              {/* Encrypted PDF */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPdf(q, true)}
+                                title="Export Encrypted PDF: Brand removed, Product name replaced with random code (e.g. HSDS-AMA)"
+                                className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-slate-900 hover:bg-black text-amber-300 border border-slate-700 shadow-2xs"
+                              >
+                                <ShieldAlert size={11} className="mr-0.5 text-amber-400" />
+                                <span>Encrypted</span>
+                              </button>
+
+                              {/* View Details */}
+                              {onSelectQuotation && (
+                                <button
+                                  type="button"
+                                  onClick={() => onSelectQuotation(q.id)}
+                                  title="View Quotation Details"
+                                  className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Payments Collections Export Card */}
-        <div className="card card-hover p-5 space-y-4">
-          <div className="flex items-center space-x-2.5 pb-2 border-b border-[#E0E1DD]">
-            <div className="p-2 bg-emerald-50 text-emerald-700 rounded border border-emerald-100">
-              <BarChart3 size={20} />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-[#0D1B2A]">Collections & Receipts Register</h2>
-              <p className="text-[11px] text-[#415A77]">Detailed payment log with transaction IDs & payment modes</p>
-            </div>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[#1B263B] font-semibold mb-1">From Date</label>
-                <input
-                  type="date"
-                  className="input input-sm"
-                  value={pStartDate}
-                  onChange={(e) => setPStartDate(e.target.value)}
-                />
+      {/* TAB 2: QUOTATIONS REGISTER EXPORT */}
+      {activeTab === 'quotations' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center space-x-2.5 pb-2 border-b border-slate-200">
+              <div className="p-2 bg-blue-50 text-primary-900 rounded border border-blue-200">
+                <FileSpreadsheet size={20} />
               </div>
               <div>
-                <label className="block text-[#1B263B] font-semibold mb-1">To Date</label>
-                <input
-                  type="date"
-                  className="input input-sm"
-                  value={pEndDate}
-                  onChange={(e) => setPEndDate(e.target.value)}
-                />
+                <h2 className="text-sm font-bold text-slate-900">Quotations Register Export</h2>
+                <p className="text-[11px] text-slate-500">
+                  Customer quotations, area totals, taxes, and salesperson share allocations
+                </p>
               </div>
             </div>
 
-            <div className="p-3 bg-[#F8F9FA] rounded border border-[#E0E1DD] text-[#415A77] text-[11px] space-y-1">
-              <div className="flex items-center space-x-1.5 text-emerald-700 font-semibold">
-                <CheckCircle2 size={13} />
-                <span>Audited Transaction Integrity</span>
+            <div className="space-y-3 text-xs">
+              {/* Sales Associate Filter */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Filter by Sales Associate</label>
+                <select
+                  className="select select-sm w-full"
+                  value={qSalespersonId}
+                  onChange={(e) => setQSalespersonId(e.target.value)}
+                >
+                  <option value="">All Sales Associates</option>
+                  {salesTeam.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name} ({u.role})
+                    </option>
+                  ))}
+                </select>
               </div>
-              <p>Includes receipt number, client, cheque/NEFT ref, amount, and clearing status.</p>
-            </div>
 
-            <div className="flex space-x-2 pt-3 border-t border-[#E0E1DD]">
-              <button
-                onClick={() => handleDownload('payments', 'xlsx')}
-                disabled={exportingKey !== null}
-                className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
-                  exportingKey === 'payments-xlsx' ? 'btn-exporting' : ''
-                }`}
-              >
-                <Download size={13} className={exportingKey === 'payments-xlsx' ? 'animate-bounce' : ''} />
-                <span>{exportingKey === 'payments-xlsx' ? 'Exporting Excel...' : 'Download Excel (.xlsx)'}</span>
-              </button>
-              <button
-                onClick={() => handleDownload('payments', 'csv')}
-                disabled={exportingKey !== null}
-                className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
-                  exportingKey === 'payments-csv' ? 'btn-exporting' : ''
-                }`}
-              >
-                <Download size={13} className={exportingKey === 'payments-csv' ? 'animate-bounce' : ''} />
-                <span>{exportingKey === 'payments-csv' ? 'Exporting CSV...' : 'Download CSV'}</span>
-              </button>
+              {/* Status Filter */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Filter by Status</label>
+                <select className="select select-sm w-full" value={qStatus} onChange={(e) => setQStatus(e.target.value)}>
+                  <option value="">All Statuses (Draft, In-Review, Approved, Closed, Rejected)</option>
+                  <option value="draft">Draft</option>
+                  <option value="in_review">In-Review</option>
+                  <option value="approved">Approved</option>
+                  <option value="closed">Closed / Paid</option>
+                  <option value="not_closed">Not Closed (Active Pipeline)</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">From Date</label>
+                  <input
+                    type="date"
+                    className="input input-sm w-full"
+                    value={qStartDate}
+                    onChange={(e) => setQStartDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">To Date</label>
+                  <input
+                    type="date"
+                    className="input input-sm w-full"
+                    value={qEndDate}
+                    onChange={(e) => setQEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Export Mode: Standard vs Encrypted */}
+              <div className="p-3 bg-slate-900 text-white rounded-lg border border-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs text-white flex items-center space-x-1.5">
+                    <ShieldAlert size={14} className="text-amber-400" />
+                    <span>Export Product Mode</span>
+                  </span>
+                  <div className="flex items-center bg-slate-800 p-0.5 rounded text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setQExportMode('standard')}
+                      className={`px-2 py-0.5 rounded ${
+                        qExportMode === 'standard' ? 'bg-white text-slate-900 font-bold' : 'text-slate-300'
+                      }`}
+                    >
+                      Standard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQExportMode('encrypted')}
+                      className={`px-2 py-0.5 rounded ${
+                        qExportMode === 'encrypted' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300'
+                      }`}
+                    >
+                      Encrypted (-AMA)
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  {qExportMode === 'encrypted'
+                    ? 'Encrypted mode masks product descriptions with random uppercase codes ending with -AMA (e.g. HSDS-AMA) and hides tile brands.'
+                    : 'Standard mode exports with original brand names and full surface tile descriptions.'}
+                </p>
+                <label className="flex items-center space-x-2 text-[11px] text-slate-200 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={qItemized}
+                    onChange={(e) => setQItemized(e.target.checked)}
+                    className="checkbox checkbox-xs"
+                  />
+                  <span>Itemized Materials & Slabs Export (1 row per tile line item)</span>
+                </label>
+              </div>
+
+              <div className="flex space-x-2 pt-3 border-t border-slate-200">
+                <button
+                  onClick={() => handleDownload('quotations', 'xlsx')}
+                  disabled={exportingKey !== null}
+                  className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                    exportingKey === 'quotations-xlsx' ? 'btn-exporting' : ''
+                  }`}
+                >
+                  <Download size={13} className={exportingKey === 'quotations-xlsx' ? 'animate-bounce' : ''} />
+                  <span>Download Excel (.xlsx)</span>
+                </button>
+                <button
+                  onClick={() => handleDownload('quotations', 'csv')}
+                  disabled={exportingKey !== null}
+                  className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                    exportingKey === 'quotations-csv' ? 'btn-exporting' : ''
+                  }`}
+                >
+                  <Download size={13} className={exportingKey === 'quotations-csv' ? 'animate-bounce' : ''} />
+                  <span>Download CSV</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* TAB 3: PAYMENTS REGISTER */}
+      {activeTab === 'payments' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center space-x-2.5 pb-2 border-b border-slate-200">
+              <div className="p-2 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">
+                <BarChart3 size={20} />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Collections & Receipts Register</h2>
+                <p className="text-[11px] text-slate-500">
+                  Detailed payment log with transaction IDs, cheque/NEFT refs & payment modes
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">From Date</label>
+                  <input
+                    type="date"
+                    className="input input-sm w-full"
+                    value={pStartDate}
+                    onChange={(e) => setPStartDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">To Date</label>
+                  <input
+                    type="date"
+                    className="input input-sm w-full"
+                    value={pEndDate}
+                    onChange={(e) => setPEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded border border-slate-200 text-slate-600 text-[11px] space-y-1">
+                <div className="flex items-center space-x-1.5 text-emerald-700 font-semibold">
+                  <CheckCircle2 size={13} />
+                  <span>Audited Transaction Integrity</span>
+                </div>
+                <p>Includes receipt number, client, cheque/NEFT ref, amount, and clearing status.</p>
+              </div>
+
+              <div className="flex space-x-2 pt-3 border-t border-slate-200">
+                <button
+                  onClick={() => handleDownload('payments', 'xlsx')}
+                  disabled={exportingKey !== null}
+                  className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                    exportingKey === 'payments-xlsx' ? 'btn-exporting' : ''
+                  }`}
+                >
+                  <Download size={13} className={exportingKey === 'payments-xlsx' ? 'animate-bounce' : ''} />
+                  <span>Download Excel (.xlsx)</span>
+                </button>
+                <button
+                  onClick={() => handleDownload('payments', 'csv')}
+                  disabled={exportingKey !== null}
+                  className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                    exportingKey === 'payments-csv' ? 'btn-exporting' : ''
+                  }`}
+                >
+                  <Download size={13} className={exportingKey === 'payments-csv' ? 'animate-bounce' : ''} />
+                  <span>Download CSV</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Preview Modal */}
+      {previewPdf && (
+        <PdfPreviewModal
+          isOpen={Boolean(previewPdf)}
+          pdfUrl={previewPdf.url}
+          title={previewPdf.title}
+          fileName={previewPdf.fileName}
+          quotationId={previewPdf.quotationId}
+          initialEncrypted={previewPdf.initialEncrypted}
+          onClose={() => setPreviewPdf(null)}
+        />
+      )}
     </div>
   );
 };

@@ -136,7 +136,7 @@ const AppContent: React.FC = () => {
       case 'targets':
         return <TargetsManagement />;
       case 'reports':
-        return <ReportsPage />;
+        return <ReportsPage onSelectQuotation={handleSelectQuotation} />;
       case 'company':
         return <CompanySettingsPage />;
       case 'audit':

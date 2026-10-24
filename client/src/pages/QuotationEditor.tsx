@@ -29,6 +29,7 @@ import {
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { numberToWordsIndian } from '../utils/numberToWords';
 import { calculateQuotationDiscountAndTotals, isCeraBrand } from '../utils/discountCalculator';
+import { buildEncryptedProductMap } from '../utils/encryptedCode';
 
 const formatCurrency = (val: number) => {
   return Number(val || 0).toLocaleString('en-IN', {
@@ -681,6 +682,10 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     });
   });
 
+  const encryptedProductMap = React.useMemo(() => {
+    return buildEncryptedProductMap(quotationNumber || 'AMA', allItems);
+  }, [quotationNumber, allItems]);
+
   // Calculate CERA-excluded direct item rate discounts and financial totals
   const calculationResult = calculateQuotationDiscountAndTotals(
     allItems,
@@ -807,26 +812,26 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     setAssistedSalesShareAmount(netTotal - pAmt);
   };
 
-  // Save Quotation Handler
-  const handleSaveQuotation = async () => {
+  // Save Quotation Internal Helper
+  const saveQuotationData = async (): Promise<Quotation | null> => {
     setError(null);
     if (!customerName.trim()) {
       setError('Customer name is required.');
-      return;
+      return null;
     }
     if (!customerPhone.trim()) {
       setError('Customer phone number is required.');
-      return;
+      return null;
     }
 
     if (enableSplitSale) {
       if (!assistedSalesPersonId) {
         setError('Please select an assisted salesperson or disable the split sale option.');
-        return;
+        return null;
       }
       if (Math.abs((primarySalesSharePercent + assistedSalesSharePercent) - 100) > 0.5) {
         setError('The total split percentage between primary and assisted salespersons must equal 100%.');
-        return;
+        return null;
       }
     }
 
@@ -876,38 +881,60 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         })),
       };
 
+      let savedRecord: Quotation;
       if (quotationId) {
         const res = await fetchApi(`/api/quotations/${quotationId}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
-        onSaved(res.quotation.id);
+        savedRecord = res.quotation;
       } else {
         const res = await fetchApi('/api/quotations', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        onSaved(res.quotation.id);
+        savedRecord = res.quotation;
+        setQuotationNumber(savedRecord.quotation_number);
       }
+      return savedRecord;
     } catch (err: any) {
       setError(err.message || 'Failed to save quotation');
+      return null;
     } finally {
       setSaving(false);
     }
   };
 
-  const handleOpenPdf = (encrypted: boolean = false) => {
-    if (!quotationId) return;
-    const url = getPdfUrl(quotationId, encrypted);
+  const handleSaveQuotation = async () => {
+    const saved = await saveQuotationData();
+    if (saved) {
+      onSaved(saved.id);
+    }
+  };
+
+  const handleOpenPdf = async (encrypted: boolean = false) => {
+    let targetId: number | undefined = quotationId || undefined;
+    let targetNum = quotationNumber;
+
+    if (!targetId) {
+      const saved = await saveQuotationData();
+      if (!saved) return;
+      targetId = saved.id;
+      targetNum = saved.quotation_number;
+    }
+
+    if (!targetId) return;
+
+    const url = getPdfUrl(targetId, encrypted);
     setPreviewPdf({
       url,
       title: encrypted
-        ? `Quotation ${quotationNumber} — ${customerName} (Encrypted)`
-        : `Quotation ${quotationNumber} — ${customerName}`,
+        ? `Quotation ${targetNum} — ${customerName} (Encrypted Export)`
+        : `Quotation ${targetNum} — ${customerName}`,
       fileName: encrypted
-        ? `Quotation_${quotationNumber}_Encrypted.pdf`
-        : `Quotation_${quotationNumber}.pdf`,
-      quotationId,
+        ? `Quotation_${targetNum}_Encrypted.pdf`
+        : `Quotation_${targetNum}.pdf`,
+      quotationId: targetId,
       initialEncrypted: encrypted,
     });
   };
@@ -935,35 +962,66 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         </div>
 
         <div className="flex items-center space-x-2">
-          {quotationId && (
-            <>
-              <button
-                onClick={() => handleOpenPdf(false)}
-                className="btn btn-secondary btn-sm"
-                title="Preview Standard PDF with Brand & Tile Names"
-              >
-                <Printer size={13} />
-                <span>Standard PDF</span>
-              </button>
-
-              <button
-                onClick={() => handleOpenPdf(true)}
-                className="btn btn-secondary btn-sm flex items-center space-x-1.5 bg-slate-900 hover:bg-black text-white border-transparent"
-                title="Export Encrypted PDF: Brand removed, Product name replaced with random code"
-              >
-                <ShieldAlert size={13} className="text-amber-400" />
-                <span>Encrypted Export</span>
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={() => handleOpenPdf(false)}
+            disabled={saving}
+            className="btn btn-secondary btn-sm flex items-center space-x-1.5"
+            title="Preview Standard PDF with Brand & Tile Names"
+          >
+            <Printer size={13} />
+            <span>Standard PDF</span>
+          </button>
 
           <button
+            type="button"
+            onClick={() => handleOpenPdf(true)}
+            disabled={saving}
+            className="btn btn-sm flex items-center space-x-1.5 bg-slate-900 hover:bg-black text-amber-300 hover:text-amber-200 border border-slate-700 shadow-sm font-semibold"
+            title="Export Encrypted PDF: Brand removed, Product name replaced with random code ending in -AMA (e.g. HSDS-AMA)"
+          >
+            <ShieldAlert size={13} className="text-amber-400" />
+            <span>Encrypted Export</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleSaveQuotation}
             disabled={saving}
             className={`btn btn-primary btn-sm ${saving ? 'btn-saving' : ''}`}
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             <span>{saving ? 'Saving Record...' : 'Save Quotation'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Encrypted Product Names Feature Banner */}
+      <div className="card p-3 bg-gradient-to-r from-slate-900 via-[#1B263B] to-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md border border-slate-700">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30 shrink-0">
+            <ShieldAlert size={20} />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-sm tracking-tight text-white">Encrypted Product Names Quotation</span>
+              <span className="badge bg-amber-400 text-slate-950 font-bold text-[10px] uppercase">Feature Ready</span>
+            </div>
+            <p className="text-xs text-slate-300 mt-0.5">
+              Exports with brand removed and product names masked with random alphabets ending in <span className="text-amber-300 font-mono font-bold">-AMA</span> (e.g. <span className="text-amber-300 font-mono font-bold">HSDS-AMA</span>). Original product details remain safely stored in database.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleOpenPdf(true)}
+            disabled={saving}
+            className="btn btn-sm bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold border-none shadow flex items-center space-x-1.5"
+            title="Export Encrypted PDF with masked codes (-AMA) and brand removed"
+          >
+            <ShieldAlert size={13} className="text-slate-950" />
+            <span>Export Encrypted PDF</span>
           </button>
         </div>
       </div>
@@ -1664,6 +1722,16 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                             }
                             placeholder="Surface / Tile description"
                           />
+                          <div className="flex items-center space-x-1.5 mt-1 text-[10px]">
+                            <span className="text-slate-400 font-medium">Encrypted Code:</span>
+                            <span
+                              className="bg-slate-900 text-amber-300 font-mono font-bold px-1.5 py-0.2 rounded border border-slate-700 shadow-2xs"
+                              title="Masked product code generated on Encrypted Export (Brand removed, random alphabet code ending with -AMA)"
+                            >
+                              {encryptedProductMap.get((item.description || '').trim()) ||
+                                `${(item.description || 'TILE').replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'HSDS'}-AMA`}
+                            </span>
+                          </div>
                         </td>
 
                         <td className="align-top py-1.5 px-2">
