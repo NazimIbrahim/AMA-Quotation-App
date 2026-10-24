@@ -131,7 +131,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
         </div>
         <div className="flex justify-between text-[#778DA9] text-[10px]">
           <span>App Build:</span>
-          <span>v1.0.0 (Win64)</span>
+          <span>v1.2.0 (Win64)</span>
         </div>
       </div>
     </aside>

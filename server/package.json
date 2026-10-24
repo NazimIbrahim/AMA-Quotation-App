@@ -1,6 +1,6 @@
 {
   "name": "ama-quotation-server",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Central LAN API and Database Service for AMA Ceramics Quotation System",
   "main": "dist/server.js",
   "scripts": {
