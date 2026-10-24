@@ -372,19 +372,19 @@ export const QuotationList: React.FC<Props> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold text-[11px]">
-                <th className="py-2.5 px-3">Quotation Ref</th>
-                <th className="py-2.5 px-3">Date</th>
+              <tr className="border-b border-[#E0E1DD] bg-[#F8F9FA] text-[#415A77] font-semibold text-[11px]">
+                <th className="py-2.5 px-3 whitespace-nowrap">Quotation Ref</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Date</th>
                 <th className="py-2.5 px-3">Customer</th>
                 <th className="py-2.5 px-3">Sales Associate</th>
-                <th className="py-2.5 px-3">Status</th>
-                <th className="py-2.5 px-3 text-right">Net Total</th>
-                <th className="py-2.5 px-3 text-right">Paid</th>
-                <th className="py-2.5 px-3 text-right">Balance Due</th>
-                <th className="py-2.5 px-3 text-center">Workflow & Actions</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Status</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Net Total</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Paid</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Balance Due</th>
+                <th className="py-2.5 px-3 text-center whitespace-nowrap">Workflow & Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#E0E1DD]/60">
               {loading && quotations.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-400">
@@ -405,18 +405,18 @@ export const QuotationList: React.FC<Props> = ({
                     onClick={() => onSelectQuotation(q.id)}
                     className="hover:bg-slate-50 transition-colors cursor-pointer"
                   >
-                    <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                    <td className="py-2.5 px-3 font-mono font-semibold text-[#0D1B2A] whitespace-nowrap align-middle">
                       {q.quotation_number}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600">
+                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap align-middle">
                       {new Date(q.quotation_date).toLocaleDateString('en-GB')}
                     </td>
-                    <td className="py-2.5 px-3">
-                      <div className="font-semibold text-slate-900">{q.customer_name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{q.customer_phone}</div>
+                    <td className="py-2.5 px-3 align-middle">
+                      <div className="font-semibold text-[#0D1B2A]">{q.customer_name}</div>
+                      <div className="text-[10px] text-[#778DA9] font-mono">{q.customer_phone}</div>
                     </td>
-                    <td className="py-2.5 px-3">
-                      <div className="font-medium text-slate-800">{q.sales_person_name}</div>
+                    <td className="py-2.5 px-3 align-middle">
+                      <div className="font-medium text-[#1B263B]">{q.sales_person_name}</div>
                       {q.assisted_sales_person_name && (
                         <div className="text-[10px] text-indigo-700 font-medium inline-flex items-center space-x-1 mt-0.5">
                           <span className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-sans">
@@ -425,10 +425,10 @@ export const QuotationList: React.FC<Props> = ({
                         </div>
                       )}
                     </td>
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 align-middle whitespace-nowrap">
                       <span className={`badge badge-${q.status}`}>{q.status}</span>
                     </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-slate-900 tabular-nums">
+                    <td className="py-2.5 px-3 text-right font-bold text-[#0D1B2A] tabular-nums align-middle whitespace-nowrap">
                       <div>₹ {formatCurrency(q.net_total)}</div>
                       {selectedSalesPersonId && q.assisted_sales_person_id && (
                         <div className="text-[10px] text-indigo-700 font-semibold font-mono">
@@ -441,22 +441,22 @@ export const QuotationList: React.FC<Props> = ({
                         </div>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums">
+                    <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums align-middle whitespace-nowrap">
                       ₹ {formatCurrency(q.total_paid || 0)}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-amber-700 font-semibold tabular-nums">
+                    <td className="py-2.5 px-3 text-right text-amber-700 font-semibold tabular-nums align-middle whitespace-nowrap">
                       ₹ {formatCurrency(q.balance_due || 0)}
                     </td>
-                    <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center space-x-1.5">
+                    <td className="py-2.5 px-3 text-center align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="inline-flex items-center justify-center space-x-1 whitespace-nowrap">
                         {/* Standard PDF Export Button */}
                         <button
                           type="button"
                           onClick={(e) => handleOpenPdf(q, e, false)}
                           title="Preview & Export Standard PDF (With brand & original product names)"
-                          className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:text-blue-700 hover:border-blue-300"
+                          className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-[#1B263B] hover:text-[#0D1B2A] hover:border-[#778DA9]"
                         >
-                          <Printer size={11} className="mr-1 text-slate-500" />
+                          <Printer size={11} className="mr-1 text-[#415A77]" />
                           <span>PDF</span>
                         </button>
 
@@ -465,7 +465,7 @@ export const QuotationList: React.FC<Props> = ({
                           type="button"
                           onClick={(e) => handleOpenPdf(q, e, true)}
                           title="Export Encrypted PDF: Brand removed, Product name replaced with random code (e.g. HSDS-AMA)"
-                          className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-slate-900 hover:bg-black text-amber-300 hover:text-amber-200 border-transparent shadow-xs"
+                          className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-[#0D1B2A] hover:bg-[#1B263B] text-amber-300 hover:text-amber-200 border-transparent shadow-xs"
                         >
                           <ShieldAlert size={11} className="mr-1 text-amber-400" />
                           <span>Encrypted</span>
@@ -476,7 +476,7 @@ export const QuotationList: React.FC<Props> = ({
                           type="button"
                           onClick={() => onSelectQuotation(q.id)}
                           title="View Details"
-                          className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/60 transition-colors"
                         >
                           <Eye size={13} />
                         </button>
@@ -486,7 +486,7 @@ export const QuotationList: React.FC<Props> = ({
                           type="button"
                           onClick={() => onEditQuotation(q.id)}
                           title="Edit Quotation"
-                          className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"
+                          className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/60 transition-colors"
                         >
                           <Edit size={13} />
                         </button>
@@ -509,7 +509,7 @@ export const QuotationList: React.FC<Props> = ({
                         )}
 
                         {q.status === 'in_review' && canApprove && (
-                          <div className="flex space-x-1">
+                          <div className="inline-flex space-x-1">
                             <button
                               onClick={() =>
                                 setStatusModal({

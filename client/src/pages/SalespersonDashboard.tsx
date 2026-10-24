@@ -706,20 +706,20 @@ export const SalespersonDashboard: React.FC<Props> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-600 font-semibold text-[11px]">
-                <th className="py-2.5 px-3">Quotation Ref</th>
-                <th className="py-2.5 px-3">Date</th>
+              <tr className="border-b border-[#E0E1DD] bg-[#F8F9FA] text-[#415A77] font-semibold text-[11px]">
+                <th className="py-2.5 px-3 whitespace-nowrap">Quotation Ref</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Date</th>
                 <th className="py-2.5 px-3">Customer Profile</th>
                 <th className="py-2.5 px-3">Project</th>
                 <th className="py-2.5 px-3">Sales Associate</th>
-                <th className="py-2.5 px-3">Status</th>
-                <th className="py-2.5 px-3 text-right">Net Total</th>
-                <th className="py-2.5 px-3 text-right">Collected</th>
-                <th className="py-2.5 px-3 text-right">Balance Due</th>
-                <th className="py-2.5 px-3 text-center">Actions</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Status</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Net Total</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Collected</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Balance Due</th>
+                <th className="py-2.5 px-3 text-center whitespace-nowrap">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#E0E1DD]/60">
               {quotationsLoading && quotations.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-slate-400">
@@ -740,19 +740,19 @@ export const SalespersonDashboard: React.FC<Props> = ({
                     onClick={() => onSelectQuotation(q.id)}
                     className="hover:bg-slate-50 transition-colors cursor-pointer"
                   >
-                    <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                    <td className="py-2.5 px-3 font-mono font-semibold text-[#0D1B2A] whitespace-nowrap align-middle">
                       {q.quotation_number}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600">
+                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap align-middle">
                       {new Date(q.quotation_date).toLocaleDateString('en-GB')}
                     </td>
-                    <td className="py-2.5 px-3">
-                      <div className="font-semibold text-slate-900">{q.customer_name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{q.customer_phone}</div>
+                    <td className="py-2.5 px-3 align-middle">
+                      <div className="font-semibold text-[#0D1B2A]">{q.customer_name}</div>
+                      <div className="text-[10px] text-[#778DA9] font-mono">{q.customer_phone}</div>
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600">{q.project_name || 'Standard'}</td>
-                    <td className="py-2.5 px-3">
-                      <div className="font-medium text-slate-800">{q.sales_person_name}</div>
+                    <td className="py-2.5 px-3 text-slate-600 align-middle">{q.project_name || 'Standard'}</td>
+                    <td className="py-2.5 px-3 align-middle">
+                      <div className="font-medium text-[#1B263B]">{q.sales_person_name}</div>
                       {q.assisted_sales_person_id ? (
                         q.assisted_sales_person_id === selectedSalespersonId ? (
                           <div className="text-[10px] text-indigo-700 font-medium inline-flex items-center space-x-1 mt-0.5">
@@ -769,11 +769,11 @@ export const SalespersonDashboard: React.FC<Props> = ({
                         )
                       ) : null}
                     </td>
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 align-middle whitespace-nowrap">
                       <span className={`badge badge-${q.status}`}>{q.status}</span>
                     </td>
-                    <td className="py-2.5 px-3 text-right tabular-nums">
-                      <div className="font-bold text-slate-900">₹ {formatCurrency(q.net_total)}</div>
+                    <td className="py-2.5 px-3 text-right tabular-nums align-middle whitespace-nowrap">
+                      <div className="font-bold text-[#0D1B2A]">₹ {formatCurrency(q.net_total)}</div>
                       {q.assisted_sales_person_id && (
                         <div className="text-[10px] text-indigo-700 font-semibold font-mono">
                           Credited: ₹ {formatCurrency(
@@ -784,22 +784,22 @@ export const SalespersonDashboard: React.FC<Props> = ({
                         </div>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums">
+                    <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums align-middle whitespace-nowrap">
                       ₹ {formatCurrency(q.total_paid || 0)}
                     </td>
-                    <td className="py-2.5 px-3 text-right text-amber-700 font-semibold tabular-nums">
+                    <td className="py-2.5 px-3 text-right text-amber-700 font-semibold tabular-nums align-middle whitespace-nowrap">
                       ₹ {formatCurrency(q.balance_due || 0)}
                     </td>
-                    <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center space-x-1.5 flex-nowrap">
+                    <td className="py-2.5 px-3 text-center align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="inline-flex items-center justify-center space-x-1 whitespace-nowrap">
                         {/* Explicit Standard PDF Export */}
                         <button
                           type="button"
                           onClick={(e) => handleOpenPdf(q, e, false)}
                           title="Export / Print Standard PDF"
-                          className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors shadow-xs"
+                          className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-[#1B263B] hover:text-[#0D1B2A] hover:border-[#778DA9]"
                         >
-                          <Printer size={11} className="mr-1 text-slate-600" />
+                          <Printer size={11} className="mr-1 text-[#415A77]" />
                           <span>PDF</span>
                         </button>
 
@@ -808,7 +808,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
                           type="button"
                           onClick={(e) => handleOpenPdf(q, e, true)}
                           title="Export Encrypted PDF (Masked codes, hidden brand)"
-                          className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 transition-colors shadow-xs"
+                          className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-[#0D1B2A] hover:bg-[#1B263B] text-amber-300 hover:text-amber-200 border-transparent shadow-xs"
                         >
                           <ShieldAlert size={11} className="mr-1 text-amber-400" />
                           <span>Encrypted</span>
@@ -819,7 +819,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
                           type="button"
                           onClick={() => onSelectQuotation(q.id)}
                           title="View Details"
-                          className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/60 transition-colors"
                         >
                           <Eye size={13} />
                         </button>
@@ -829,7 +829,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
                           type="button"
                           onClick={() => onEditQuotation(q.id)}
                           title="Edit Quotation"
-                          className="p-1 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"
+                          className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/60 transition-colors"
                         >
                           <Edit size={13} />
                         </button>

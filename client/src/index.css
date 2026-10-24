@@ -56,8 +56,29 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-input, select, textarea, button {
+input, select, textarea {
   font-family: inherit;
+}
+
+button {
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  text-align: inherit;
+  padding: 0;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th, td {
+  vertical-align: middle;
 }
 
 /* Tabular Numbers for Accurate Column Alignment */

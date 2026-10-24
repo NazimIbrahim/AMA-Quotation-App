@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
 import { TileBrand, BrandSizeCoverage, ProductType } from '../types';
-import { Layers, Plus, Tag, RefreshCw, X } from 'lucide-react';
+import { Layers, Plus, Tag, RefreshCw, X, Edit2, Trash2 } from 'lucide-react';
 
 export const ProductManagement: React.FC = () => {
   const { fetchApi } = useServer();
@@ -13,13 +13,15 @@ export const ProductManagement: React.FC = () => {
   const [selectedBrandId, setSelectedBrandId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // New Brand Modal
+  // Brand Modal State (Create & Edit)
   const [brandModal, setBrandModal] = useState(false);
+  const [editingBrand, setEditingBrand] = useState<TileBrand | null>(null);
   const [brandName, setBrandName] = useState('');
   const [brandDesc, setBrandDesc] = useState('');
 
-  // New Coverage Modal
+  // Coverage Modal State (Create & Edit)
   const [coverageModal, setCoverageModal] = useState(false);
+  const [editingCoverage, setEditingCoverage] = useState<BrandSizeCoverage | null>(null);
   const [covBrandId, setCovBrandId] = useState<number>(0);
   const [productType, setProductType] = useState<ProductType>('box');
   const [size, setSize] = useState('1200X1800');
@@ -32,16 +34,20 @@ export const ProductManagement: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const bRes = await fetchApi('/api/products/brands');
-      setBrands(bRes.brands || []);
-      if (bRes.brands && bRes.brands.length > 0 && !selectedBrandId) {
-        setSelectedBrandId(bRes.brands[0].id);
+      const bRes = await fetchApi<{ brands: TileBrand[] }>('/api/products/brands');
+      const loadedBrands = bRes.brands || [];
+      setBrands(loadedBrands);
+
+      if (loadedBrands.length > 0) {
+        setSelectedBrandId((prev) => (prev && loadedBrands.some((b) => b.id === prev) ? prev : loadedBrands[0].id));
+      } else {
+        setSelectedBrandId(null);
       }
 
-      const cRes = await fetchApi('/api/products/coverages');
+      const cRes = await fetchApi<{ coverages: BrandSizeCoverage[] }>('/api/products/coverages');
       setCoverages(cRes.coverages || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load products/coverages:', err);
     } finally {
       setLoading(false);
     }
@@ -51,42 +57,133 @@ export const ProductManagement: React.FC = () => {
     loadData();
   }, []);
 
-  const handleCreateBrand = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Open Create Brand
+  const handleOpenCreateBrand = () => {
+    setEditingBrand(null);
+    setBrandName('');
+    setBrandDesc('');
+    setBrandModal(true);
+  };
+
+  // Open Edit Brand
+  const handleOpenEditBrand = (b: TileBrand, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingBrand(b);
+    setBrandName(b.name);
+    setBrandDesc(b.description || '');
+    setBrandModal(true);
+  };
+
+  // Delete Brand
+  const handleDeleteBrand = async (b: TileBrand, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const confirmed = window.confirm(
+      `Are you sure you want to delete brand "${b.name}"?\nAll associated tile size specifications will also be permanently deleted.`
+    );
+    if (!confirmed) return;
+
     try {
-      await fetchApi('/api/products/brands', {
-        method: 'POST',
-        body: JSON.stringify({ name: brandName, description: brandDesc }),
-      });
-      setBrandModal(false);
-      setBrandName('');
-      setBrandDesc('');
-      loadData();
+      await fetchApi(`/api/products/brands/${b.id}`, { method: 'DELETE' });
+      await loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to add brand');
+      alert(err.message || 'Failed to delete brand');
     }
   };
 
-  const handleCreateCoverage = async (e: React.FormEvent) => {
+  // Save Brand (POST or PUT)
+  const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await fetchApi('/api/products/coverages', {
-        method: 'POST',
-        body: JSON.stringify({
-          brand_id: covBrandId || selectedBrandId,
-          size,
-          product_type: productType,
-          coverage_sqft: productType === 'box' ? coverageSqft : '0',
-          pieces_per_box: productType === 'box' ? piecesPerBox : '1',
-          default_rate_sqft: productType === 'sqft' || productType === 'box' ? rateSqft : '0',
-          default_rate_box: productType !== 'box' && productType !== 'sqft' ? rateSqft : undefined,
-        }),
-      });
-      setCoverageModal(false);
-      setProductType('box');
-      loadData();
+      if (editingBrand) {
+        await fetchApi(`/api/products/brands/${editingBrand.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: brandName, description: brandDesc }),
+        });
+      } else {
+        await fetchApi('/api/products/brands', {
+          method: 'POST',
+          body: JSON.stringify({ name: brandName, description: brandDesc }),
+        });
+      }
+      setBrandModal(false);
+      setEditingBrand(null);
+      setBrandName('');
+      setBrandDesc('');
+      await loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to add size specification');
+      alert(err.message || 'Failed to save brand');
+    }
+  };
+
+  // Open Create Coverage
+  const handleOpenCreateCoverage = () => {
+    setEditingCoverage(null);
+    setCovBrandId(selectedBrandId || (brands[0]?.id || 1));
+    setProductType('box');
+    setSize('1200X1800');
+    setCoverageSqft('46.5');
+    setPiecesPerBox('2');
+    setRateSqft('130.0');
+    setCoverageModal(true);
+  };
+
+  // Open Edit Coverage
+  const handleOpenEditCoverage = (c: BrandSizeCoverage, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingCoverage(c);
+    setCovBrandId(c.brand_id);
+    setProductType(c.product_type || 'box');
+    setSize(c.size);
+    setCoverageSqft(String(c.coverage_sqft || '0'));
+    setPiecesPerBox(String(c.pieces_per_box || '1'));
+    setRateSqft(String(c.default_rate_sqft || c.default_rate_box || '0'));
+    setCoverageModal(true);
+  };
+
+  // Delete Coverage
+  const handleDeleteCoverage = async (c: BrandSizeCoverage, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const confirmed = window.confirm(`Are you sure you want to delete size specification "${c.size}"?`);
+    if (!confirmed) return;
+
+    try {
+      await fetchApi(`/api/products/coverages/${c.id}`, { method: 'DELETE' });
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete size specification');
+    }
+  };
+
+  // Save Coverage (POST or PUT)
+  const handleSaveCoverage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        brand_id: covBrandId || selectedBrandId,
+        size,
+        product_type: productType,
+        coverage_sqft: productType === 'box' ? coverageSqft : '0',
+        pieces_per_box: productType === 'box' ? piecesPerBox : '1',
+        default_rate_sqft: productType === 'sqft' || productType === 'box' ? rateSqft : '0',
+        default_rate_box: productType !== 'box' && productType !== 'sqft' ? rateSqft : undefined,
+      };
+
+      if (editingCoverage) {
+        await fetchApi(`/api/products/coverages/${editingCoverage.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await fetchApi('/api/products/coverages', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      setCoverageModal(false);
+      setEditingCoverage(null);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save size specification');
     }
   };
 
@@ -94,28 +191,38 @@ export const ProductManagement: React.FC = () => {
     ? coverages.filter((c) => c.brand_id === selectedBrandId)
     : coverages;
 
+  const currentBrand = brands.find((b) => b.id === selectedBrandId);
+
   return (
     <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 overflow-y-auto w-full min-w-0">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Tile Brands & Size Specifications</h1>
-          <p className="text-xs text-gray-500">
+          <h1 className="text-xl font-bold text-[#0D1B2A]">Tile Brands & Size Specifications</h1>
+          <p className="text-xs text-[#415A77]">
             Configure box coverage formulas, pieces per carton, and standard rates
           </p>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={loadData}
+            title="Refresh brands and formulas"
+            className="btn btn-secondary btn-sm"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
           {isAdminOrManager && (
             <>
-              <button onClick={() => setBrandModal(true)} className="btn btn-secondary btn-sm flex items-center space-x-1">
+              <button
+                onClick={handleOpenCreateBrand}
+                className="btn btn-secondary btn-sm flex items-center space-x-1"
+              >
                 <Tag size={12} />
                 <span>+ Add Brand</span>
               </button>
               <button
-                onClick={() => {
-                  setCovBrandId(selectedBrandId || (brands[0]?.id || 1));
-                  setCoverageModal(true);
-                }}
+                onClick={handleOpenCreateCoverage}
                 className="btn btn-primary btn-sm flex items-center space-x-1"
               >
                 <Plus size={12} />
@@ -129,51 +236,106 @@ export const ProductManagement: React.FC = () => {
       {/* Main Grid: Brands Sidebar & Coverage Table */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
         {/* Brands List */}
-        <div className="col-span-1 bg-white rounded-lg border border-gray-200 shadow-sm p-4 space-y-2">
-          <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Ceramic Brands</h2>
-          <div className="space-y-1">
-            {brands.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => setSelectedBrandId(b.id)}
-                className={`w-full text-left px-3 py-2 rounded text-xs transition-all flex items-center justify-between ${
-                  selectedBrandId === b.id
-                    ? 'bg-[#1B263B] text-white font-bold border-l-4 border-[#778DA9] pl-2 shadow-sm'
-                    : 'hover:bg-[#E0E1DD]/35 text-[#2A3B54] hover:text-[#0D1B2A]'
-                }`}
-              >
-                <span>{b.name}</span>
-                <span className="text-[10px] text-gray-400">
-                  {coverages.filter((c) => c.brand_id === b.id).length} sizes
-                </span>
-              </button>
-            ))}
+        <div className="col-span-1 bg-white rounded-lg border border-[#E0E1DD] shadow-sm p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold text-[#415A77] uppercase tracking-wider">
+              Ceramic Brands
+            </h2>
+            <span className="text-[10px] font-semibold text-[#778DA9]">
+              {brands.length} Total
+            </span>
+          </div>
+
+          <div className="space-y-1 max-h-[600px] overflow-y-auto pr-0.5">
+            {brands.length === 0 ? (
+              <div className="text-center py-6 text-xs text-[#778DA9]">
+                No brands recorded yet.
+              </div>
+            ) : (
+              brands.map((b) => {
+                const isSelected = selectedBrandId === b.id;
+                const sizeCount = coverages.filter((c) => c.brand_id === b.id).length;
+
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => setSelectedBrandId(b.id)}
+                    className={`w-full text-left px-3 py-2 rounded text-xs transition-all flex items-center justify-between cursor-pointer group ${
+                      isSelected
+                        ? 'bg-[#1B263B] text-white font-bold border-l-4 border-[#778DA9] shadow-sm'
+                        : 'hover:bg-[#E0E1DD]/40 text-[#0D1B2A] font-medium'
+                    }`}
+                  >
+                    <div className="flex flex-col min-w-0 pr-1 flex-1">
+                      <span className="truncate">{b.name}</span>
+                      <span
+                        className={`text-[10px] ${
+                          isSelected ? 'text-[#778DA9]' : 'text-slate-400'
+                        }`}
+                      >
+                        {sizeCount} {sizeCount === 1 ? 'size' : 'sizes'}
+                      </span>
+                    </div>
+
+                    {isAdminOrManager && (
+                      <div className="flex items-center space-x-1 shrink-0 ml-1">
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenEditBrand(b, e)}
+                          title={`Edit brand: ${b.name}`}
+                          className={`p-1 rounded transition-colors ${
+                            isSelected
+                              ? 'text-[#E0E1DD] hover:text-white hover:bg-white/20'
+                              : 'text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]'
+                          }`}
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteBrand(b, e)}
+                          title={`Delete brand: ${b.name}`}
+                          className={`p-1 rounded transition-colors ${
+                            isSelected
+                              ? 'text-rose-300 hover:text-rose-100 hover:bg-rose-900/50'
+                              : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                          }`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
         {/* Coverage Formulas Table */}
-        <div className="col-span-1 lg:col-span-3 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
-            <span className="text-xs font-bold text-primary uppercase tracking-wide">
-              {brands.find((b) => b.id === selectedBrandId)?.name || 'All Brands'} — Size & Sqft Coverages
+        <div className="col-span-1 lg:col-span-3 bg-white rounded-lg border border-[#E0E1DD] shadow-sm overflow-hidden">
+          <div className="bg-[#F8F9FA] px-4 py-3 border-b border-[#E0E1DD] flex justify-between items-center">
+            <span className="text-xs font-bold text-[#1B263B] uppercase tracking-wide">
+              {currentBrand ? currentBrand.name : 'All Brands'} — Size & Sqft Coverages
             </span>
-            <span className="text-[10px] text-gray-500">Auto-populates quotation line items</span>
+            <span className="text-[10px] text-[#415A77]">Auto-populates quotation line items</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-gray-200 text-gray-600 bg-gray-50/50">
+                <tr className="border-b border-[#E0E1DD] text-[#415A77] bg-[#F8F9FA]/60 font-semibold text-[11px]">
                   <th className="py-2.5 px-3">Size / Specification</th>
                   <th className="py-2.5 px-3">Product Type</th>
                   <th className="py-2.5 px-3 text-right">Coverage / Packaging</th>
                   <th className="py-2.5 px-3 text-right">Default Rate</th>
+                  {isAdminOrManager && <th className="py-2.5 px-3 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-[#E0E1DD]/60">
                 {filteredCoverages.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-gray-400">
+                    <td colSpan={isAdminOrManager ? 5 : 4} className="py-10 text-center text-[#778DA9]">
                       No size formulas recorded for this brand. Click "+ Add Size Formula" above.
                     </td>
                   </tr>
@@ -190,14 +352,14 @@ export const ProductManagement: React.FC = () => {
                     const badge = badgeStyles[pType] || badgeStyles['box'];
 
                     return (
-                      <tr key={c.id} className="hover:bg-gray-50">
-                        <td className="py-2.5 px-3 font-bold text-gray-900">{c.size}</td>
-                        <td className="py-2.5 px-3">
+                      <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-2.5 px-3 font-bold text-[#0D1B2A] align-middle">{c.size}</td>
+                        <td className="py-2.5 px-3 align-middle">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${badge.cls}`}>
                             {badge.label}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 text-right text-gray-700 font-medium">
+                        <td className="py-2.5 px-3 text-right text-slate-700 font-medium align-middle tabular-nums">
                           {pType === 'box'
                             ? `${Number(c.coverage_sqft).toFixed(2)} sqft/box (${c.pieces_per_box} pcs)`
                             : pType === 'sqft'
@@ -208,24 +370,51 @@ export const ProductManagement: React.FC = () => {
                             ? '1 Piece Unit'
                             : '1 Unit (Nos)'}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-gray-900">
+                        <td className="py-2.5 px-3 text-right font-bold text-[#0D1B2A] align-middle tabular-nums">
                           {pType === 'box' ? (
                             <span>
-                              ₹ {Number(c.default_rate_sqft).toFixed(2)} <span className="text-[10px] text-gray-500 font-normal">/ sqft</span> (₹ {Number(c.default_rate_box).toFixed(2)} / box)
+                              ₹ {Number(c.default_rate_sqft).toFixed(2)}{' '}
+                              <span className="text-[10px] text-[#778DA9] font-normal">/ sqft</span>{' '}
+                              <span className="text-[11px] font-semibold text-[#415A77]">
+                                (₹ {Number(c.default_rate_box).toFixed(2)} / box)
+                              </span>
                             </span>
                           ) : pType === 'sqft' ? (
                             <span>
-                              ₹ {Number(c.default_rate_sqft).toFixed(2)} <span className="text-[10px] text-gray-500 font-normal">/ sqft</span>
+                              ₹ {Number(c.default_rate_sqft).toFixed(2)}{' '}
+                              <span className="text-[10px] text-[#778DA9] font-normal">/ sqft</span>
                             </span>
                           ) : (
                             <span>
                               ₹ {Number(c.default_rate_box || c.default_rate_sqft).toFixed(2)}{' '}
-                              <span className="text-[10px] text-gray-500 font-normal">
+                              <span className="text-[10px] text-[#778DA9] font-normal">
                                 / {pType === 'bags' ? 'bag' : pType === 'pieces' ? 'pc' : 'no'}
                               </span>
                             </span>
                           )}
                         </td>
+                        {isAdminOrManager && (
+                          <td className="py-2.5 px-3 text-right align-middle whitespace-nowrap">
+                            <div className="inline-flex items-center space-x-1">
+                              <button
+                                type="button"
+                                onClick={(e) => handleOpenEditCoverage(c, e)}
+                                title="Edit size specification"
+                                className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD] transition-colors"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteCoverage(c, e)}
+                                title="Delete size specification"
+                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -236,44 +425,59 @@ export const ProductManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Add Brand Modal */}
+      {/* Brand Modal (Create & Edit) */}
       {brandModal && (
         <div className="modal-overlay">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-gray-200">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-[#CBD5E1] animate-in fade-in duration-150">
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-base font-bold text-gray-900">Add Ceramic Brand</h2>
-              <button onClick={() => setBrandModal(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-base font-bold text-[#0D1B2A]">
+                {editingBrand ? `Edit Brand: ${editingBrand.name}` : 'Add Ceramic Brand'}
+              </h2>
+              <button
+                onClick={() => {
+                  setBrandModal(false);
+                  setEditingBrand(null);
+                }}
+                className="text-[#778DA9] hover:text-[#0D1B2A]"
+              >
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleCreateBrand} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveBrand} className="space-y-3 text-xs">
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">Brand Name *</label>
+                <label className="block text-[#0D1B2A] font-semibold mb-1">Brand Name *</label>
                 <input
                   type="text"
                   className="input input-sm"
                   value={brandName}
                   onChange={(e) => setBrandName(e.target.value)}
-                  placeholder="e.g. Somany Ceramics"
+                  placeholder="e.g. Somany Ceramics, Cera, Simpolo"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">Description</label>
+                <label className="block text-[#0D1B2A] font-semibold mb-1">Description</label>
                 <input
                   type="text"
                   className="input input-sm"
                   value={brandDesc}
                   onChange={(e) => setBrandDesc(e.target.value)}
-                  placeholder="e.g. Glazed vitrified tiles and heavy duty slabs"
+                  placeholder="e.g. Glazed vitrified tiles, sanitaryware and heavy duty slabs"
                 />
               </div>
-              <div className="flex justify-end space-x-2 pt-2 border-t">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setBrandModal(false)}>
+              <div className="flex justify-end space-x-2 pt-2 border-t border-[#E0E1DD]">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setBrandModal(false);
+                    setEditingBrand(null);
+                  }}
+                >
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary btn-sm">
-                  Save Brand
+                  {editingBrand ? 'Update Brand' : 'Save Brand'}
                 </button>
               </div>
             </form>
@@ -281,23 +485,34 @@ export const ProductManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Add Size Formula Modal */}
+      {/* Coverage Formula Modal (Create & Edit) */}
       {coverageModal && (
         <div className="modal-overlay">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-gray-200">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-[#CBD5E1] animate-in fade-in duration-150">
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-base font-bold text-gray-900">Add Size Formula</h2>
-              <button onClick={() => setCoverageModal(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-base font-bold text-[#0D1B2A]">
+                {editingCoverage
+                  ? `Edit Specification: ${editingCoverage.size}`
+                  : 'Add Size Formula'}
+              </h2>
+              <button
+                onClick={() => {
+                  setCoverageModal(false);
+                  setEditingCoverage(null);
+                }}
+                className="text-[#778DA9] hover:text-[#0D1B2A]"
+              >
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleCreateCoverage} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveCoverage} className="space-y-3 text-xs">
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">Brand *</label>
+                <label className="block text-[#0D1B2A] font-semibold mb-1">Brand *</label>
                 <select
                   className="input input-sm"
                   value={covBrandId}
                   onChange={(e) => setCovBrandId(parseInt(e.target.value, 10))}
+                  required
                 >
                   {brands.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -309,9 +524,11 @@ export const ProductManagement: React.FC = () => {
 
               {/* Product Type / Packaging Unit */}
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">Product Type / Packaging Unit *</label>
+                <label className="block text-[#0D1B2A] font-semibold mb-1">
+                  Product Type / Packaging Unit *
+                </label>
                 <select
-                  className="input input-sm font-semibold text-primary"
+                  className="input input-sm font-semibold text-[#1B263B]"
                   value={productType}
                   onChange={(e) => setProductType(e.target.value as ProductType)}
                 >
@@ -324,7 +541,7 @@ export const ProductManagement: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">Dimensions / Spec Name *</label>
+                <label className="block text-[#0D1B2A] font-semibold mb-1">Dimensions / Spec Name *</label>
                 <input
                   type="text"
                   className="input input-sm"
@@ -348,7 +565,7 @@ export const ProductManagement: React.FC = () => {
               {productType === 'box' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-gray-700 font-semibold mb-1">Sqft per Box *</label>
+                    <label className="block text-[#0D1B2A] font-semibold mb-1">Sqft per Box *</label>
                     <input
                       type="number"
                       step="0.01"
@@ -359,7 +576,7 @@ export const ProductManagement: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-gray-700 font-semibold mb-1">Pieces per Box</label>
+                    <label className="block text-[#0D1B2A] font-semibold mb-1">Pieces per Box</label>
                     <input
                       type="number"
                       className="input input-sm"
@@ -372,7 +589,7 @@ export const ProductManagement: React.FC = () => {
               )}
 
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">
+                <label className="block text-[#0D1B2A] font-semibold mb-1">
                   {productType === 'box'
                     ? 'Default Rate per Sqft (INR) *'
                     : productType === 'sqft'
@@ -393,12 +610,19 @@ export const ProductManagement: React.FC = () => {
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCoverageModal(false)}>
+              <div className="flex justify-end space-x-2 pt-2 border-t border-[#E0E1DD]">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setCoverageModal(false);
+                    setEditingCoverage(null);
+                  }}
+                >
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary btn-sm">
-                  Save Specification
+                  {editingCoverage ? 'Update Specification' : 'Save Specification'}
                 </button>
               </div>
             </form>

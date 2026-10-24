@@ -357,14 +357,14 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
                 <thead>
                   <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
                     <th className="py-2.5 px-3">Quotation Ref</th>
-                    <th className="py-2.5 px-3">Customer</th>
-                    <th className="py-2.5 px-3">Salesperson</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3 text-right">Net Total</th>
-                    <th className="py-2.5 px-3 text-center">Actions</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap">Customer</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap">Salesperson</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap">Status</th>
+                    <th className="py-2.5 px-3 text-right whitespace-nowrap">Net Total</th>
+                    <th className="py-2.5 px-3 text-center whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#E0E1DD]/60">
                   {data?.recentQuotations && data.recentQuotations.length > 0 ? (
                     data.recentQuotations.map((q: any) => (
                       <tr
@@ -372,37 +372,37 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
                         onClick={() => onSelectQuotation(q.id)}
                         className="hover:bg-slate-50 transition-colors cursor-pointer"
                       >
-                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                        <td className="py-2.5 px-3 font-mono font-semibold text-[#0D1B2A] whitespace-nowrap align-middle">
                           {q.quotation_number}
                         </td>
-                        <td className="py-2.5 px-3 font-medium text-slate-800">
+                        <td className="py-2.5 px-3 font-medium text-[#1B263B] align-middle">
                           {q.customer_name}
                         </td>
-                        <td className="py-2.5 px-3 text-slate-600">
+                        <td className="py-2.5 px-3 text-slate-600 align-middle">
                           {q.sales_person_name}
                         </td>
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 align-middle whitespace-nowrap">
                           <span className={`badge badge-${q.status}`}>{q.status}</span>
                         </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-slate-900 tabular-nums">
+                        <td className="py-2.5 px-3 text-right font-semibold text-[#0D1B2A] tabular-nums align-middle whitespace-nowrap">
                           ₹ {formatCurrency(q.net_total)}
                         </td>
-                        <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center space-x-1.5 flex-nowrap">
+                        <td className="py-2.5 px-3 text-center align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex items-center justify-center space-x-1 whitespace-nowrap">
                             <button
                               type="button"
                               onClick={(e) => handleOpenPdf(q, e, false)}
                               title="Export / Print Standard PDF"
-                              className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors shadow-xs"
+                              className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-[#1B263B] hover:text-[#0D1B2A] hover:border-[#778DA9]"
                             >
-                              <Printer size={11} className="mr-1 text-slate-600" />
+                              <Printer size={11} className="mr-1 text-[#415A77]" />
                               <span>PDF</span>
                             </button>
                             <button
                               type="button"
                               onClick={(e) => handleOpenPdf(q, e, true)}
                               title="Export Encrypted PDF (Masked codes, hidden brand)"
-                              className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 transition-colors shadow-xs"
+                              className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-[#0D1B2A] hover:bg-[#1B263B] text-amber-300 hover:text-amber-200 border-transparent shadow-xs"
                             >
                               <ShieldAlert size={11} className="mr-1 text-amber-400" />
                               <span>Encrypted</span>
@@ -410,7 +410,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
                             <button
                               type="button"
                               onClick={() => onSelectQuotation(q.id)}
-                              className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                              className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/60 transition-colors"
                               title="View Details"
                             >
                               <Eye size={13} />

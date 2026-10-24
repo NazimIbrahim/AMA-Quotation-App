@@ -67,7 +67,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
   const renderNavGroup = (title: string, items: typeof operationsNav) => (
     <div className="mb-4">
       <div className="px-3 mb-1.5">
-        <span className="text-[10px] font-bold tracking-wider text-[#415A77] uppercase">
+        <span className="text-[10px] font-bold tracking-wider text-[#778DA9] uppercase">
           {title}
         </span>
       </div>
@@ -79,12 +79,12 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer text-left group ${
+              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer text-left group border-0 ${
                 isActive
                   ? 'bg-[#1B263B] text-white font-semibold shadow-sm translate-x-1 border-l-2 border-[#778DA9]'
                   : item.isAction
-                  ? 'text-[#1B263B] font-semibold bg-[#E0E1DD]/40 hover:bg-[#E0E1DD] hover:translate-x-1'
-                  : 'text-[#2A3B54] hover:bg-[#E0E1DD]/35 hover:text-[#0D1B2A] hover:translate-x-1'
+                  ? 'text-[#E0E1DD] font-semibold bg-[#415A77]/30 hover:bg-[#415A77]/50 hover:translate-x-1'
+                  : 'text-[#E0E1DD]/80 hover:bg-[#1B263B]/70 hover:text-white hover:translate-x-1'
               }`}
             >
               <div className="flex items-center space-x-2.5">
@@ -94,14 +94,14 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
                     isActive
                       ? 'text-[#E0E1DD]'
                       : item.isAction
-                      ? 'text-[#1B263B]'
-                      : 'text-[#415A77]'
+                      ? 'text-[#778DA9]'
+                      : 'text-[#778DA9] group-hover:text-white'
                   }`}
                 />
                 <span>{item.label}</span>
               </div>
               {item.isAction && !isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#415A77] animate-pulse"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#778DA9] animate-pulse"></span>
               )}
             </button>
           );
@@ -111,7 +111,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
   );
 
   return (
-    <aside className="w-56 bg-white border-r border-[#E0E1DD] flex flex-col justify-between shrink-0 select-none z-10">
+    <aside className="w-56 bg-[#0D1B2A] border-r border-[#1B263B] flex flex-col justify-between shrink-0 select-none z-10 text-[#E0E1DD]">
       <div className="p-3 overflow-y-auto">
         {renderNavGroup('Operations', operationsNav)}
         {renderNavGroup('Performance', analyticsNav)}
@@ -119,19 +119,19 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
       </div>
 
       {/* System Footnote */}
-      <div className="p-3 border-t border-[#E0E1DD] bg-[#F8F9FA] text-[11px] text-[#415A77] space-y-1">
+      <div className="p-3 border-t border-[#1B263B] bg-[#09131F] text-[11px] text-[#778DA9] space-y-1.5 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-1.5">
-            <Cpu size={12} className="text-emerald-600" />
-            <span>Memory Mode</span>
+            <Cpu size={12} className="text-emerald-400" />
+            <span className="text-[#E0E1DD]/90 font-medium">Memory Mode</span>
           </div>
-          <span className="font-semibold text-emerald-700 font-mono text-[10px]">
+          <span className="font-semibold text-emerald-400 font-mono text-[10px] bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded">
             4GB RAM Opt.
           </span>
         </div>
-        <div className="flex justify-between text-[#778DA9] text-[10px]">
+        <div className="flex justify-between items-center text-[#778DA9] text-[10px] pt-0.5">
           <span>App Build:</span>
-          <span>v1.2.0 (Win64)</span>
+          <span className="font-mono text-[#E0E1DD]/70">v1.2.0 (Win64)</span>
         </div>
       </div>
     </aside>
