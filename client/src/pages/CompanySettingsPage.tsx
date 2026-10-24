@@ -71,16 +71,16 @@ export const CompanySettingsPage: React.FC = () => {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="btn btn-primary btn-sm flex items-center space-x-1"
+          className={`btn btn-primary btn-sm flex items-center space-x-1 ${saving ? 'btn-saving' : ''}`}
         >
-          <Save size={14} />
+          <Save size={14} className={saving ? 'animate-spin' : ''} />
           <span>{saving ? 'Saving...' : 'Save Profile Changes'}</span>
         </button>
       </div>
 
       {savedSuccess && (
-        <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-xs flex items-center space-x-2">
-          <CheckCircle2 size={16} />
+        <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-xs flex items-center space-x-2 animate-save-success">
+          <CheckCircle2 size={16} className="animate-icon-pop" />
           <span>Company profile and quotation terms updated successfully!</span>
         </div>
       )}

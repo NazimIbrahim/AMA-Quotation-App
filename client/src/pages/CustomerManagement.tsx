@@ -153,7 +153,7 @@ export const CustomerManagement: React.FC = () => {
           <div className="col-span-full text-center py-10 text-gray-400">No customers found.</div>
         ) : (
           customers.map((c) => (
-            <div key={c.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm space-y-2 text-xs">
+            <div key={c.id} className="card card-hover p-4 rounded-lg border border-[#E0E1DD] shadow-sm space-y-2 text-xs">
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-bold text-gray-900 text-sm">{c.name}</h3>
@@ -296,7 +296,7 @@ export const CustomerManagement: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+                <button type="submit" className={`btn btn-primary btn-sm ${saving ? 'btn-saving' : ''}`} disabled={saving}>
                   {saving ? 'Saving...' : 'Save Customer'}
                 </button>
               </div>

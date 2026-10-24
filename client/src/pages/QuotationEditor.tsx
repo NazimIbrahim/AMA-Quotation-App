@@ -214,7 +214,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     return (
       <div
         ref={customerDropdownRef}
-        className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-slate-300 rounded-lg shadow-2xl overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto w-full md:w-[420px] animate-in fade-in slide-in-from-top-1 duration-150"
+        className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-[#CBD5E1] rounded-lg shadow-2xl overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto w-full md:w-[420px] animate-dropdown-open"
       >
         <div className="bg-slate-50 px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-500 font-semibold border-b border-slate-200">
           <div className="flex items-center space-x-1.5">
@@ -863,9 +863,9 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           <button
             onClick={handleSaveQuotation}
             disabled={saving}
-            className="btn btn-primary btn-sm"
+            className={`btn btn-primary btn-sm ${saving ? 'btn-saving' : ''}`}
           >
-            <Save size={13} />
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             <span>{saving ? 'Saving Record...' : 'Save Quotation'}</span>
           </button>
         </div>

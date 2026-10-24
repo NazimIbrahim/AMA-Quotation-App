@@ -136,10 +136,10 @@ export const ProductManagement: React.FC = () => {
               <button
                 key={b.id}
                 onClick={() => setSelectedBrandId(b.id)}
-                className={`w-full text-left px-3 py-2 rounded text-xs transition-colors flex items-center justify-between ${
+                className={`w-full text-left px-3 py-2 rounded text-xs transition-all flex items-center justify-between ${
                   selectedBrandId === b.id
-                    ? 'bg-blue-50 text-primary font-bold border-l-4 border-primary pl-2'
-                    : 'hover:bg-gray-50 text-gray-700'
+                    ? 'bg-[#1B263B] text-white font-bold border-l-4 border-[#778DA9] pl-2 shadow-sm'
+                    : 'hover:bg-[#E0E1DD]/35 text-[#2A3B54] hover:text-[#0D1B2A]'
                 }`}
               >
                 <span>{b.name}</span>

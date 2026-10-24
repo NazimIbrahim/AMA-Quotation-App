@@ -146,12 +146,12 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
       {/* KPI Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Approved Sales */}
-        <div className="card p-4 flex items-center justify-between">
+        <div className="card card-hover p-4 flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">
+            <span className="text-[11px] font-semibold tracking-wider uppercase text-[#415A77]">
               Approved Orders
             </span>
-            <div className="text-xl font-bold text-slate-900 tabular-nums mt-1">
+            <div className="text-xl font-bold text-[#0D1B2A] tabular-nums mt-1">
               ₹ {formatCurrency(data?.financials?.approvedRevenue)}
             </div>
             <p className="text-[10px] text-emerald-700 font-medium mt-1">
@@ -164,30 +164,30 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
         </div>
 
         {/* Payments Collected */}
-        <div className="card p-4 flex items-center justify-between">
+        <div className="card card-hover p-4 flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">
+            <span className="text-[11px] font-semibold tracking-wider uppercase text-[#415A77]">
               Payments Collected
             </span>
-            <div className="text-xl font-bold text-slate-900 tabular-nums mt-1">
+            <div className="text-xl font-bold text-[#0D1B2A] tabular-nums mt-1">
               ₹ {formatCurrency(data?.financials?.totalCollected)}
             </div>
-            <p className="text-[10px] text-blue-700 font-medium mt-1">
+            <p className="text-[10px] text-[#415A77] font-medium mt-1">
               Cleared advances & settlements
             </p>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#415A77] flex items-center justify-center shrink-0 border border-blue-100">
             <CreditCard size={20} />
           </div>
         </div>
 
         {/* Outstanding Receivables */}
-        <div className="card p-4 flex items-center justify-between">
+        <div className="card card-hover p-4 flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">
+            <span className="text-[11px] font-semibold tracking-wider uppercase text-[#415A77]">
               Outstanding Balance
             </span>
-            <div className="text-xl font-bold text-slate-900 tabular-nums mt-1">
+            <div className="text-xl font-bold text-[#0D1B2A] tabular-nums mt-1">
               ₹ {formatCurrency(data?.financials?.totalOutstanding)}
             </div>
             <p className="text-[10px] text-amber-700 font-medium mt-1">
@@ -200,19 +200,19 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
         </div>
 
         {/* Total Quoted Pipeline */}
-        <div className="card p-4 flex items-center justify-between">
+        <div className="card card-hover p-4 flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">
+            <span className="text-[11px] font-semibold tracking-wider uppercase text-[#415A77]">
               Total Quoted Value
             </span>
-            <div className="text-xl font-bold text-slate-900 tabular-nums mt-1">
+            <div className="text-xl font-bold text-[#0D1B2A] tabular-nums mt-1">
               ₹ {formatCurrency(data?.financials?.totalQuoted)}
             </div>
-            <p className="text-[10px] text-slate-500 font-medium mt-1">
+            <p className="text-[10px] text-[#415A77] font-medium mt-1">
               Across all quotation requests
             </p>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200">
+          <div className="w-10 h-10 rounded-lg bg-slate-100 text-[#1B263B] flex items-center justify-center shrink-0 border border-[#E0E1DD]">
             <FileText size={20} />
           </div>
         </div>

@@ -154,13 +154,18 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-slate-100 overflow-hidden select-none">
+    <div className="h-screen flex flex-col bg-[#f4f5f7] overflow-hidden select-none">
       <Header onOpenServerSettings={() => setOpenServerWizard(true)} />
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100">
-          {renderMainContent()}
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#f4f5f7]">
+          <div
+            key={activeTab + (selectedQuotationId ? `-${selectedQuotationId}` : '') + (isEditingQuotation ? '-edit' : '')}
+            className="flex-1 flex flex-col min-w-0 overflow-hidden animate-page-enter"
+          >
+            {renderMainContent()}
+          </div>
         </main>
       </div>
 

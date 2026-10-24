@@ -15,7 +15,11 @@ export const ReportsPage: React.FC = () => {
   const [pStartDate, setPStartDate] = useState('');
   const [pEndDate, setPEndDate] = useState('');
 
+  const [exportingKey, setExportingKey] = useState<string | null>(null);
+
   const handleDownload = async (type: 'quotations' | 'payments', format: 'xlsx' | 'csv') => {
+    const key = `${type}-${format}`;
+    setExportingKey(key);
     const params = new URLSearchParams({ format });
     if (type === 'quotations') {
       if (qStatus) params.append('status', qStatus);
@@ -54,6 +58,8 @@ export const ReportsPage: React.FC = () => {
       }
     } catch (err: any) {
       alert('Export failed: ' + err.message);
+    } finally {
+      setExportingKey(null);
     }
   };
 
@@ -115,41 +121,47 @@ export const ReportsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex space-x-2 pt-3 border-t">
+            <div className="flex space-x-2 pt-3 border-t border-[#E0E1DD]">
               <button
                 onClick={() => handleDownload('quotations', 'xlsx')}
-                className="btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1"
+                disabled={exportingKey !== null}
+                className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                  exportingKey === 'quotations-xlsx' ? 'btn-exporting' : ''
+                }`}
               >
-                <Download size={13} />
-                <span>Download Excel (.xlsx)</span>
+                <Download size={13} className={exportingKey === 'quotations-xlsx' ? 'animate-bounce' : ''} />
+                <span>{exportingKey === 'quotations-xlsx' ? 'Exporting Excel...' : 'Download Excel (.xlsx)'}</span>
               </button>
               <button
                 onClick={() => handleDownload('quotations', 'csv')}
-                className="btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1"
+                disabled={exportingKey !== null}
+                className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                  exportingKey === 'quotations-csv' ? 'btn-exporting' : ''
+                }`}
               >
-                <Download size={13} />
-                <span>Download CSV</span>
+                <Download size={13} className={exportingKey === 'quotations-csv' ? 'animate-bounce' : ''} />
+                <span>{exportingKey === 'quotations-csv' ? 'Exporting CSV...' : 'Download CSV'}</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Payments Collections Export Card */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 space-y-4">
-          <div className="flex items-center space-x-2.5 pb-2 border-b">
-            <div className="p-2 bg-green-50 text-green-700 rounded">
+        <div className="card card-hover p-5 space-y-4">
+          <div className="flex items-center space-x-2.5 pb-2 border-b border-[#E0E1DD]">
+            <div className="p-2 bg-emerald-50 text-emerald-700 rounded border border-emerald-100">
               <BarChart3 size={20} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-gray-900">Collections & Receipts Register</h2>
-              <p className="text-[11px] text-gray-500">Detailed payment log with transaction IDs & payment modes</p>
+              <h2 className="text-sm font-bold text-[#0D1B2A]">Collections & Receipts Register</h2>
+              <p className="text-[11px] text-[#415A77]">Detailed payment log with transaction IDs & payment modes</p>
             </div>
           </div>
 
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">From Date</label>
+                <label className="block text-[#1B263B] font-semibold mb-1">From Date</label>
                 <input
                   type="date"
                   className="input input-sm"
@@ -158,7 +170,7 @@ export const ReportsPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">To Date</label>
+                <label className="block text-[#1B263B] font-semibold mb-1">To Date</label>
                 <input
                   type="date"
                   className="input input-sm"
@@ -168,28 +180,34 @@ export const ReportsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-3 bg-gray-50 rounded border text-gray-600 text-[11px] space-y-1">
-              <div className="flex items-center space-x-1.5 text-green-700 font-medium">
+            <div className="p-3 bg-[#F8F9FA] rounded border border-[#E0E1DD] text-[#415A77] text-[11px] space-y-1">
+              <div className="flex items-center space-x-1.5 text-emerald-700 font-semibold">
                 <CheckCircle2 size={13} />
                 <span>Audited Transaction Integrity</span>
               </div>
               <p>Includes receipt number, client, cheque/NEFT ref, amount, and clearing status.</p>
             </div>
 
-            <div className="flex space-x-2 pt-3 border-t">
+            <div className="flex space-x-2 pt-3 border-t border-[#E0E1DD]">
               <button
                 onClick={() => handleDownload('payments', 'xlsx')}
-                className="btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1"
+                disabled={exportingKey !== null}
+                className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                  exportingKey === 'payments-xlsx' ? 'btn-exporting' : ''
+                }`}
               >
-                <Download size={13} />
-                <span>Download Excel (.xlsx)</span>
+                <Download size={13} className={exportingKey === 'payments-xlsx' ? 'animate-bounce' : ''} />
+                <span>{exportingKey === 'payments-xlsx' ? 'Exporting Excel...' : 'Download Excel (.xlsx)'}</span>
               </button>
               <button
                 onClick={() => handleDownload('payments', 'csv')}
-                className="btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1"
+                disabled={exportingKey !== null}
+                className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
+                  exportingKey === 'payments-csv' ? 'btn-exporting' : ''
+                }`}
               >
-                <Download size={13} />
-                <span>Download CSV</span>
+                <Download size={13} className={exportingKey === 'payments-csv' ? 'animate-bounce' : ''} />
+                <span>{exportingKey === 'payments-csv' ? 'Exporting CSV...' : 'Download CSV'}</span>
               </button>
             </div>
           </div>

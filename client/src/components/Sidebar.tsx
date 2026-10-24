@@ -67,7 +67,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
   const renderNavGroup = (title: string, items: typeof operationsNav) => (
     <div className="mb-4">
       <div className="px-3 mb-1.5">
-        <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+        <span className="text-[10px] font-bold tracking-wider text-[#415A77] uppercase">
           {title}
         </span>
       </div>
@@ -79,29 +79,29 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer text-left ${
+              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer text-left group ${
                 isActive
-                  ? 'bg-slate-900 text-white font-semibold shadow-sm'
+                  ? 'bg-[#1B263B] text-white font-semibold shadow-sm translate-x-1 border-l-2 border-[#778DA9]'
                   : item.isAction
-                  ? 'text-blue-600 font-semibold hover:bg-blue-50'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  ? 'text-[#1B263B] font-semibold bg-[#E0E1DD]/40 hover:bg-[#E0E1DD] hover:translate-x-1'
+                  : 'text-[#2A3B54] hover:bg-[#E0E1DD]/35 hover:text-[#0D1B2A] hover:translate-x-1'
               }`}
             >
               <div className="flex items-center space-x-2.5">
                 <Icon
                   size={15}
-                  className={
+                  className={`transition-transform duration-150 group-hover:scale-110 ${
                     isActive
-                      ? 'text-white'
+                      ? 'text-[#E0E1DD]'
                       : item.isAction
-                      ? 'text-blue-600'
-                      : 'text-slate-500'
-                  }
+                      ? 'text-[#1B263B]'
+                      : 'text-[#415A77]'
+                  }`}
                 />
                 <span>{item.label}</span>
               </div>
               {item.isAction && !isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#415A77] animate-pulse"></span>
               )}
             </button>
           );
@@ -111,7 +111,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
   );
 
   return (
-    <aside className="w-56 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none z-10">
+    <aside className="w-56 bg-white border-r border-[#E0E1DD] flex flex-col justify-between shrink-0 select-none z-10">
       <div className="p-3 overflow-y-auto">
         {renderNavGroup('Operations', operationsNav)}
         {renderNavGroup('Performance', analyticsNav)}
@@ -119,7 +119,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
       </div>
 
       {/* System Footnote */}
-      <div className="p-3 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 space-y-1">
+      <div className="p-3 border-t border-[#E0E1DD] bg-[#F8F9FA] text-[11px] text-[#415A77] space-y-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-1.5">
             <Cpu size={12} className="text-emerald-600" />
@@ -129,7 +129,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
             4GB RAM Opt.
           </span>
         </div>
-        <div className="flex justify-between text-slate-400 text-[10px]">
+        <div className="flex justify-between text-[#778DA9] text-[10px]">
           <span>App Build:</span>
           <span>v1.0.0 (Win64)</span>
         </div>

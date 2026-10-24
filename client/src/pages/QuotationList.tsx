@@ -240,14 +240,14 @@ export const QuotationList: React.FC<Props> = ({
           <div className="relative group">
             <button
               type="button"
-              className="btn btn-secondary btn-sm flex items-center space-x-1.5"
+              className={`btn btn-secondary btn-sm flex items-center space-x-1.5 ${exportingFormat ? 'btn-exporting' : ''}`}
               disabled={Boolean(exportingFormat)}
               title="Export filtered quotations register to Excel (.xlsx) or CSV"
             >
-              <FileSpreadsheet size={14} className="text-emerald-700" />
+              <FileSpreadsheet size={14} className={exportingFormat ? 'animate-bounce text-emerald-700' : 'text-emerald-700'} />
               <span>{exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}...` : 'Export Register'}</span>
             </button>
-            <div className="dropdown-menu absolute right-0 top-full mt-1 hidden group-hover:block z-30 bg-white border border-slate-200 rounded-md shadow-lg p-1 min-w-[175px]">
+            <div className="dropdown-menu absolute right-0 top-full mt-1 hidden group-hover:block z-30 bg-white border border-[#CBD5E1] rounded-md shadow-xl p-1 min-w-[185px] animate-dropdown-open">
               <button
                 type="button"
                 onClick={() => handleExportList('xlsx')}

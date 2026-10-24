@@ -35,15 +35,15 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-4">
-      <div className="card w-full max-w-md overflow-hidden shadow-lg border border-slate-200">
+    <div className="min-h-screen bg-[#F4F5F7] flex flex-col justify-center items-center p-4">
+      <div className="card w-full max-w-md overflow-hidden shadow-lg border border-[#E0E1DD] animate-page-enter">
         {/* Top Header Banner */}
-        <div className="bg-slate-900 text-white p-6 text-center">
-          <div className="inline-block px-2.5 py-0.5 bg-white/10 rounded-full text-[10px] font-semibold tracking-wider uppercase mb-2">
+        <div className="bg-[#0D1B2A] text-[#E0E1DD] p-6 text-center">
+          <div className="inline-block px-2.5 py-0.5 bg-[#415A77]/40 text-[#E0E1DD] rounded-full text-[10px] font-semibold tracking-wider uppercase mb-2 border border-[#778DA9]/30">
             Windows Desktop Client
           </div>
-          <h1 className="text-xl font-bold tracking-tight">AMA CERAMICS PVT LTD</h1>
-          <p className="text-xs text-slate-300 mt-1">
+          <h1 className="text-xl font-bold tracking-tight text-[#E0E1DD]">AMA CERAMICS PVT LTD</h1>
+          <p className="text-xs text-[#778DA9] mt-1">
             Central LAN Quotation & Estimation System
           </p>
         </div>
@@ -138,49 +138,49 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
 
           <button
             type="submit"
-            className="btn btn-primary w-full py-2 mt-2"
+            className={`btn btn-primary w-full py-2 mt-2 font-semibold tracking-wide ${loading ? 'btn-saving' : ''}`}
             disabled={loading}
           >
             {loading ? 'Authenticating...' : 'Sign In to LAN System'}
           </button>
 
           {/* Quick presets for office team */}
-          <div className="pt-4 border-t border-slate-100">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+          <div className="pt-4 border-t border-[#E0E1DD]">
+            <p className="text-[10px] font-bold text-[#415A77] uppercase tracking-wider mb-2">
               Select Role Account:
             </p>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
                 onClick={() => setRolePreset('admin', 'adminpassword123')}
-                className="p-2 border border-slate-200 rounded-md text-left hover:bg-slate-50 transition-colors"
+                className="p-2 border border-[#E0E1DD] rounded-md text-left hover:bg-[#E0E1DD]/30 hover:border-[#778DA9] transition-all hover:scale-[1.02] cursor-pointer"
               >
-                <div className="font-bold text-slate-900">Administrator</div>
-                <div className="text-[10px] text-slate-500">System Admin</div>
+                <div className="font-bold text-[#0D1B2A]">Administrator</div>
+                <div className="text-[10px] text-[#415A77]">System Admin</div>
               </button>
               <button
                 type="button"
                 onClick={() => setRolePreset('manager', 'managerpassword123')}
-                className="p-2 border border-slate-200 rounded-md text-left hover:bg-slate-50 transition-colors"
+                className="p-2 border border-[#E0E1DD] rounded-md text-left hover:bg-[#E0E1DD]/30 hover:border-[#778DA9] transition-all hover:scale-[1.02] cursor-pointer"
               >
-                <div className="font-bold text-slate-900">Store Manager</div>
-                <div className="text-[10px] text-slate-500">Rajesh Sharma</div>
+                <div className="font-bold text-[#0D1B2A]">Store Manager</div>
+                <div className="text-[10px] text-[#415A77]">Rajesh Sharma</div>
               </button>
               <button
                 type="button"
                 onClick={() => setRolePreset('yasmin', 'salespassword123')}
-                className="p-2 border border-slate-200 rounded-md text-left hover:bg-slate-50 transition-colors"
+                className="p-2 border border-[#E0E1DD] rounded-md text-left hover:bg-[#E0E1DD]/30 hover:border-[#778DA9] transition-all hover:scale-[1.02] cursor-pointer"
               >
-                <div className="font-bold text-slate-900">Sales Associate</div>
-                <div className="text-[10px] text-slate-500">Mr Yasmin</div>
+                <div className="font-bold text-[#0D1B2A]">Sales Associate</div>
+                <div className="text-[10px] text-[#415A77]">Mr Yasmin</div>
               </button>
               <button
                 type="button"
                 onClick={() => setRolePreset('accounts', 'accountspassword123')}
-                className="p-2 border border-slate-200 rounded-md text-left hover:bg-slate-50 transition-colors"
+                className="p-2 border border-[#E0E1DD] rounded-md text-left hover:bg-[#E0E1DD]/30 hover:border-[#778DA9] transition-all hover:scale-[1.02] cursor-pointer"
               >
-                <div className="font-bold text-slate-900">Accounts</div>
-                <div className="text-[10px] text-slate-500">Hardik Shah</div>
+                <div className="font-bold text-[#0D1B2A]">Accounts</div>
+                <div className="text-[10px] text-[#415A77]">Hardik Shah</div>
               </button>
             </div>
           </div>

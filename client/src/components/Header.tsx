@@ -55,26 +55,26 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings }) => {
       <div className="flex items-center space-x-4">
         {/* Brand Logo & Name */}
         <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-xs tracking-wider shadow-sm border border-slate-800">
+          <div className="w-8 h-8 rounded-md bg-[#0D1B2A] text-[#E0E1DD] flex items-center justify-center font-bold text-xs tracking-wider shadow-sm border border-[#1B263B] transition-transform duration-200 hover:scale-105 cursor-default">
             AMA
           </div>
           <div>
             <div className="flex items-center space-x-1.5">
-              <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-none">
+              <h1 className="text-sm font-bold text-[#0D1B2A] tracking-tight leading-none">
                 AMA CERAMICS
               </h1>
-              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded">
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 bg-[#E0E1DD] text-[#1B263B] rounded tracking-wider">
                 LAN
               </span>
             </div>
-            <p className="text-[10px] text-slate-500 font-medium tracking-wide mt-0.5">
+            <p className="text-[10px] text-[#415A77] font-medium tracking-wide mt-0.5">
               Quotation Management System
             </p>
           </div>
         </div>
 
         {/* LAN Status Divider */}
-        <div className="pl-4 border-l border-slate-200 flex items-center">
+        <div className="pl-4 border-l border-[#E0E1DD] flex items-center">
           {getStatusBadge()}
         </div>
       </div>
@@ -84,22 +84,22 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings }) => {
         {user && (
           <div className="flex items-center space-x-3">
             <div className="text-right">
-              <div className="text-xs font-semibold text-slate-900 leading-tight">
+              <div className="text-xs font-semibold text-[#0D1B2A] leading-tight">
                 {user.full_name}
               </div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+              <div className="text-[10px] font-bold text-[#415A77] uppercase tracking-wider">
                 {user.role}
               </div>
             </div>
 
-            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-medium text-xs">
+            <div className="w-8 h-8 rounded-full bg-[#1B263B] border border-[#415A77] flex items-center justify-center text-[#E0E1DD] font-bold text-xs shadow-sm">
               {user.full_name.charAt(0).toUpperCase()}
             </div>
 
             <button
               onClick={logout}
               title="Sign Out"
-              className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition-colors"
+              className="p-1.5 rounded-md text-[#778DA9] hover:text-rose-600 hover:bg-rose-50 transition-all hover:scale-110"
             >
               <LogOut size={16} />
             </button>

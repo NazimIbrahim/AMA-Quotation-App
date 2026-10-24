@@ -125,10 +125,10 @@ export const TargetsManagement: React.FC = () => {
             const isAhead = p.difference >= 0;
 
             return (
-              <div key={p.salesperson.id} className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 space-y-4">
+              <div key={p.salesperson.id} className="card card-hover p-5 space-y-4">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 text-primary font-bold flex items-center justify-center text-sm border border-blue-200">
+                    <div className="w-10 h-10 rounded-full bg-[#E0E1DD] text-[#1B263B] font-bold flex items-center justify-center text-sm border border-[#CBD5E1] shadow-sm">
                       {p.salesperson.full_name.charAt(0)}
                     </div>
                     <div>

@@ -121,20 +121,20 @@ export const PdfPreviewModal: React.FC<Props> = ({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="bg-white rounded-lg border border-slate-300 shadow-xl flex flex-col overflow-hidden w-[92vw] h-[92vh] max-w-6xl"
+        className="bg-white rounded-lg border border-[#CBD5E1] shadow-2xl flex flex-col overflow-hidden w-[92vw] h-[92vh] max-w-6xl modal-dialog"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Bar */}
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="px-5 py-3 border-b border-[#E0E1DD] bg-[#F8F9FA] flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
+            <div className="w-8 h-8 rounded bg-[#0D1B2A] text-[#E0E1DD] flex items-center justify-center font-bold text-xs shadow-sm">
               <FileText size={16} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
+              <h2 className="text-sm font-bold text-[#0D1B2A] tracking-tight leading-tight">
                 {activeTitle}
               </h2>
-              <p className="text-[11px] text-slate-500 font-medium">
+              <p className="text-[11px] text-[#415A77] font-medium">
                 Official PDF Preview & Print Engine
               </p>
             </div>
@@ -142,13 +142,13 @@ export const PdfPreviewModal: React.FC<Props> = ({
 
           {/* Optional Mode Switcher (Standard vs Encrypted) */}
           {quotationId && (
-            <div className="flex items-center bg-slate-200/90 p-1 rounded-md border border-slate-300 text-xs">
+            <div className="flex items-center bg-[#E0E1DD]/80 p-1 rounded-md border border-[#CBD5E1] text-xs">
               <button
                 onClick={() => handleToggleEncrypted(false)}
                 className={`px-3 py-1 rounded transition-all font-medium ${
                   !isEncrypted
-                    ? 'bg-white text-slate-900 shadow-sm font-semibold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-[#0D1B2A] shadow-sm font-semibold'
+                    : 'text-[#415A77] hover:text-[#0D1B2A]'
                 }`}
               >
                 Standard PDF
@@ -157,12 +157,12 @@ export const PdfPreviewModal: React.FC<Props> = ({
                 onClick={() => handleToggleEncrypted(true)}
                 className={`px-3 py-1 rounded transition-all font-medium flex items-center space-x-1.5 ${
                   isEncrypted
-                    ? 'bg-slate-900 text-amber-300 shadow-sm font-semibold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#0D1B2A] text-amber-300 shadow-sm font-semibold'
+                    : 'text-[#415A77] hover:text-[#0D1B2A]'
                 }`}
                 title="Export with brand removed and product name replaced with random code"
               >
-                <ShieldAlert size={12} className={isEncrypted ? 'text-amber-400' : 'text-slate-500'} />
+                <ShieldAlert size={12} className={isEncrypted ? 'text-amber-400' : 'text-[#778DA9]'} />
                 <span>Encrypted Export</span>
               </button>
             </div>
@@ -170,8 +170,8 @@ export const PdfPreviewModal: React.FC<Props> = ({
 
           <div className="flex items-center space-x-2">
             {downloadSuccess && (
-              <div className="flex items-center space-x-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200 text-xs font-medium">
-                <CheckCircle size={13} />
+              <div className="flex items-center space-x-1.5 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200 text-xs font-semibold animate-save-success">
+                <CheckCircle size={13} className="animate-icon-pop" />
                 <span>{downloadSuccess}</span>
               </div>
             )}
@@ -195,11 +195,11 @@ export const PdfPreviewModal: React.FC<Props> = ({
             <button
               onClick={handleDownload}
               disabled={downloading}
-              className="btn btn-primary btn-sm"
+              className={`btn btn-primary btn-sm ${downloading ? 'btn-exporting' : ''}`}
               title="Save PDF file to disk"
             >
-              <Download size={13} />
-              <span>{downloading ? 'Saving...' : 'Download PDF'}</span>
+              <Download size={13} className={downloading ? 'animate-bounce' : ''} />
+              <span>{downloading ? 'Exporting PDF...' : 'Download PDF'}</span>
             </button>
 
             <button
@@ -212,7 +212,7 @@ export const PdfPreviewModal: React.FC<Props> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
+              className="p-1.5 rounded text-[#778DA9] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/40 transition-colors"
               title="Close (Esc)"
             >
               <X size={18} />
@@ -221,13 +221,15 @@ export const PdfPreviewModal: React.FC<Props> = ({
         </div>
 
         {/* PDF Embed Area */}
-        <div className="flex-1 bg-slate-100 relative overflow-hidden flex items-center justify-center">
+        <div className="flex-1 bg-[#F4F5F7] relative overflow-hidden flex items-center justify-center">
           {!loaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-50 z-10">
+            <div className="absolute inset-0 flex items-center justify-center bg-[#F8F9FA] z-10 animate-page-enter">
               <div className="text-center">
-                <RefreshCw size={24} className="animate-spin text-slate-700 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-600">Generating Official PDF Document...</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">AMA High-Performance Formatting Engine</p>
+                <div className="w-12 h-12 rounded-full bg-[#1B263B] text-[#E0E1DD] flex items-center justify-center mx-auto mb-3 export-pulse-ring">
+                  <RefreshCw size={20} className="animate-spin text-[#778DA9]" />
+                </div>
+                <p className="text-xs font-bold text-[#0D1B2A]">Generating Official PDF Document...</p>
+                <p className="text-[11px] text-[#415A77] mt-0.5">AMA High-Performance Formatting Engine</p>
               </div>
             </div>
           )}

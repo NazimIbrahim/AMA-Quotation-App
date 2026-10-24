@@ -377,7 +377,7 @@ export const PaymentManagement: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>
+                <button type="submit" className={`btn btn-primary btn-sm ${submitting ? 'btn-saving' : ''}`} disabled={submitting}>
                   {submitting ? 'Recording...' : 'Generate Receipt & Clear'}
                 </button>
               </div>
