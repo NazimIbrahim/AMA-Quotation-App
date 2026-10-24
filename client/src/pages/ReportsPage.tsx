@@ -627,18 +627,18 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
             <div className="overflow-x-auto w-full">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-100/75 text-slate-700 font-semibold text-[11px] uppercase">
-                    <th className="py-2.5 px-3 font-mono">Quotation #</th>
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Customer & Mobile</th>
-                    <th className="py-2.5 px-3">Sales Associate</th>
-                    <th className="py-2.5 px-3">Role</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3 text-right">Net Total</th>
-                    <th className="py-2.5 px-3 text-right">Salesperson Credit</th>
-                    <th className="py-2.5 px-3 text-right">Paid</th>
-                    <th className="py-2.5 px-3 text-right">Balance Due</th>
-                    <th className="py-2.5 px-3 text-center">Actions & PDF</th>
+                  <tr className="border-b border-slate-200 bg-slate-100/75 text-slate-700 font-semibold text-[11px] uppercase tracking-wider">
+                    <th className="py-3 px-3.5 w-36 font-mono text-left whitespace-nowrap">Quotation #</th>
+                    <th className="py-3 px-3 w-28 text-left whitespace-nowrap">Date</th>
+                    <th className="py-3 px-3.5 min-w-[160px] text-left">Customer & Mobile</th>
+                    <th className="py-3 px-3.5 min-w-[150px] text-left">Sales Associate</th>
+                    <th className="py-3 px-2 w-24 text-center whitespace-nowrap">Role</th>
+                    <th className="py-3 px-2 w-24 text-center whitespace-nowrap">Status</th>
+                    <th className="py-3 px-3 w-28 text-right whitespace-nowrap">Net Total</th>
+                    <th className="py-3 px-3 w-32 text-right whitespace-nowrap">Salesperson Credit</th>
+                    <th className="py-3 px-3 w-24 text-right whitespace-nowrap">Paid</th>
+                    <th className="py-3 px-3 w-28 text-right whitespace-nowrap">Balance Due</th>
+                    <th className="py-3 px-4 w-56 text-right whitespace-nowrap">Actions & PDF</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -668,23 +668,23 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                           className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                           onClick={() => onSelectQuotation && onSelectQuotation(q.id)}
                         >
-                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{q.quotation_number}</td>
-                          <td className="py-2.5 px-3 text-slate-600 font-mono">
+                          <td className="py-3 px-3.5 font-mono font-bold text-slate-900 whitespace-nowrap">{q.quotation_number}</td>
+                          <td className="py-3 px-3 text-slate-600 font-mono text-xs whitespace-nowrap">
                             {new Date(q.quotation_date).toLocaleDateString('en-GB')}
                           </td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-semibold text-slate-900">{q.customer_name}</div>
-                            <div className="text-[10px] text-slate-500 font-mono">{q.customer_phone}</div>
+                          <td className="py-3 px-3.5">
+                            <div className="font-semibold text-slate-900 text-xs">{q.customer_name}</div>
+                            <div className="text-[11px] text-[#415A77] font-mono font-medium">{q.customer_phone}</div>
                           </td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-medium text-slate-800">{q.sales_person_name}</div>
+                          <td className="py-3 px-3.5">
+                            <div className="font-medium text-slate-800 text-xs">{q.sales_person_name}</div>
                             {q.assisted_sales_person_name && (
                               <div className="text-[10px] text-indigo-700 font-semibold font-mono">
                                 🤝 +{q.assisted_sales_person_name} ({Number(q.assisted_sales_share_percent || 50).toFixed(0)}%)
                               </div>
                             )}
                           </td>
-                          <td className="py-2.5 px-3">
+                          <td className="py-3 px-2 text-center whitespace-nowrap">
                             <span
                               className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
                                 isAssisted
@@ -695,31 +695,31 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                               {isAssisted ? 'Assisted' : 'Primary'}
                             </span>
                           </td>
-                          <td className="py-2.5 px-3">
-                            <span className={`badge badge-${q.status}`}>{q.status}</span>
+                          <td className="py-3 px-2 text-center whitespace-nowrap">
+                            <span className={`badge badge-${q.status}`}>{q.status ? q.status.replace('_', ' ') : ''}</span>
                           </td>
-                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 tabular-nums">
+                          <td className="py-3 px-3 text-right font-bold text-slate-900 tabular-nums whitespace-nowrap">
                             ₹ {formatCurrency(q.net_total)}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-bold text-emerald-800 font-mono tabular-nums">
+                          <td className="py-3 px-3 text-right font-bold text-emerald-800 font-mono tabular-nums whitespace-nowrap">
                             ₹ {formatCurrency(creditedAmount)}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums">
+                          <td className="py-3 px-3 text-right text-emerald-700 font-semibold tabular-nums whitespace-nowrap">
                             ₹ {formatCurrency(q.total_paid || 0)}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-amber-700 font-semibold tabular-nums">
+                          <td className="py-3 px-3 text-right text-amber-700 font-semibold tabular-nums whitespace-nowrap">
                             ₹ {formatCurrency(q.balance_due || 0)}
                           </td>
-                          <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center space-x-1">
+                          <td className="py-3 px-4 text-right align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="inline-flex items-center justify-end space-x-1.5 whitespace-nowrap">
                               {/* Standard PDF */}
                               <button
                                 type="button"
                                 onClick={() => handleOpenPdf(q, false)}
                                 title="Export Standard PDF with tile & brand names"
-                                className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px]"
+                                className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-[#1B263B] border border-slate-300 shadow-2xs"
                               >
-                                <Printer size={11} className="mr-0.5 text-slate-500" />
+                                <Printer size={11} className="mr-0.5 text-[#415A77]" />
                                 <span>PDF</span>
                               </button>
 
@@ -728,9 +728,9 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                                 type="button"
                                 onClick={() => handleOpenPdf(q, true)}
                                 title="Export Encrypted PDF: Brand removed, Product name replaced with random code (e.g. HSDS-AMA)"
-                                className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-slate-900 hover:bg-black text-amber-300 border border-slate-700 shadow-2xs"
+                                className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
                               >
-                                <ShieldAlert size={11} className="mr-0.5 text-amber-400" />
+                                <ShieldAlert size={11} className="mr-0.5 text-amber-600" />
                                 <span>Encrypted</span>
                               </button>
 
@@ -740,7 +740,7 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                                   type="button"
                                   onClick={() => onSelectQuotation(q.id)}
                                   title="View Quotation Details"
-                                  className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                  className="p-1.5 rounded-md text-[#415A77] hover:text-[#0D1B2A] hover:bg-white/80 border border-transparent hover:border-slate-200 transition-colors"
                                 >
                                   <Eye size={13} />
                                 </button>
