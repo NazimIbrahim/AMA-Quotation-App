@@ -360,11 +360,11 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
           </div>
 
           {/* KPI Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <div className="card p-3.5 space-y-1 bg-white">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <div className="card p-4 space-y-1.5 bg-white">
               <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
                 <span>Total Quotations</span>
-                <FileSpreadsheet size={14} className="text-slate-400" />
+                <FileSpreadsheet size={15} className="text-slate-400" />
               </div>
               <div className="text-lg font-bold text-slate-900">
                 {activeSummary ? activeSummary.total_quotations : aggregateStats.totalQuotes}
@@ -374,10 +374,10 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
               </p>
             </div>
 
-            <div className="card p-3.5 space-y-1 bg-emerald-50/60 border-emerald-200">
+            <div className="card p-4 space-y-1.5 bg-emerald-50/60 border border-emerald-200">
               <div className="flex items-center justify-between text-emerald-800 text-[11px] font-semibold">
                 <span>Closed / Won Sales</span>
-                <CheckCircle2 size={14} className="text-emerald-600" />
+                <CheckCircle2 size={15} className="text-emerald-600" />
               </div>
               <div className="text-lg font-bold text-emerald-900">
                 ₹ {formatCurrency(activeSummary ? activeSummary.closed_value : aggregateStats.closedValue)}
@@ -387,10 +387,10 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
               </p>
             </div>
 
-            <div className="card p-3.5 space-y-1 bg-blue-50/60 border-blue-200">
+            <div className="card p-4 space-y-1.5 bg-blue-50/60 border border-blue-200">
               <div className="flex items-center justify-between text-blue-800 text-[11px] font-semibold">
                 <span>Active Pipeline</span>
-                <TrendingUp size={14} className="text-blue-600" />
+                <TrendingUp size={15} className="text-blue-600" />
               </div>
               <div className="text-lg font-bold text-blue-900">
                 ₹ {formatCurrency(activeSummary ? activeSummary.pipeline_value : aggregateStats.pipelineValue)}
@@ -400,10 +400,10 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
               </p>
             </div>
 
-            <div className="card p-3.5 space-y-1 bg-amber-50/60 border-amber-200">
+            <div className="card p-4 space-y-1.5 bg-amber-50/60 border border-amber-200">
               <div className="flex items-center justify-between text-amber-800 text-[11px] font-semibold">
                 <span>Win / Conversion Rate</span>
-                <Award size={14} className="text-amber-600" />
+                <Award size={15} className="text-amber-600" />
               </div>
               <div className="text-lg font-bold text-amber-900">
                 {activeSummary
@@ -415,10 +415,10 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
               <p className="text-[10px] text-amber-700 font-medium">Closed deals / Total quotes</p>
             </div>
 
-            <div className="card p-3.5 space-y-1 bg-purple-50/60 border-purple-200">
+            <div className="card p-4 space-y-1.5 bg-purple-50/60 border border-purple-200">
               <div className="flex items-center justify-between text-purple-800 text-[11px] font-semibold">
                 <span>Split Collaboration</span>
-                <Users size={14} className="text-purple-600" />
+                <Users size={15} className="text-purple-600" />
               </div>
               <div className="text-lg font-bold text-purple-900">
                 {activeSummary ? activeSummary.assisted_count : 0} Deals
@@ -430,7 +430,7 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
           </div>
 
           {/* Export Action Bar for Salesperson Report */}
-          <div className="card p-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+          <div className="card card-dark p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md border border-slate-700">
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-sm tracking-tight text-white">
@@ -442,7 +442,7 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                   {spQuotations.length} Records
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs text-slate-200 mt-0.5">
                 Download spreadsheet with full salesperson commission credits, assisted splits, payment collections, and status.
               </p>
             </div>

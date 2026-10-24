@@ -997,7 +997,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
       </div>
 
       {/* Encrypted Product Names Feature Banner */}
-      <div className="card p-3 bg-gradient-to-r from-slate-900 via-[#1B263B] to-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md border border-slate-700">
+      <div className="card card-dark p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md border border-slate-700">
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30 shrink-0">
             <ShieldAlert size={20} />
@@ -1007,7 +1007,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
               <span className="font-bold text-sm tracking-tight text-white">Encrypted Product Names Quotation</span>
               <span className="badge bg-amber-400 text-slate-950 font-bold text-[10px] uppercase">Feature Ready</span>
             </div>
-            <p className="text-xs text-slate-300 mt-0.5">
+            <p className="text-xs text-slate-200 mt-0.5">
               Exports with brand removed and product names masked with random alphabets ending in <span className="text-amber-300 font-mono font-bold">-AMA</span> (e.g. <span className="text-amber-300 font-mono font-bold">HSDS-AMA</span>). Original product details remain safely stored in database.
             </p>
           </div>
@@ -1056,7 +1056,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                 </button>
               </span>
             ) : (
-              <span className="text-[11px] text-slate-500 font-normal">
+              <span className="text-[11px] text-slate-500 font-normal ml-2">
                 (Type Phone or Name to search existing customer)
               </span>
             )}
@@ -1183,7 +1183,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           <div className="relative">
             <label className="flex items-center justify-between text-slate-700 font-semibold h-5 mb-1.5">
               <span>Contact Number *</span>
-              <span className="text-[10px] text-slate-400 font-normal">Search by mobile</span>
+              <span className="text-[10px] text-slate-500 font-normal ml-2">Search by mobile</span>
             </label>
             <div className="relative">
               <input
@@ -1209,9 +1209,9 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
           {/* Row 1, Col 3: Customer GSTIN */}
           <div>
-            <label className="flex items-center justify-between text-slate-600 font-medium h-5 mb-1.5">
+            <label className="flex items-center justify-between text-slate-700 font-semibold h-5 mb-1.5">
               <span>Customer GSTIN</span>
-              <span className="text-[10px] text-slate-400">Optional</span>
+              <span className="text-[10px] text-slate-500 font-normal ml-2">Optional</span>
             </label>
             <input
               type="text"

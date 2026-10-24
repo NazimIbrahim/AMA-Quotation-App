@@ -67,11 +67,11 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
   const renderNavGroup = (title: string, items: typeof operationsNav) => (
     <div className="mb-4">
       <div className="px-3 mb-1.5">
-        <span className="text-[10px] font-bold tracking-wider text-[#778DA9] uppercase">
+        <span className="sidebar-heading">
           {title}
         </span>
       </div>
-      <div className="space-y-0.5">
+      <div className="space-y-1">
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -79,29 +79,23 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer text-left group border ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs cursor-pointer text-left ${
                 isActive
-                  ? 'bg-white/18 backdrop-blur-md text-white font-semibold border-white/30 shadow-lg shadow-black/25 translate-x-1'
+                  ? 'sidebar-nav-active'
                   : item.isAction
-                  ? 'text-[#E0E1DD] font-semibold bg-[#415A77]/40 backdrop-blur-sm border-[#778DA9]/35 hover:bg-[#415A77]/60 hover:border-white/20 hover:translate-x-1'
-                  : 'text-[#E0E1DD]/80 border-transparent hover:bg-white/10 hover:border-white/10 hover:text-white hover:translate-x-1'
+                  ? 'sidebar-nav-action'
+                  : 'sidebar-nav-item'
               }`}
             >
               <div className="flex items-center space-x-2.5">
                 <Icon
-                  size={15}
-                  className={`transition-transform duration-150 group-hover:scale-110 ${
-                    isActive
-                      ? 'text-[#E0E1DD]'
-                      : item.isAction
-                      ? 'text-[#778DA9]'
-                      : 'text-[#778DA9] group-hover:text-white'
-                  }`}
+                  size={16}
+                  className="nav-icon"
                 />
-                <span>{item.label}</span>
+                <span className="tracking-wide">{item.label}</span>
               </div>
               {item.isAction && !isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#778DA9] animate-pulse"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
               )}
             </button>
           );
@@ -131,7 +125,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
         </div>
         <div className="flex justify-between items-center text-[#778DA9] text-[10px] pt-0.5">
           <span>App Build:</span>
-          <span className="font-mono text-[#E0E1DD]/80">v1.3.0 (Win64)</span>
+          <span className="font-mono text-[#E0E1DD]/80">v1.3.1 (Win64)</span>
         </div>
       </div>
     </aside>
