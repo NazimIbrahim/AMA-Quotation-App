@@ -29,45 +29,33 @@ This system is engineered specifically for low-resource office environments (suc
 
 ## 1. Central Server Installation (Designated Server PC)
 
-### Step 1.1: Verify PostgreSQL 16 Service
-The central server requires PostgreSQL 16. Verify that the Windows service is running:
-```powershell
-Get-Service -Name postgresql-x64-16
-```
-To start the service if stopped:
-```cmd
-net start postgresql-x64-16
-```
+The entire Central Server environment can be installed and configured in **1 click** using either method below:
 
-### Step 1.2: Initialize Database and Seed Production Data
-Navigate to the `server` directory and run the initialization commands:
-```cmd
-cd "D:\AMA-Qutation App\server"
-npm run db:init
-npm run db:seed
-```
-This automatically:
-- Creates the `ama_quotations` database with sequence generators and optimistic concurrency control (OCC).
-- Applies all indexes, constraints, and audit logging tables.
-- Seeds default company profile (AMA CERAMICS PVT LTD), showroom bank details (ICICI Bank Dommasandra), 13 quotation terms, tile brands, size coverages, and default role users.
+### Option A: Standalone Setup Executable (Recommended for Non-Technical Users)
+1. Download `AMA-Ceramics-Host-Server-Setup-1.0.0.exe` from GitHub Releases.
+2. Run the installer as Administrator.
+3. The wizard extracts the server files, installs and initializes PostgreSQL 16, creates the database schema, opens Windows Firewall port 4000, and registers the background boot service automatically.
+4. Note the displayed Host Server IP address (e.g. `http://172.20.10.2:4000`).
 
-### Step 1.3: Configure Windows Firewall
-Run `scripts\setup_firewall.bat` as Administrator on the server PC, or execute:
-```cmd
-netsh advfirewall firewall add rule name="AMA Ceramics Quotation Server (TCP 4000)" dir=in action=allow protocol=TCP localport=4000 profile=private,domain
-```
+### Option B: 1-Click Setup Batch Launcher (From Source / Repository)
+1. Open the project root folder on the Host PC (`D:\AMA-Qutation App`).
+2. Double-click `Setup-Host-Server.bat`.
+3. Accept the Administrator UAC prompt.
+4. The automated script will:
+   - Verify/configure Node.js and PostgreSQL 16
+   - Create the `ama_quotations` database and run `schema.sql`
+   - Build the server bundle (`dist/server.js`)
+   - Add the Windows Firewall inbound rule for TCP Port 4000
+   - Register the Windows Task Scheduler background service `AMACeramicsServer` (auto-boot at startup)
+   - Perform a health check and print the LAN IP address for client connections.
 
-### Step 1.4: Identify the Server LAN IP Address
-Run `ipconfig` in the Command Prompt to find the server's IPv4 address:
-```cmd
-ipconfig | findstr /i "IPv4"
-```
-Example output: `IPv4 Address. . . . . . . . . . . : 172.20.10.2`
-
-### Step 1.5: Automatic Server Startup on Boot
-To ensure the server starts automatically when the computer boots:
-1. Double-click `scripts\start_server.bat` to launch the API and WebSocket engine.
-2. For production background service, register `scripts\start_server.bat` in Windows Task Scheduler with the trigger set to **"At system startup"** with highest privileges.
+### Managing the Host Server
+A desktop shortcut named **"AMA Host Server Control"** is placed on the host desktop. Double-clicking it opens an interactive menu allowing you to:
+- Check server online/offline health status
+- View active host IP addresses
+- Restart or stop the server service
+- Take immediate on-demand database backups
+- Open server logs
 
 ---
 
