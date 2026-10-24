@@ -35,6 +35,7 @@ export interface QuotationPdfData {
       description: string;
       size: string;
       brand: string;
+      product_type?: string;
       coverage_area: number;
       quantity_sqft: number;
       rate_per_sqft: number;
@@ -197,8 +198,8 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
     doc.text('Cov/Box', colX[3], y + 6, { width: colW[3], align: 'right' });
     doc.text('Sqft', colX[4], y + 6, { width: colW[4], align: 'right' });
     doc.text('Rate/Sqft', colX[5], y + 6, { width: colW[5], align: 'right' });
-    doc.text('Boxes', colX[6], y + 6, { width: colW[6], align: 'right' });
-    doc.text('Rate/Box', colX[7], y + 6, { width: colW[7], align: 'right' });
+    doc.text('Boxes/Qty', colX[6], y + 6, { width: colW[6], align: 'right' });
+    doc.text('Rate/Unit', colX[7], y + 6, { width: colW[7], align: 'right' });
     doc.text('Total', colX[8], y + 6, { width: colW[8], align: 'right' });
   }
 
@@ -239,17 +240,36 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
         currentY += 20;
       }
 
+      const pType = (item.product_type || 'box').toLowerCase();
+      let covText = Number(item.coverage_area).toFixed(1);
+      let sqftText = Number(item.quantity_sqft).toFixed(0);
+      let rateSqftText = formatCurrency(item.rate_per_sqft);
+      let qtyUnitText = Number(item.quantity_boxes).toFixed(0);
+      let rateUnitText = formatCurrency(item.rate_per_box);
+
+      if (pType === 'sqft') {
+        covText = '-';
+        qtyUnitText = '-';
+        rateUnitText = '-';
+      } else if (['bags', 'pieces', 'nos'].includes(pType)) {
+        covText = '-';
+        sqftText = '-';
+        rateSqftText = '-';
+        const suffix = pType === 'bags' ? 'Bags' : pType === 'pieces' ? 'Pcs' : 'Nos';
+        qtyUnitText = `${Number(item.quantity_boxes).toFixed(0)} ${suffix}`;
+      }
+
       doc.rect(30, currentY, 535, 16).stroke(tableBorder);
       doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
 
       doc.text(String(item.sl_no), colX[0], currentY + 4, { width: colW[0], align: 'center' });
       doc.text(item.description, colX[1], currentY + 4, { width: colW[1], ellipsis: true });
       doc.text(item.size, colX[2], currentY + 4, { width: colW[2], align: 'center' });
-      doc.text(Number(item.coverage_area).toFixed(1), colX[3], currentY + 4, { width: colW[3], align: 'right' });
-      doc.text(Number(item.quantity_sqft).toFixed(0), colX[4], currentY + 4, { width: colW[4], align: 'right' });
-      doc.text(formatCurrency(item.rate_per_sqft), colX[5], currentY + 4, { width: colW[5], align: 'right' });
-      doc.text(Number(item.quantity_boxes).toFixed(0), colX[6], currentY + 4, { width: colW[6], align: 'right' });
-      doc.text(formatCurrency(item.rate_per_box), colX[7], currentY + 4, { width: colW[7], align: 'right' });
+      doc.text(covText, colX[3], currentY + 4, { width: colW[3], align: 'right' });
+      doc.text(sqftText, colX[4], currentY + 4, { width: colW[4], align: 'right' });
+      doc.text(rateSqftText, colX[5], currentY + 4, { width: colW[5], align: 'right' });
+      doc.text(qtyUnitText, colX[6], currentY + 4, { width: colW[6], align: 'right' });
+      doc.text(rateUnitText, colX[7], currentY + 4, { width: colW[7], align: 'right' });
       doc.text(formatCurrency(item.total_amount), colX[8], currentY + 4, { width: colW[8], align: 'right' });
 
       currentY += 16;

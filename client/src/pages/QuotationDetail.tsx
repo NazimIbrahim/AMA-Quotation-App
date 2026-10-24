@@ -268,47 +268,75 @@ export const QuotationDetail: React.FC<Props> = ({
                     <th className="py-2 px-3">Description</th>
                     <th className="py-2 px-3">Brand</th>
                     <th className="py-2 px-3">Size</th>
+                    <th className="py-2 px-2.5">Type</th>
                     <th className="py-2 px-3 text-right">Cov/Box</th>
                     <th className="py-2 px-3 text-right">Sqft</th>
                     <th className="py-2 px-3 text-right">Rate/Sqft</th>
-                    <th className="py-2 px-3 text-right">Boxes</th>
-                    <th className="py-2 px-3 text-right">Rate/Box</th>
+                    <th className="py-2 px-3 text-right">Boxes/Qty</th>
+                    <th className="py-2 px-3 text-right">Rate/Unit</th>
                     <th className="py-2 px-3 text-right">Total (₹)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {area.items && area.items.length > 0 ? (
-                    area.items.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-2 px-3 text-center text-slate-400 font-mono">
-                          {item.sl_no}
-                        </td>
-                        <td className="py-2 px-3 font-semibold text-slate-900">{item.description}</td>
-                        <td className="py-2 px-3 text-slate-600">{item.brand}</td>
-                        <td className="py-2 px-3 text-slate-600 font-mono">{item.size}</td>
-                        <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
-                          {Number(item.coverage_area).toFixed(1)}
-                        </td>
-                        <td className="py-2 px-3 text-right font-medium tabular-nums">
-                          {item.quantity_sqft}
-                        </td>
-                        <td className="py-2 px-3 text-right tabular-nums">
-                          ₹ {formatCurrency(item.rate_per_sqft)}
-                        </td>
-                        <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
-                          {item.quantity_boxes}
-                        </td>
-                        <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
-                          ₹ {formatCurrency(item.rate_per_box)}
-                        </td>
-                        <td className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums">
-                          ₹ {formatCurrency(item.total_amount)}
-                        </td>
-                      </tr>
-                    ))
+                    area.items.map((item) => {
+                      const pType = (item.product_type || 'box').toLowerCase();
+                      const badgeStyles: Record<string, { label: string; cls: string }> = {
+                        box: { label: 'Box', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                        pieces: { label: 'Pcs', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+                        sqft: { label: 'Sq.Ft', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                        bags: { label: 'Bags', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                        nos: { label: 'Nos', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
+                      };
+                      const badge = badgeStyles[pType] || badgeStyles['box'];
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-2 px-3 text-center text-slate-400 font-mono">
+                            {item.sl_no}
+                          </td>
+                          <td className="py-2 px-3 font-semibold text-slate-900">{item.description}</td>
+                          <td className="py-2 px-3 text-slate-600">{item.brand}</td>
+                          <td className="py-2 px-3 text-slate-600 font-mono">{item.size}</td>
+                          <td className="py-2 px-2.5">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${badge.cls}`}>
+                              {badge.label}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
+                            {pType === 'box' ? Number(item.coverage_area).toFixed(1) : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-medium tabular-nums">
+                            {pType === 'box' || pType === 'sqft' ? item.quantity_sqft : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums">
+                            {pType === 'box' || pType === 'sqft' ? `₹ ${formatCurrency(item.rate_per_sqft)}` : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-700 font-semibold tabular-nums">
+                            {pType === 'sqft'
+                              ? '-'
+                              : `${item.quantity_boxes} ${
+                                  pType === 'bags'
+                                    ? 'Bags'
+                                    : pType === 'pieces'
+                                    ? 'Pcs'
+                                    : pType === 'nos'
+                                    ? 'Nos'
+                                    : 'Boxes'
+                                }`}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
+                            {pType === 'sqft' ? '-' : `₹ ${formatCurrency(item.rate_per_box)}`}
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums">
+                            ₹ {formatCurrency(item.total_amount)}
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
-                      <td colSpan={10} className="py-4 text-center text-slate-400">
+                      <td colSpan={11} className="py-4 text-center text-slate-400">
                         No line items recorded in this area.
                       </td>
                     </tr>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
-import { Quotation, QuotationArea, QuotationItem, Customer, TileBrand, BrandSizeCoverage, User } from '../types';
+import { Quotation, QuotationArea, QuotationItem, Customer, TileBrand, BrandSizeCoverage, User, ProductType } from '../types';
 import {
   Save,
   ArrowLeft,
@@ -278,6 +278,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           description: 'OMBRA EMERALD ULTRA - SS',
           size: '1200X1800',
           brand: 'Simpolo Ceramics',
+          product_type: 'box',
           coverage_area: 46.5,
           quantity_sqft: 326,
           rate_per_sqft: 145,
@@ -391,6 +392,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
       description: 'Vitrified Surface Tile',
       size: '1200X1800',
       brand: defaultBrand,
+      product_type: 'box',
       coverage_area: 46.5,
       quantity_sqft: 100,
       rate_per_sqft: 120,
@@ -407,7 +409,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     setAreas(newAreas);
   };
 
-  // Item Field Change with Bidirectional Sqft <-> Box Calculation
+  // Item Field Change with Bidirectional Sqft <-> Box / Unit Calculation
   const handleItemChange = (
     areaIdx: number,
     itemIdx: number,
@@ -416,6 +418,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   ) => {
     const newAreas = [...areas];
     const item = { ...newAreas[areaIdx].items[itemIdx], [field]: val };
+    const pType = (item.product_type || 'box').toLowerCase();
 
     const cov = parseFloat(String(item.coverage_area)) || 1;
     let sqft = parseFloat(String(item.quantity_sqft)) || 0;
@@ -427,35 +430,94 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     if (field === 'size') {
       const match = coverages.find((c) => c.size.toLowerCase() === String(val).toLowerCase());
       if (match) {
-        item.coverage_area = match.coverage_sqft;
-        item.rate_per_sqft = match.default_rate_sqft || rSqft;
-        item.rate_per_box = match.default_rate_box || (match.default_rate_sqft * match.coverage_sqft);
+        const matchedType = (match.product_type || 'box').toLowerCase();
+        item.product_type = matchedType as any;
+        if (matchedType === 'sqft') {
+          item.coverage_area = 0;
+          item.quantity_boxes = 0;
+          item.rate_per_box = 0;
+          item.rate_per_sqft = match.default_rate_sqft || rSqft;
+          item.total_amount = parseFloat((sqft * (match.default_rate_sqft || rSqft)).toFixed(2));
+        } else if (['bags', 'pieces', 'nos'].includes(matchedType)) {
+          item.coverage_area = 0;
+          item.quantity_sqft = 0;
+          item.rate_per_sqft = 0;
+          const unitRate = match.default_rate_box || match.default_rate_sqft || rBox;
+          item.rate_per_box = unitRate;
+          item.total_amount = parseFloat((boxes * unitRate).toFixed(2));
+        } else {
+          // 'box'
+          item.coverage_area = match.coverage_sqft;
+          item.rate_per_sqft = match.default_rate_sqft || rSqft;
+          item.rate_per_box = match.default_rate_box || (match.default_rate_sqft * match.coverage_sqft);
+          item.total_amount = parseFloat((sqft * (match.default_rate_sqft || rSqft)).toFixed(2));
+        }
       }
-    } else if (field === 'quantity_sqft') {
-      sqft = parseFloat(val) || 0;
-      boxes = cov > 0 ? parseFloat((sqft / cov).toFixed(2)) : 0;
-      item.quantity_boxes = boxes;
-      item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
-    } else if (field === 'quantity_boxes') {
-      boxes = parseFloat(val) || 0;
-      sqft = cov > 0 ? parseFloat((boxes * cov).toFixed(2)) : 0;
-      item.quantity_sqft = sqft;
-      item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
-    } else if (field === 'rate_per_sqft') {
-      rSqft = parseFloat(val) || 0;
-      rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : 0;
-      item.rate_per_box = rBox;
-      item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
-    } else if (field === 'rate_per_box') {
-      rBox = parseFloat(val) || 0;
-      rSqft = cov > 0 ? parseFloat((rBox / cov).toFixed(2)) : 0;
-      item.rate_per_sqft = rSqft;
-      item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
-    } else if (field === 'coverage_area') {
-      const newCov = parseFloat(val) || 1;
-      boxes = newCov > 0 ? parseFloat((sqft / newCov).toFixed(2)) : 0;
-      item.quantity_boxes = boxes;
-      item.rate_per_box = parseFloat((rSqft * newCov).toFixed(2));
+    } else if (field === 'product_type') {
+      const newType = String(val).toLowerCase();
+      item.product_type = newType as any;
+      if (newType === 'sqft') {
+        item.coverage_area = 0;
+        item.quantity_boxes = 0;
+        item.rate_per_box = 0;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      } else if (['bags', 'pieces', 'nos'].includes(newType)) {
+        item.coverage_area = 0;
+        item.quantity_sqft = 0;
+        item.rate_per_sqft = 0;
+        item.total_amount = parseFloat((boxes * rBox).toFixed(2));
+      } else {
+        // 'box'
+        boxes = cov > 0 ? parseFloat((sqft / cov).toFixed(2)) : 0;
+        rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : 0;
+        item.quantity_boxes = boxes;
+        item.rate_per_box = rBox;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      }
+    } else if (pType === 'sqft') {
+      if (field === 'quantity_sqft') {
+        sqft = parseFloat(val) || 0;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      } else if (field === 'rate_per_sqft') {
+        rSqft = parseFloat(val) || 0;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      }
+    } else if (['bags', 'pieces', 'nos'].includes(pType)) {
+      if (field === 'quantity_boxes') {
+        boxes = parseFloat(val) || 0;
+        item.total_amount = parseFloat((boxes * rBox).toFixed(2));
+      } else if (field === 'rate_per_box') {
+        rBox = parseFloat(val) || 0;
+        item.total_amount = parseFloat((boxes * rBox).toFixed(2));
+      }
+    } else {
+      // Standard 'box' bidirectional calculations
+      if (field === 'quantity_sqft') {
+        sqft = parseFloat(val) || 0;
+        boxes = cov > 0 ? parseFloat((sqft / cov).toFixed(2)) : 0;
+        item.quantity_boxes = boxes;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      } else if (field === 'quantity_boxes') {
+        boxes = parseFloat(val) || 0;
+        sqft = cov > 0 ? parseFloat((boxes * cov).toFixed(2)) : 0;
+        item.quantity_sqft = sqft;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      } else if (field === 'rate_per_sqft') {
+        rSqft = parseFloat(val) || 0;
+        rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : 0;
+        item.rate_per_box = rBox;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      } else if (field === 'rate_per_box') {
+        rBox = parseFloat(val) || 0;
+        rSqft = cov > 0 ? parseFloat((rBox / cov).toFixed(2)) : 0;
+        item.rate_per_sqft = rSqft;
+        item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
+      } else if (field === 'coverage_area') {
+        const newCov = parseFloat(val) || 1;
+        boxes = newCov > 0 ? parseFloat((sqft / newCov).toFixed(2)) : 0;
+        item.quantity_boxes = boxes;
+        item.rate_per_box = parseFloat((rSqft * newCov).toFixed(2));
+      }
     }
 
     newAreas[areaIdx].items[itemIdx] = item;
@@ -655,6 +717,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             description: it.description,
             brand: it.brand,
             size: it.size,
+            product_type: it.product_type || 'box',
             coverage_area: parseFloat(String(it.coverage_area)) || 0,
             quantity_sqft: parseFloat(String(it.quantity_sqft)) || 0,
             rate_per_sqft: parseFloat(String(it.rate_per_sqft)) || 0,
@@ -1398,159 +1461,253 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-600 font-semibold text-[11px]">
-                    <th className="py-2 px-2 text-center w-8">Sl</th>
-                    <th className="py-2 px-2 w-64">Tile Description</th>
-                    <th className="py-2 px-2 w-36">Brand</th>
-                    <th className="py-2 px-2 w-32">Size</th>
-                    <th className="py-2 px-2 text-right w-20">Cov/Box</th>
-                    <th className="py-2 px-2 text-right w-24">Sqft</th>
-                    <th className="py-2 px-2 text-right w-24">Rate/Sqft</th>
-                    <th className="py-2 px-2 text-right w-20">Boxes</th>
-                    <th className="py-2 px-2 text-right w-24">Rate/Box</th>
-                    <th className="py-2 px-2 text-right w-28">Total (₹)</th>
-                    <th className="py-2 px-2 text-center w-10">Del</th>
+                    <th className="py-2 px-1 text-center w-7">Sl</th>
+                    <th className="py-2 px-1.5 w-52">Tile Description</th>
+                    <th className="py-2 px-1.5 w-32">Brand</th>
+                    <th className="py-2 px-1.5 w-32">Size</th>
+                    <th className="py-2 px-1.5 w-24">Type</th>
+                    <th className="py-2 px-1.5 text-right w-16">Cov/Box</th>
+                    <th className="py-2 px-1.5 text-right w-20">Sqft</th>
+                    <th className="py-2 px-1.5 text-right w-20">Rate/Sqft</th>
+                    <th className="py-2 px-1.5 text-right w-20">Boxes/Qty</th>
+                    <th className="py-2 px-1.5 text-right w-20">Rate/Unit</th>
+                    <th className="py-2 px-1.5 text-right w-24">Total (₹)</th>
+                    <th className="py-2 px-1 text-center w-8">Del</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {area.items.map((item, itemIdx) => (
-                    <tr key={itemIdx} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-1.5 px-2 text-center font-mono text-slate-400">
-                        {item.sl_no}
-                      </td>
+                  {area.items.map((item, itemIdx) => {
+                    const pType = (item.product_type || 'box').toLowerCase();
 
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="text"
-                          className="input input-sm py-1 font-medium text-slate-900"
-                          value={item.description}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'description', e.target.value)
-                          }
-                          placeholder="Surface / Tile description"
-                        />
-                      </td>
+                    return (
+                      <tr key={itemIdx} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-1.5 px-1 text-center font-mono text-slate-400">
+                          {item.sl_no}
+                        </td>
 
-                      <td className="py-1.5 px-2">
-                        <select
-                          className="input input-sm py-1"
-                          value={item.brand}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'brand', e.target.value)
-                          }
-                        >
-                          {brands.length > 0 ? (
-                            brands.map((b) => (
-                              <option key={b.id} value={b.name}>
-                                {b.name}
-                              </option>
-                            ))
+                        <td className="py-1.5 px-1.5">
+                          <input
+                            type="text"
+                            className="input input-sm py-1 font-medium text-slate-900 w-full"
+                            value={item.description}
+                            onChange={(e) =>
+                              handleItemChange(areaIdx, itemIdx, 'description', e.target.value)
+                            }
+                            placeholder="Surface / Tile description"
+                          />
+                        </td>
+
+                        <td className="py-1.5 px-1.5">
+                          <select
+                            className="input input-sm py-1 w-full"
+                            value={item.brand}
+                            onChange={(e) =>
+                              handleItemChange(areaIdx, itemIdx, 'brand', e.target.value)
+                            }
+                          >
+                            {brands.length > 0 ? (
+                              brands.map((b) => (
+                                <option key={b.id} value={b.name}>
+                                  {b.name}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="Simpolo Ceramics">Simpolo Ceramics</option>
+                            )}
+                          </select>
+                        </td>
+
+                        <td className="py-1.5 px-1.5">
+                          <select
+                            className="input input-sm py-1 font-mono text-xs w-full"
+                            value={item.size}
+                            onChange={(e) =>
+                              handleItemChange(areaIdx, itemIdx, 'size', e.target.value)
+                            }
+                          >
+                            {coverages.length > 0 ? (
+                              coverages.map((c) => (
+                                <option key={c.id} value={c.size}>
+                                  {c.size} ({c.product_type || 'box'})
+                                </option>
+                              ))
+                            ) : (
+                              <>
+                                <option value="1200X1800">1200X1800 (box)</option>
+                                <option value="1200X2400">1200X2400 (box)</option>
+                                <option value="800X1600">800X1600 (box)</option>
+                                <option value="600X1200">600X1200 (box)</option>
+                              </>
+                            )}
+                          </select>
+                        </td>
+
+                        {/* Product Type selector */}
+                        <td className="py-1.5 px-1.5">
+                          <select
+                            className={`input input-sm py-1 font-semibold text-[11px] w-full ${
+                              pType === 'box'
+                                ? 'text-blue-700 bg-blue-50/50'
+                                : pType === 'sqft'
+                                ? 'text-emerald-700 bg-emerald-50/50'
+                                : pType === 'bags'
+                                ? 'text-amber-800 bg-amber-50/50'
+                                : pType === 'pieces'
+                                ? 'text-purple-800 bg-purple-50/50'
+                                : 'text-slate-800 bg-slate-100'
+                            }`}
+                            value={item.product_type || 'box'}
+                            onChange={(e) =>
+                              handleItemChange(areaIdx, itemIdx, 'product_type', e.target.value)
+                            }
+                          >
+                            <option value="box">Box</option>
+                            <option value="pieces">Pieces</option>
+                            <option value="sqft">Sq.Ft</option>
+                            <option value="bags">Bags</option>
+                            <option value="nos">Nos</option>
+                          </select>
+                        </td>
+
+                        {/* Coverage / Box */}
+                        <td className="py-1.5 px-1.5">
+                          {pType === 'box' ? (
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="input input-sm py-1 text-right text-slate-600 font-mono w-full"
+                              value={item.coverage_area}
+                              onChange={(e) =>
+                                handleItemChange(areaIdx, itemIdx, 'coverage_area', e.target.value)
+                              }
+                            />
                           ) : (
-                            <option value="Simpolo Ceramics">Simpolo Ceramics</option>
+                            <span className="text-slate-300 font-mono text-center block">-</span>
                           )}
-                        </select>
-                      </td>
+                        </td>
 
-                      <td className="py-1.5 px-2">
-                        <select
-                          className="input input-sm py-1 font-mono"
-                          value={item.size}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'size', e.target.value)
-                          }
-                        >
-                          {coverages.length > 0 ? (
-                            coverages.map((c) => (
-                              <option key={c.id} value={c.size}>
-                                {c.size} ({c.coverage_sqft} sqft)
-                              </option>
-                            ))
+                        {/* Quantity Sqft */}
+                        <td className="py-1.5 px-1.5">
+                          {pType === 'box' || pType === 'sqft' ? (
+                            <input
+                              type="number"
+                              step="1"
+                              className="input input-sm py-1 text-right font-semibold text-slate-900 tabular-nums w-full"
+                              placeholder="Sqft"
+                              value={item.quantity_sqft}
+                              onChange={(e) =>
+                                handleItemChange(areaIdx, itemIdx, 'quantity_sqft', e.target.value)
+                              }
+                            />
                           ) : (
-                            <>
-                              <option value="1200X1800">1200X1800</option>
-                              <option value="1200X2400">1200X2400</option>
-                              <option value="800X1600">800X1600</option>
-                              <option value="600X1200">600X1200</option>
-                            </>
+                            <span className="text-slate-300 font-mono text-center block">-</span>
                           )}
-                        </select>
-                      </td>
+                        </td>
 
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="number"
-                          step="0.1"
-                          className="input input-sm py-1 text-right text-slate-600 font-mono"
-                          value={item.coverage_area}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'coverage_area', e.target.value)
-                          }
-                        />
-                      </td>
+                        {/* Rate / Sqft */}
+                        <td className="py-1.5 px-1.5">
+                          {pType === 'box' || pType === 'sqft' ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="input input-sm py-1 text-right text-slate-700 tabular-nums w-full"
+                              placeholder="₹/Sqft"
+                              value={item.rate_per_sqft}
+                              onChange={(e) =>
+                                handleItemChange(areaIdx, itemIdx, 'rate_per_sqft', e.target.value)
+                              }
+                            />
+                          ) : (
+                            <span className="text-slate-300 font-mono text-center block">-</span>
+                          )}
+                        </td>
 
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="number"
-                          step="1"
-                          className="input input-sm py-1 text-right font-semibold text-slate-900 tabular-nums"
-                          value={item.quantity_sqft}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'quantity_sqft', e.target.value)
-                          }
-                        />
-                      </td>
+                        {/* Boxes / Unit Quantity */}
+                        <td className="py-1.5 px-1.5">
+                          {pType === 'sqft' ? (
+                            <span className="text-slate-300 font-mono text-center block">-</span>
+                          ) : (
+                            <input
+                              type="number"
+                              step={pType === 'box' ? '0.01' : '1'}
+                              className={`input input-sm py-1 text-right tabular-nums w-full ${
+                                pType === 'bags'
+                                  ? 'font-bold text-amber-900 bg-amber-50/50'
+                                  : pType === 'pieces'
+                                  ? 'font-bold text-purple-900 bg-purple-50/50'
+                                  : pType === 'nos'
+                                  ? 'font-bold text-slate-900 bg-slate-50'
+                                  : 'text-slate-600'
+                              }`}
+                              placeholder={
+                                pType === 'box'
+                                  ? 'Boxes'
+                                  : pType === 'bags'
+                                  ? 'Bags'
+                                  : pType === 'pieces'
+                                  ? 'Pcs'
+                                  : 'Nos'
+                              }
+                              value={item.quantity_boxes}
+                              onChange={(e) =>
+                                handleItemChange(areaIdx, itemIdx, 'quantity_boxes', e.target.value)
+                              }
+                            />
+                          )}
+                        </td>
 
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="input input-sm py-1 text-right text-slate-700 tabular-nums"
-                          value={item.rate_per_sqft}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'rate_per_sqft', e.target.value)
-                          }
-                        />
-                      </td>
+                        {/* Rate / Unit */}
+                        <td className="py-1.5 px-1.5">
+                          {pType === 'sqft' ? (
+                            <span className="text-slate-300 font-mono text-center block">-</span>
+                          ) : (
+                            <input
+                              type="number"
+                              step="0.01"
+                              className={`input input-sm py-1 text-right tabular-nums w-full ${
+                                pType === 'bags'
+                                  ? 'font-bold text-amber-900 bg-amber-50/50'
+                                  : pType === 'pieces'
+                                  ? 'font-bold text-purple-900 bg-purple-50/50'
+                                  : pType === 'nos'
+                                  ? 'font-bold text-slate-900 bg-slate-50'
+                                  : 'text-slate-700'
+                              }`}
+                              placeholder={
+                                pType === 'box'
+                                  ? '₹/Box'
+                                  : pType === 'bags'
+                                  ? '₹/Bag'
+                                  : pType === 'pieces'
+                                  ? '₹/Pc'
+                                  : '₹/No'
+                              }
+                              value={item.rate_per_box}
+                              onChange={(e) =>
+                                handleItemChange(areaIdx, itemIdx, 'rate_per_box', e.target.value)
+                              }
+                            />
+                          )}
+                        </td>
 
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="input input-sm py-1 text-right text-slate-600 tabular-nums"
-                          value={item.quantity_boxes}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'quantity_boxes', e.target.value)
-                          }
-                        />
-                      </td>
+                        {/* Total Amount */}
+                        <td className="py-1.5 px-1.5 text-right font-bold text-slate-900 tabular-nums">
+                          ₹ {formatCurrency(item.total_amount)}
+                        </td>
 
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="input input-sm py-1 text-right text-slate-700 tabular-nums"
-                          value={item.rate_per_box}
-                          onChange={(e) =>
-                            handleItemChange(areaIdx, itemIdx, 'rate_per_box', e.target.value)
-                          }
-                        />
-                      </td>
-
-                      <td className="py-1.5 px-2 text-right font-bold text-slate-900 tabular-nums">
-                        ₹ {formatCurrency(item.total_amount)}
-                      </td>
-
-                      <td className="py-1.5 px-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(areaIdx, itemIdx)}
-                          className="text-slate-400 hover:text-rose-600 transition-colors"
-                          title="Delete line"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="py-1.5 px-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(areaIdx, itemIdx)}
+                            className="text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Delete line"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -78,22 +78,29 @@ productsRouter.get('/coverages', async (req: Request, res: Response) => {
 // Create/Update brand size coverage
 productsRouter.post('/coverages', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
   try {
-    const { brand_id, size, coverage_sqft, pieces_per_box, default_rate_sqft, default_rate_box } = req.body;
+    const { brand_id, size, product_type, coverage_sqft, pieces_per_box, default_rate_sqft, default_rate_box } = req.body;
 
-    if (!brand_id || !size || !coverage_sqft) {
-      res.status(400).json({ error: 'Brand, size, and sqft coverage are required' });
+    if (!brand_id || !size) {
+      res.status(400).json({ error: 'Brand and size are required' });
       return;
     }
 
+    const validTypes = ['box', 'pieces', 'sqft', 'bags', 'nos'];
+    const pType = product_type && validTypes.includes(String(product_type).toLowerCase())
+      ? String(product_type).toLowerCase()
+      : 'box';
+
+    const cov = parseFloat(coverage_sqft) || (pType === 'box' ? 1.0 : 0.0);
+    const pcs = parseInt(pieces_per_box, 10) || 1;
     const rateSqft = parseFloat(default_rate_sqft) || 0;
-    const rateBox = parseFloat(default_rate_box) || (rateSqft * parseFloat(coverage_sqft));
+    const rateBox = parseFloat(default_rate_box) || (cov > 0 ? rateSqft * cov : rateSqft);
 
     const rows = await query(
       `INSERT INTO brand_size_coverages (
-        brand_id, size, coverage_sqft, pieces_per_box, default_rate_sqft, default_rate_box
-      ) VALUES ($1, $2, $3, $4, $5, $6)
+        brand_id, size, product_type, coverage_sqft, pieces_per_box, default_rate_sqft, default_rate_box
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *`,
-      [brand_id, size.trim(), parseFloat(coverage_sqft), parseInt(pieces_per_box, 10) || 1, rateSqft, rateBox]
+      [brand_id, size.trim(), pType, cov, pcs, rateSqft, rateBox]
     );
 
     res.status(201).json({ coverage: rows[0] });

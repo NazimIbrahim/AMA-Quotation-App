@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
-import { TileBrand, BrandSizeCoverage } from '../types';
+import { TileBrand, BrandSizeCoverage, ProductType } from '../types';
 import { Layers, Plus, Tag, RefreshCw, X } from 'lucide-react';
 
 export const ProductManagement: React.FC = () => {
@@ -21,6 +21,7 @@ export const ProductManagement: React.FC = () => {
   // New Coverage Modal
   const [coverageModal, setCoverageModal] = useState(false);
   const [covBrandId, setCovBrandId] = useState<number>(0);
+  const [productType, setProductType] = useState<ProductType>('box');
   const [size, setSize] = useState('1200X1800');
   const [coverageSqft, setCoverageSqft] = useState('46.5');
   const [piecesPerBox, setPiecesPerBox] = useState('2');
@@ -74,15 +75,18 @@ export const ProductManagement: React.FC = () => {
         body: JSON.stringify({
           brand_id: covBrandId || selectedBrandId,
           size,
-          coverage_sqft: coverageSqft,
-          pieces_per_box: piecesPerBox,
-          default_rate_sqft: rateSqft,
+          product_type: productType,
+          coverage_sqft: productType === 'box' ? coverageSqft : '0',
+          pieces_per_box: productType === 'box' ? piecesPerBox : '1',
+          default_rate_sqft: productType === 'sqft' || productType === 'box' ? rateSqft : '0',
+          default_rate_box: productType !== 'box' && productType !== 'sqft' ? rateSqft : undefined,
         }),
       });
       setCoverageModal(false);
+      setProductType('box');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to add size coverage');
+      alert(err.message || 'Failed to add size specification');
     }
   };
 
@@ -160,36 +164,71 @@ export const ProductManagement: React.FC = () => {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-gray-200 text-gray-600 bg-gray-50/50">
-                  <th className="py-2.5 px-3">Tile Size</th>
-                  <th className="py-2.5 px-3 text-right">Coverage / Box (Sqft)</th>
-                  <th className="py-2.5 px-3 text-right">Pieces / Box</th>
-                  <th className="py-2.5 px-3 text-right">Default Rate / Sqft</th>
-                  <th className="py-2.5 px-3 text-right">Default Rate / Box</th>
+                  <th className="py-2.5 px-3">Size / Specification</th>
+                  <th className="py-2.5 px-3">Product Type</th>
+                  <th className="py-2.5 px-3 text-right">Coverage / Packaging</th>
+                  <th className="py-2.5 px-3 text-right">Default Rate</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredCoverages.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-gray-400">
+                    <td colSpan={4} className="py-8 text-center text-gray-400">
                       No size formulas recorded for this brand. Click "+ Add Size Formula" above.
                     </td>
                   </tr>
                 ) : (
-                  filteredCoverages.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50">
-                      <td className="py-2.5 px-3 font-bold text-gray-900">{c.size}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-800 font-semibold">
-                        {Number(c.coverage_sqft).toFixed(2)} sqft
-                      </td>
-                      <td className="py-2.5 px-3 text-right text-gray-600">{c.pieces_per_box} pcs</td>
-                      <td className="py-2.5 px-3 text-right font-medium text-primary">
-                        ₹ {Number(c.default_rate_sqft).toFixed(2)}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-gray-900">
-                        ₹ {Number(c.default_rate_box).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))
+                  filteredCoverages.map((c) => {
+                    const pType = c.product_type || 'box';
+                    const badgeStyles: Record<string, { label: string; cls: string }> = {
+                      box: { label: 'Boxes (Box)', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                      pieces: { label: 'Pieces (Pcs)', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+                      sqft: { label: 'Square Feet (Sq.Ft)', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                      bags: { label: 'Bags (Bag)', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                      nos: { label: 'Numbers (Nos)', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
+                    };
+                    const badge = badgeStyles[pType] || badgeStyles['box'];
+
+                    return (
+                      <tr key={c.id} className="hover:bg-gray-50">
+                        <td className="py-2.5 px-3 font-bold text-gray-900">{c.size}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${badge.cls}`}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-700 font-medium">
+                          {pType === 'box'
+                            ? `${Number(c.coverage_sqft).toFixed(2)} sqft/box (${c.pieces_per_box} pcs)`
+                            : pType === 'sqft'
+                            ? '1.00 Sq.Ft Unit'
+                            : pType === 'bags'
+                            ? '1 Bag Packaging'
+                            : pType === 'pieces'
+                            ? '1 Piece Unit'
+                            : '1 Unit (Nos)'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-gray-900">
+                          {pType === 'box' ? (
+                            <span>
+                              ₹ {Number(c.default_rate_sqft).toFixed(2)} <span className="text-[10px] text-gray-500 font-normal">/ sqft</span> (₹ {Number(c.default_rate_box).toFixed(2)} / box)
+                            </span>
+                          ) : pType === 'sqft' ? (
+                            <span>
+                              ₹ {Number(c.default_rate_sqft).toFixed(2)} <span className="text-[10px] text-gray-500 font-normal">/ sqft</span>
+                            </span>
+                          ) : (
+                            <span>
+                              ₹ {Number(c.default_rate_box || c.default_rate_sqft).toFixed(2)}{' '}
+                              <span className="text-[10px] text-gray-500 font-normal">
+                                / {pType === 'bags' ? 'bag' : pType === 'pieces' ? 'pc' : 'no'}
+                              </span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -267,42 +306,83 @@ export const ProductManagement: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {/* Product Type / Packaging Unit */}
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">Tile Dimensions (Size) *</label>
+                <label className="block text-gray-700 font-semibold mb-1">Product Type / Packaging Unit *</label>
+                <select
+                  className="input input-sm font-semibold text-primary"
+                  value={productType}
+                  onChange={(e) => setProductType(e.target.value as ProductType)}
+                >
+                  <option value="box">Boxes (Box) — Default Tile Packaging</option>
+                  <option value="pieces">Pieces (Pcs) — Single Tiles / Slabs</option>
+                  <option value="sqft">Square Feet (Sq.Ft) — Direct Area Sizing</option>
+                  <option value="bags">Bags (Bag) — Adhesives / Grouts / Mortar</option>
+                  <option value="nos">Numbers (Nos) — Accessories / Trims / Spacers</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">Dimensions / Spec Name *</label>
                 <input
                   type="text"
                   className="input input-sm"
                   value={size}
                   onChange={(e) => setSize(e.target.value)}
-                  placeholder="e.g. 1200X1800, 600X1200"
+                  placeholder={
+                    productType === 'box'
+                      ? 'e.g. 1200X1800, 600X1200'
+                      : productType === 'sqft'
+                      ? 'e.g. Custom Cut Sqft, Polished Slab'
+                      : productType === 'bags'
+                      ? 'e.g. 20kg Bag, 5kg Epoxy Grout'
+                      : productType === 'pieces'
+                      ? 'e.g. 800X1600 Step Tile, Bullnose'
+                      : 'e.g. Tile Spacers 2mm, Leveling Clips'
+                  }
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-1">Sqft per Box *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input input-sm"
-                    value={coverageSqft}
-                    onChange={(e) => setCoverageSqft(e.target.value)}
-                    required
-                  />
+
+              {productType === 'box' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-1">Sqft per Box *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input input-sm"
+                      value={coverageSqft}
+                      onChange={(e) => setCoverageSqft(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-1">Pieces per Box</label>
+                    <input
+                      type="number"
+                      className="input input-sm"
+                      value={piecesPerBox}
+                      onChange={(e) => setPiecesPerBox(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-1">Pieces per Box</label>
-                  <input
-                    type="number"
-                    className="input input-sm"
-                    value={piecesPerBox}
-                    onChange={(e) => setPiecesPerBox(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
+              )}
+
               <div>
-                <label className="block text-gray-700 font-semibold mb-1">Default Rate per Sqft (INR)</label>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  {productType === 'box'
+                    ? 'Default Rate per Sqft (INR) *'
+                    : productType === 'sqft'
+                    ? 'Default Rate per Sqft (INR) *'
+                    : productType === 'bags'
+                    ? 'Default Rate per Bag (INR) *'
+                    : productType === 'pieces'
+                    ? 'Default Rate per Piece (INR) *'
+                    : 'Default Rate per No (INR) *'}
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -312,12 +392,13 @@ export const ProductManagement: React.FC = () => {
                   required
                 />
               </div>
+
               <div className="flex justify-end space-x-2 pt-2 border-t">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCoverageModal(false)}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary btn-sm">
-                  Save Formula
+                  Save Specification
                 </button>
               </div>
             </form>

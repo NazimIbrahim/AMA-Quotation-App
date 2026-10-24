@@ -286,9 +286,18 @@ quotationsRouter.get('/:id', async (req: Request, res: Response) => {
 function calculateTotals(items: any[], discountPercent: number, discountAmount: number, taxType: string) {
   let grossTotal = 0;
   for (const it of items) {
-    const qtySqft = parseFloat(it.quantity_sqft) || 0;
-    const rateSqft = parseFloat(it.rate_per_sqft) || 0;
-    const total = parseFloat((qtySqft * rateSqft).toFixed(2));
+    const pType = String(it.product_type || 'box').toLowerCase();
+    let total = 0;
+    if (['bags', 'pieces', 'nos'].includes(pType)) {
+      const qty = parseFloat(it.quantity_boxes) || 0;
+      const rate = parseFloat(it.rate_per_box) || 0;
+      total = parseFloat((qty * rate).toFixed(2));
+    } else {
+      // 'box' or 'sqft'
+      const qtySqft = parseFloat(it.quantity_sqft) || 0;
+      const rateSqft = parseFloat(it.rate_per_sqft) || 0;
+      total = parseFloat((qtySqft * rateSqft).toFixed(2));
+    }
     it.total_amount = total;
     grossTotal += total;
   }
@@ -488,18 +497,34 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
 
         if (Array.isArray(area.items)) {
           for (const item of area.items) {
+            const pType = String(item.product_type || 'box').toLowerCase();
             const cov = parseFloat(item.coverage_area) || 0;
-            const sqft = parseFloat(item.quantity_sqft) || 0;
-            const rSqft = parseFloat(item.rate_per_sqft) || 0;
-            const boxes = cov > 0 ? parseFloat((sqft / cov).toFixed(2)) : parseFloat(item.quantity_boxes) || 0;
-            const rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : parseFloat(item.rate_per_box) || 0;
-            const total = parseFloat((sqft * rSqft).toFixed(2));
+            let sqft = parseFloat(item.quantity_sqft) || 0;
+            let rSqft = parseFloat(item.rate_per_sqft) || 0;
+            let boxes = parseFloat(item.quantity_boxes) || 0;
+            let rBox = parseFloat(item.rate_per_box) || 0;
+            let total = 0;
+
+            if (pType === 'sqft') {
+              total = parseFloat((sqft * rSqft).toFixed(2));
+              boxes = 0;
+              rBox = 0;
+            } else if (['bags', 'pieces', 'nos'].includes(pType)) {
+              total = parseFloat((boxes * rBox).toFixed(2));
+              sqft = 0;
+              rSqft = 0;
+            } else {
+              // 'box'
+              boxes = cov > 0 ? parseFloat((sqft / cov).toFixed(2)) : boxes;
+              rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : rBox;
+              total = parseFloat((sqft * rSqft).toFixed(2));
+            }
 
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
-                coverage_area, quantity_sqft, rate_per_sqft, quantity_boxes, rate_per_box, total_amount
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                product_type, coverage_area, quantity_sqft, rate_per_sqft, quantity_boxes, rate_per_box, total_amount
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
               [
                 newQ.id,
                 areaId,
@@ -507,6 +532,7 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
                 item.description || 'Vitrified Tile',
                 item.size || 'Standard',
                 item.brand || 'AMA Collection',
+                pType,
                 cov,
                 sqft,
                 rSqft,
@@ -730,18 +756,34 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
 
         if (Array.isArray(area.items)) {
           for (const item of area.items) {
+            const pType = String(item.product_type || 'box').toLowerCase();
             const cov = parseFloat(item.coverage_area) || 0;
-            const sqft = parseFloat(item.quantity_sqft) || 0;
-            const rSqft = parseFloat(item.rate_per_sqft) || 0;
-            const boxes = cov > 0 ? parseFloat((sqft / cov).toFixed(2)) : parseFloat(item.quantity_boxes) || 0;
-            const rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : parseFloat(item.rate_per_box) || 0;
-            const total = parseFloat((sqft * rSqft).toFixed(2));
+            let sqft = parseFloat(item.quantity_sqft) || 0;
+            let rSqft = parseFloat(item.rate_per_sqft) || 0;
+            let boxes = parseFloat(item.quantity_boxes) || 0;
+            let rBox = parseFloat(item.rate_per_box) || 0;
+            let total = 0;
+
+            if (pType === 'sqft') {
+              total = parseFloat((sqft * rSqft).toFixed(2));
+              boxes = 0;
+              rBox = 0;
+            } else if (['bags', 'pieces', 'nos'].includes(pType)) {
+              total = parseFloat((boxes * rBox).toFixed(2));
+              sqft = 0;
+              rSqft = 0;
+            } else {
+              // 'box'
+              boxes = cov > 0 ? parseFloat((sqft / cov).toFixed(2)) : boxes;
+              rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : rBox;
+              total = parseFloat((sqft * rSqft).toFixed(2));
+            }
 
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
-                coverage_area, quantity_sqft, rate_per_sqft, quantity_boxes, rate_per_box, total_amount
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                product_type, coverage_area, quantity_sqft, rate_per_sqft, quantity_boxes, rate_per_box, total_amount
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
               [
                 id,
                 areaId,
@@ -749,6 +791,7 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
                 item.description || 'Tile Item',
                 item.size || '',
                 item.brand || '',
+                pType,
                 cov,
                 sqft,
                 rSqft,

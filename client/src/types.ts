@@ -32,11 +32,14 @@ export interface TileBrand {
   is_active: boolean;
 }
 
+export type ProductType = 'box' | 'pieces' | 'sqft' | 'bags' | 'nos';
+
 export interface BrandSizeCoverage {
   id: number;
   brand_id: number;
   brand_name?: string;
   size: string;
+  product_type?: ProductType;
   coverage_sqft: number;
   pieces_per_box: number;
   default_rate_sqft: number;
@@ -51,6 +54,7 @@ export interface QuotationItem {
   description: string;
   size: string;
   brand: string;
+  product_type?: ProductType;
   coverage_area: number;
   quantity_sqft: number;
   rate_per_sqft: number;
