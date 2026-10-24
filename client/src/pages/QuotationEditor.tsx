@@ -412,22 +412,55 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   const handleAddItem = (areaIdx: number) => {
     const newAreas = [...areas];
     const defaultBrand = brands[0]?.name || 'Simpolo Ceramics';
+    const brandObj = brands[0];
+    const brandSizes = coverages.filter(
+      (c) =>
+        (brandObj && c.brand_id === brandObj.id) ||
+        (c.brand_name && c.brand_name.toLowerCase() === defaultBrand.toLowerCase())
+    );
+    const firstCov = brandSizes[0];
+    const defaultSize = firstCov?.size || '1200X1800';
+    const defaultProductType = ((firstCov?.product_type || 'box').toLowerCase()) as ProductType;
+    const defaultCovSqft = firstCov?.coverage_sqft ?? 46.5;
+    const defaultRateSqft = firstCov?.default_rate_sqft ?? 120;
+    const defaultRateBox =
+      firstCov?.default_rate_box ??
+      (defaultProductType === 'box' ? defaultRateSqft * defaultCovSqft : 5580);
+
+    const isBox = defaultProductType === 'box';
+    const isSqft = defaultProductType === 'sqft';
+    const isUnit = ['bags', 'pieces', 'nos'].includes(defaultProductType);
+
+    const initialSqft = isBox || isSqft ? 100 : 0;
+    const initialBoxes = isBox
+      ? defaultCovSqft > 0
+        ? parseFloat((100 / defaultCovSqft).toFixed(2))
+        : 2.15
+      : isUnit
+      ? 10
+      : 0;
+
+    const initialTotal =
+      isBox || isSqft
+        ? parseFloat((initialSqft * defaultRateSqft).toFixed(2))
+        : parseFloat((initialBoxes * defaultRateBox).toFixed(2));
+
     newAreas[areaIdx].items.push({
-      sl_no: 1,
+      sl_no: newAreas[areaIdx].items.length + 1,
       description: 'Vitrified Surface Tile',
-      size: '1200X1800',
+      size: defaultSize,
       brand: defaultBrand,
-      product_type: 'box',
-      coverage_area: 46.5,
-      quantity_sqft: 100,
-      base_rate_per_sqft: 120,
-      rate_per_sqft: 120,
-      quantity_boxes: 2.15,
-      base_rate_per_box: 5580,
-      rate_per_box: 5580,
+      product_type: defaultProductType,
+      coverage_area: isBox ? defaultCovSqft : 0,
+      quantity_sqft: initialSqft,
+      base_rate_per_sqft: defaultRateSqft,
+      rate_per_sqft: defaultRateSqft,
+      quantity_boxes: initialBoxes,
+      base_rate_per_box: defaultRateBox,
+      rate_per_box: defaultRateBox,
       discount_percent: 0,
       discount_amount: 0,
-      total_amount: 12000,
+      total_amount: initialTotal,
     });
     setAreas(newAreas);
   };
@@ -456,8 +489,69 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     let rBox = parseFloat(String(item.rate_per_box)) || 0;
 
     // Automatic calculation dependencies
-    if (field === 'size') {
-      const match = coverages.find((c) => c.size.toLowerCase() === String(val).toLowerCase());
+    if (field === 'brand') {
+      const selectedBrandName = String(val);
+      item.brand = selectedBrandName;
+      const brandObj = brands.find(
+        (b) => b.name.toLowerCase() === selectedBrandName.toLowerCase()
+      );
+      const brandSizes = coverages.filter(
+        (c) =>
+          (brandObj && c.brand_id === brandObj.id) ||
+          (c.brand_name && c.brand_name.toLowerCase() === selectedBrandName.toLowerCase())
+      );
+
+      // Check if current item.size exists in the newly selected brand
+      const currentSizeMatch = brandSizes.find(
+        (c) => c.size.toLowerCase() === (item.size || '').toLowerCase()
+      );
+
+      const targetCoverage = currentSizeMatch || brandSizes[0];
+      if (targetCoverage) {
+        item.size = targetCoverage.size;
+        const matchedType = (targetCoverage.product_type || 'box').toLowerCase();
+        item.product_type = matchedType as any;
+        if (matchedType === 'sqft') {
+          item.coverage_area = 0;
+          item.quantity_boxes = 0;
+          item.rate_per_box = 0;
+          item.base_rate_per_box = 0;
+          item.base_rate_per_sqft = targetCoverage.default_rate_sqft || rSqft;
+          item.rate_per_sqft = item.base_rate_per_sqft;
+          item.total_amount = parseFloat((sqft * item.rate_per_sqft).toFixed(2));
+        } else if (['bags', 'pieces', 'nos'].includes(matchedType)) {
+          item.coverage_area = 0;
+          item.quantity_sqft = 0;
+          item.rate_per_sqft = 0;
+          item.base_rate_per_sqft = 0;
+          const unitRate = targetCoverage.default_rate_box || targetCoverage.default_rate_sqft || rBox;
+          item.base_rate_per_box = unitRate;
+          item.rate_per_box = unitRate;
+          item.total_amount = parseFloat((boxes * unitRate).toFixed(2));
+        } else {
+          // 'box'
+          item.coverage_area = targetCoverage.coverage_sqft;
+          item.base_rate_per_sqft = targetCoverage.default_rate_sqft || rSqft;
+          item.rate_per_sqft = item.base_rate_per_sqft;
+          item.base_rate_per_box = targetCoverage.default_rate_box || (item.base_rate_per_sqft * targetCoverage.coverage_sqft);
+          item.rate_per_box = item.base_rate_per_box;
+          if (targetCoverage.coverage_sqft > 0 && sqft > 0) {
+            item.quantity_boxes = parseFloat((sqft / targetCoverage.coverage_sqft).toFixed(2));
+          }
+          item.total_amount = parseFloat((sqft * item.rate_per_sqft).toFixed(2));
+        }
+      }
+    } else if (field === 'size') {
+      const brandObj = brands.find(
+        (b) => b.name.toLowerCase() === (item.brand || '').toLowerCase()
+      );
+      const match = coverages.find(
+        (c) =>
+          ((brandObj && c.brand_id === brandObj.id) ||
+            (c.brand_name && c.brand_name.toLowerCase() === (item.brand || '').toLowerCase())) &&
+          c.size.toLowerCase() === String(val).toLowerCase()
+      ) || coverages.find((c) => c.size.toLowerCase() === String(val).toLowerCase());
+
       if (match) {
         const matchedType = (match.product_type || 'box').toLowerCase();
         item.product_type = matchedType as any;
@@ -485,6 +579,9 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           item.rate_per_sqft = item.base_rate_per_sqft;
           item.base_rate_per_box = match.default_rate_box || (item.base_rate_per_sqft * match.coverage_sqft);
           item.rate_per_box = item.base_rate_per_box;
+          if (match.coverage_sqft > 0 && sqft > 0) {
+            item.quantity_boxes = parseFloat((sqft / match.coverage_sqft).toFixed(2));
+          }
           item.total_amount = parseFloat((sqft * item.rate_per_sqft).toFixed(2));
         }
       }
@@ -1590,28 +1687,50 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         </td>
 
                         <td className="align-top py-1.5 px-2">
-                          <select
-                            className="select select-sm py-1 font-mono text-xs w-full"
-                            value={item.size}
-                            onChange={(e) =>
-                              handleItemChange(areaIdx, itemIdx, 'size', e.target.value)
-                            }
-                          >
-                            {coverages.length > 0 ? (
-                              coverages.map((c) => (
-                                <option key={c.id} value={c.size}>
-                                  {c.size} ({c.product_type || 'box'})
-                                </option>
-                              ))
-                            ) : (
-                              <>
-                                <option value="1200X1800">1200X1800 (box)</option>
-                                <option value="1200X2400">1200X2400 (box)</option>
-                                <option value="800X1600">800X1600 (box)</option>
-                                <option value="600X1200">600X1200 (box)</option>
-                              </>
-                            )}
-                          </select>
+                          {(() => {
+                            const selectedBrandObj = brands.find(
+                              (b) => b.name.toLowerCase() === (item.brand || '').toLowerCase()
+                            );
+                            const rowBrandSizes = coverages.filter(
+                              (c) =>
+                                (selectedBrandObj && c.brand_id === selectedBrandObj.id) ||
+                                (c.brand_name && c.brand_name.toLowerCase() === (item.brand || '').toLowerCase())
+                            );
+                            const hasCurrentSize = rowBrandSizes.some(
+                              (c) => c.size.toLowerCase() === (item.size || '').toLowerCase()
+                            );
+
+                            return (
+                              <select
+                                className="select select-sm py-1 font-mono text-xs w-full"
+                                value={item.size}
+                                onChange={(e) =>
+                                  handleItemChange(areaIdx, itemIdx, 'size', e.target.value)
+                                }
+                              >
+                                {rowBrandSizes.length > 0 ? (
+                                  <>
+                                    {item.size && !hasCurrentSize && (
+                                      <option value={item.size}>
+                                        {item.size} ({item.product_type || 'box'})
+                                      </option>
+                                    )}
+                                    {rowBrandSizes.map((c) => (
+                                      <option key={c.id} value={c.size}>
+                                        {c.size} ({c.product_type || 'box'})
+                                      </option>
+                                    ))}
+                                  </>
+                                ) : (
+                                  <option value={item.size || ''}>
+                                    {item.size
+                                      ? `${item.size} (${item.product_type || 'box'})`
+                                      : 'No sizes configured'}
+                                  </option>
+                                )}
+                              </select>
+                            );
+                          })()}
                         </td>
 
                         {/* Product Type selector */}
