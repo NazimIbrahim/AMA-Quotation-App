@@ -157,7 +157,7 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
     // Status-wise quotation summary (split-aware for both primary and assisted salesperson)
     const statusRows = await query(
       `SELECT
-        q.status,
+        LOWER(q.status) as status,
         count(*) as count,
         COALESCE(SUM(
           CASE
@@ -178,7 +178,7 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
         ), 0) as total_val
        FROM quotations q
        WHERE (q.sales_person_id = $1 OR q.assisted_sales_person_id = $1)
-       GROUP BY q.status`,
+       GROUP BY LOWER(q.status)`,
       [userId]
     );
 
@@ -186,15 +186,21 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
     let totalQuotes = 0;
     let totalQuoted = 0;
     let approvedRevenue = 0;
+    let pipelineRevenue = 0;
+    let pipelineQuotes = 0;
 
     statusRows.forEach((r: any) => {
       const c = parseInt(r.count, 10);
       const v = parseFloat(r.total_val);
-      statusMap[r.status] = { count: c, val: v };
+      const st = String(r.status).toLowerCase();
+      statusMap[st] = { count: c, val: v };
       totalQuotes += c;
       totalQuoted += v;
-      if (['approved', 'closed'].includes(r.status)) {
+      if (['approved', 'closed'].includes(st)) {
         approvedRevenue += v;
+      } else if (['draft', 'in_review'].includes(st)) {
+        pipelineRevenue += v;
+        pipelineQuotes += c;
       }
     });
 
@@ -227,6 +233,7 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
 
     const target = parseFloat(salesperson.monthly_target) || 0;
     const targetPercent = target > 0 ? parseFloat(((approvedRevenue / target) * 100).toFixed(1)) : 0;
+    const quotedPercent = target > 0 ? parseFloat(((totalQuoted / target) * 100).toFixed(1)) : 0;
 
     res.json({
       salesperson,
@@ -234,10 +241,13 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
         totalQuotes,
         totalQuoted,
         approvedRevenue,
+        pipelineRevenue,
+        pipelineQuotes,
         totalCollected,
         outstanding,
         target,
         targetPercent,
+        quotedPercent,
         statusMap,
       },
     });

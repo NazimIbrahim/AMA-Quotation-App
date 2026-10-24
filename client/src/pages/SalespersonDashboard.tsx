@@ -399,7 +399,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
             </div>
 
             {/* Achievement progress bar */}
-            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-3 border border-slate-200">
+            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-2.5 border border-slate-200">
               <div
                 className="bg-blue-600 h-full transition-all"
                 style={{
@@ -407,9 +407,19 @@ export const SalespersonDashboard: React.FC<Props> = ({
                 }}
               />
             </div>
+
+            {/* Pipeline subline */}
+            {Boolean(salespersonStats?.metrics?.pipelineRevenue) && (
+              <div className="mt-2 text-[10px] text-amber-700 bg-amber-50/80 px-2 py-0.5 rounded border border-amber-200/80 flex items-center justify-between">
+                <span>Active Pipeline:</span>
+                <span className="font-bold font-mono">
+                  ₹ {formatCurrency(salespersonStats?.metrics?.pipelineRevenue || 0)}
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="flex justify-between items-center text-[11px] mt-3 pt-2 border-t border-slate-100">
+          <div className="flex justify-between items-center text-[11px] mt-2.5 pt-2 border-t border-slate-100">
             <span className="text-slate-500">Target Progress</span>
             <span className="font-bold text-blue-700 tabular-nums font-mono">
               {salespersonStats?.metrics?.targetPercent || 0}% Achieved

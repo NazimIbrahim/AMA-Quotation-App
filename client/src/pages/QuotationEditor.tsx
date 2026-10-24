@@ -59,6 +59,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
   const [version, setVersion] = useState<number>(1);
   const [quotationNumber, setQuotationNumber] = useState<string>('');
+  const [status, setStatus] = useState<'draft' | 'in_review' | 'approved' | 'closed'>('draft');
 
   // Split Sales / Assisted Salesperson State
   const [enableSplitSale, setEnableSplitSale] = useState(false);
@@ -325,6 +326,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           setTaxType(q.tax_type || 'cgst_sgst');
           setVersion(q.version || 1);
           setQuotationNumber(q.quotation_number);
+          setStatus((q.status as any) || 'draft');
           setPrimarySalesPersonName(q.sales_person_name || '');
 
           if (q.assisted_sales_person_id) {
@@ -633,6 +635,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         site_location: siteLocation,
         project_name: projectName,
         quotation_date: quotationDate,
+        status: status,
         tax_type: taxType,
         special_notes: specialNotes,
         discount_percent: discountPercent,
@@ -934,6 +937,33 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
               value={quotationDate}
               onChange={(e) => setQuotationDate(e.target.value)}
             />
+          </div>
+
+          {/* Deal Stage / Quotation Status */}
+          <div>
+            <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+              <span>Deal Stage / Status</span>
+              {['approved', 'closed'].includes(status) && (
+                <span className="text-[10px] text-emerald-600 font-medium flex items-center">
+                  <CheckCircle2 size={11} className="inline mr-0.5" />
+                  <span>Target Credit</span>
+                </span>
+              )}
+            </label>
+            <select
+              className={`select select-sm w-full font-medium ${
+                ['approved', 'closed'].includes(status)
+                  ? 'border-emerald-500 bg-emerald-50/50 text-emerald-900 font-semibold'
+                  : 'text-slate-800'
+              }`}
+              value={status}
+              onChange={(e) => setStatus(e.target.value as any)}
+            >
+              <option value="draft">Draft (In Progress)</option>
+              <option value="in_review">In Review (Pending Confirmation)</option>
+              <option value="approved">Approved (Order Confirmed — Adds to Target)</option>
+              <option value="closed">Closed (Won / Deal Closed — Adds to Target)</option>
+            </select>
           </div>
 
           {/* Project / Villa Name */}

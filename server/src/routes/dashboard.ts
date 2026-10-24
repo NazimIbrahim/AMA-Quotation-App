@@ -9,32 +9,119 @@ dashboardRouter.use(authenticateToken);
 dashboardRouter.get('/summary', async (req: Request, res: Response) => {
   try {
     const isSalesperson = req.user!.role === 'salesperson';
-    const filterUser = isSalesperson ? `WHERE sales_person_id = ${req.user!.id}` : '';
+    const filterUser = isSalesperson
+      ? `WHERE (q.sales_person_id = ${req.user!.id} OR q.assisted_sales_person_id = ${req.user!.id})`
+      : '';
 
-    // Status breakdown
+    // Status breakdown (split-aware when salesperson)
     const statusCounts = await query(`
-      SELECT status, count(*) as count, COALESCE(sum(net_total), 0) as total_val
-      FROM quotations
+      SELECT LOWER(q.status) as status, count(*) as count,
+        COALESCE(SUM(
+          CASE
+            WHEN ${isSalesperson ? 'true' : 'false'} THEN
+              CASE
+                WHEN q.sales_person_id = ${req.user!.id} THEN
+                  CASE
+                    WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+                    WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+                    ELSE q.net_total
+                  END
+                WHEN q.assisted_sales_person_id = ${req.user!.id} THEN
+                  CASE
+                    WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+                    WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+                    ELSE 0
+                  END
+                ELSE q.net_total
+              END
+            ELSE q.net_total
+          END
+        ), 0) as total_val
+      FROM quotations q
       ${filterUser}
-      GROUP BY status
+      GROUP BY LOWER(q.status)
     `);
 
-    // Financial totals
+    // Financial totals (split-aware)
     const financialTotals = await query(`
       SELECT
-        COALESCE(SUM(q.net_total), 0) as total_quoted,
-        COALESCE(SUM(CASE WHEN q.status IN ('approved', 'closed') THEN q.net_total ELSE 0 END), 0) as approved_revenue
+        COALESCE(SUM(
+          CASE
+            WHEN ${isSalesperson ? 'true' : 'false'} THEN
+              CASE
+                WHEN q.sales_person_id = ${req.user!.id} THEN
+                  CASE
+                    WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+                    WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+                    ELSE q.net_total
+                  END
+                WHEN q.assisted_sales_person_id = ${req.user!.id} THEN
+                  CASE
+                    WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+                    WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+                    ELSE 0
+                  END
+                ELSE q.net_total
+              END
+            ELSE q.net_total
+          END
+        ), 0) as total_quoted,
+        COALESCE(SUM(
+          CASE
+            WHEN LOWER(q.status) IN ('approved', 'closed') THEN
+              CASE
+                WHEN ${isSalesperson ? 'true' : 'false'} THEN
+                  CASE
+                    WHEN q.sales_person_id = ${req.user!.id} THEN
+                      CASE
+                        WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+                        WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+                        ELSE q.net_total
+                      END
+                    WHEN q.assisted_sales_person_id = ${req.user!.id} THEN
+                      CASE
+                        WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+                        WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+                        ELSE 0
+                      END
+                    ELSE q.net_total
+                  END
+                ELSE q.net_total
+              END
+            ELSE 0
+          END
+        ), 0) as approved_revenue
       FROM quotations q
       ${filterUser}
     `);
 
-    // Payments collected
+    // Payments collected (split-aware)
     const paymentTotals = await query(`
       SELECT
-        COALESCE(SUM(p.amount), 0) as total_collected
+        COALESCE(SUM(
+          CASE
+            WHEN ${isSalesperson ? 'true' : 'false'} THEN
+              CASE
+                WHEN q.sales_person_id = ${req.user!.id} THEN
+                  CASE
+                    WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((p.amount * q.primary_sales_share_percent / 100.0)::numeric, 2)
+                    WHEN q.assisted_sales_person_id IS NOT NULL AND q.net_total > 0 THEN ROUND((p.amount * (q.primary_sales_share_amount / q.net_total))::numeric, 2)
+                    ELSE p.amount
+                  END
+                WHEN q.assisted_sales_person_id = ${req.user!.id} THEN
+                  CASE
+                    WHEN q.assisted_sales_share_percent > 0 THEN ROUND((p.amount * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+                    WHEN q.net_total > 0 THEN ROUND((p.amount * (q.assisted_sales_share_amount / q.net_total))::numeric, 2)
+                    ELSE 0
+                  END
+                ELSE p.amount
+              END
+            ELSE p.amount
+          END
+        ), 0) as total_collected
       FROM payments p
       JOIN quotations q ON q.id = p.quotation_id
-      WHERE p.status = 'Cleared' ${isSalesperson ? `AND q.sales_person_id = ${req.user!.id}` : ''}
+      WHERE p.status = 'Cleared' ${isSalesperson ? `AND (q.sales_person_id = ${req.user!.id} OR q.assisted_sales_person_id = ${req.user!.id})` : ''}
     `);
 
     // Total outstanding on approved/closed quotations
@@ -44,22 +131,51 @@ dashboardRouter.get('/summary', async (req: Request, res: Response) => {
 
     // Recent 10 quotations
     const recentQuotations = await query(`
-      SELECT id, quotation_number, quotation_date, customer_name, sales_person_name, status, net_total
-      FROM quotations
+      SELECT q.id, q.quotation_number, q.quotation_date, q.customer_name, q.sales_person_name,
+             q.assisted_sales_person_name, q.status, q.net_total,
+             q.primary_sales_share_amount, q.assisted_sales_share_amount
+      FROM quotations q
       ${filterUser}
-      ORDER BY created_at DESC
+      ORDER BY q.created_at DESC
       LIMIT 10
     `);
 
-    // Leaderboard (for managers/admins/accounts)
+    // Leaderboard (split-aware for managers/admins/accounts)
     let leaderboard: any[] = [];
     if (!isSalesperson) {
       leaderboard = await query(`
         SELECT u.id, u.full_name,
-               count(q.id) as total_quotations,
-               COALESCE(SUM(CASE WHEN q.status IN ('approved', 'closed') THEN q.net_total ELSE 0 END), 0) as sales_achieved
+               count(combined.quotation_id) as total_quotations,
+               COALESCE(SUM(combined.credited_amount), 0) as sales_achieved
         FROM users u
-        LEFT JOIN quotations q ON q.sales_person_id = u.id
+        LEFT JOIN (
+          -- Primary sales
+          SELECT
+            q.sales_person_id as user_id,
+            q.id as quotation_id,
+            CASE
+              WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+              WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+              ELSE q.net_total
+            END as credited_amount
+          FROM quotations q
+          WHERE LOWER(q.status) IN ('approved', 'closed')
+
+          UNION ALL
+
+          -- Assisted sales
+          SELECT
+            q.assisted_sales_person_id as user_id,
+            q.id as quotation_id,
+            CASE
+              WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+              WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+              ELSE 0
+            END as credited_amount
+          FROM quotations q
+          WHERE LOWER(q.status) IN ('approved', 'closed')
+            AND q.assisted_sales_person_id IS NOT NULL
+        ) combined ON combined.user_id = u.id
         WHERE u.role IN ('salesperson', 'manager') AND u.is_active = true
         GROUP BY u.id, u.full_name
         ORDER BY sales_achieved DESC
@@ -67,15 +183,39 @@ dashboardRouter.get('/summary', async (req: Request, res: Response) => {
       `);
     }
 
-    // Monthly breakdown (last 6 months)
+    // Monthly breakdown (last 6 months, split-aware)
     const monthlyTrend = await query(`
       SELECT
-        TO_CHAR(quotation_date, 'YYYY-MM') as month,
+        TO_CHAR(q.quotation_date, 'YYYY-MM') as month,
         count(*) as quotation_count,
-        COALESCE(SUM(CASE WHEN status IN ('approved', 'closed') THEN net_total ELSE 0 END), 0) as closed_amount
-      FROM quotations
-      ${filterUser ? `${filterUser} AND` : 'WHERE'} quotation_date >= NOW() - INTERVAL '6 months'
-      GROUP BY TO_CHAR(quotation_date, 'YYYY-MM')
+        COALESCE(SUM(
+          CASE
+            WHEN LOWER(q.status) IN ('approved', 'closed') THEN
+              CASE
+                WHEN ${isSalesperson ? 'true' : 'false'} THEN
+                  CASE
+                    WHEN q.sales_person_id = ${req.user!.id} THEN
+                      CASE
+                        WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+                        WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+                        ELSE q.net_total
+                      END
+                    WHEN q.assisted_sales_person_id = ${req.user!.id} THEN
+                      CASE
+                        WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+                        WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+                        ELSE 0
+                      END
+                    ELSE q.net_total
+                  END
+                ELSE q.net_total
+              END
+            ELSE 0
+          END
+        ), 0) as closed_amount
+      FROM quotations q
+      ${filterUser ? `${filterUser} AND` : 'WHERE'} q.quotation_date >= NOW() - INTERVAL '6 months'
+      GROUP BY TO_CHAR(q.quotation_date, 'YYYY-MM')
       ORDER BY month ASC
     `);
 

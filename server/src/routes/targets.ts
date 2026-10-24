@@ -89,8 +89,13 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
   try {
     const { start_date, end_date } = req.query;
 
-    const startDate = (start_date as string) || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    const endDate = (end_date as string) || new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+    const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const startDate = (start_date as string) || firstDay;
+    const endDate = (end_date as string) || lastDay;
 
     // Get all salespersons
     const salespersons = await query(
@@ -99,11 +104,11 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
        ORDER BY full_name ASC`
     );
 
-    // Get target amounts in period
+    // Get target amounts in period (targets overlapping this period)
     const targets = await query(
       `SELECT sales_person_id, COALESCE(SUM(target_amount), 0) as total_target
        FROM sales_targets
-       WHERE start_date >= $1 AND end_date <= $2
+       WHERE start_date <= $2 AND end_date >= $1
        GROUP BY sales_person_id`,
       [startDate, endDate]
     );
@@ -126,7 +131,7 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
            END as credited_amount
          FROM quotations q
          WHERE q.quotation_date >= $1 AND q.quotation_date <= $2
-           AND q.status IN ('approved', 'closed')
+           AND LOWER(q.status) IN ('approved', 'closed')
 
          UNION ALL
 
@@ -141,9 +146,47 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
            END as credited_amount
          FROM quotations q
          WHERE q.quotation_date >= $1 AND q.quotation_date <= $2
-           AND q.status IN ('approved', 'closed')
+           AND LOWER(q.status) IN ('approved', 'closed')
            AND q.assisted_sales_person_id IS NOT NULL
        ) combined_sales
+       GROUP BY sp_id`,
+      [startDate, endDate]
+    );
+
+    // Get pipeline quotes (draft & in_review quotations created in this period, split-aware)
+    const pipelineQuotes = await query(
+      `SELECT
+          sp_id as sales_person_id,
+          count(*) as pipeline_count,
+          COALESCE(SUM(credited_amount), 0) as total_pipeline
+       FROM (
+         SELECT
+           q.sales_person_id as sp_id,
+           q.id as quotation_id,
+           CASE
+             WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+             WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+             ELSE q.net_total
+           END as credited_amount
+         FROM quotations q
+         WHERE q.quotation_date >= $1 AND q.quotation_date <= $2
+           AND LOWER(q.status) IN ('draft', 'in_review')
+
+         UNION ALL
+
+         SELECT
+           q.assisted_sales_person_id as sp_id,
+           q.id as quotation_id,
+           CASE
+             WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+             WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+             ELSE 0
+           END as credited_amount
+         FROM quotations q
+         WHERE q.quotation_date >= $1 AND q.quotation_date <= $2
+           AND LOWER(q.status) IN ('draft', 'in_review')
+           AND q.assisted_sales_person_id IS NOT NULL
+       ) combined_pipeline
        GROUP BY sp_id`,
       [startDate, endDate]
     );
@@ -187,12 +230,14 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
 
     const targetMap = new Map(targets.map((t) => [t.sales_person_id, parseFloat(t.total_target)]));
     const achieveMap = new Map(achievements.map((a) => [a.sales_person_id, { count: parseInt(a.quotations_count, 10), amount: parseFloat(a.total_achieved) }]));
+    const pipelineMap = new Map(pipelineQuotes.map((p) => [p.sales_person_id, { count: parseInt(p.pipeline_count, 10), amount: parseFloat(p.total_pipeline) }]));
     const collectMap = new Map(collections.map((c) => [c.sales_person_id, parseFloat(c.total_collected)]));
 
     const performance = salespersons.map((sp) => {
       const explicitTarget = targetMap.get(sp.id) || 0;
       const target = explicitTarget > 0 ? explicitTarget : parseFloat(sp.monthly_target) || 0;
       const achieveData = achieveMap.get(sp.id) || { count: 0, amount: 0 };
+      const pipelineData = pipelineMap.get(sp.id) || { count: 0, amount: 0 };
       const collected = collectMap.get(sp.id) || 0;
       const percentage = target > 0 ? parseFloat(((achieveData.amount / target) * 100).toFixed(1)) : 0;
 
@@ -201,9 +246,11 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
         target,
         achieved: achieveData.amount,
         quotationsCount: achieveData.count,
+        pipelineAmount: pipelineData.amount,
+        pipelineCount: pipelineData.count,
+        totalQuotedWithPipeline: parseFloat((achieveData.amount + pipelineData.amount).toFixed(2)),
         collected,
         percentage,
-        difference: parseFloat((achieveData.amount - target).toFixed(2)),
       };
     });
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
-import { Quotation, Pagination } from '../types';
+import { Quotation, Pagination, User } from '../types';
 import {
   Search,
   Filter,
@@ -17,6 +17,7 @@ import {
   XCircle,
   Clock,
   X,
+  Users,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
@@ -46,6 +47,8 @@ export const QuotationList: React.FC<Props> = ({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [selectedSalesPersonId, setSelectedSalesPersonId] = useState<number | null>(null);
+  const [salesTeam, setSalesTeam] = useState<User[]>([]);
   const [page, setPage] = useState(1);
 
   // Status Change Modal State
@@ -55,6 +58,18 @@ export const QuotationList: React.FC<Props> = ({
 
   // PDF Preview State
   const [previewPdf, setPreviewPdf] = useState<{ url: string; title: string; fileName: string } | null>(null);
+
+  // Load sales team for filter
+  useEffect(() => {
+    fetchApi<any>('/api/users')
+      .then((res: any) => {
+        const list = res.users || res || [];
+        if (Array.isArray(list)) {
+          setSalesTeam(list.filter((u: User) => u.is_active));
+        }
+      })
+      .catch((err) => console.error('Failed to load sales team:', err));
+  }, []);
 
   // Debounce search input (300ms) to prevent excessive server requests
   useEffect(() => {
@@ -74,6 +89,7 @@ export const QuotationList: React.FC<Props> = ({
       });
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (status) params.append('status', status);
+      if (selectedSalesPersonId) params.append('sales_person_id', String(selectedSalesPersonId));
 
       const res = await fetchApi<any>(`/api/quotations?${params.toString()}`);
       setQuotations(res.quotations || []);
@@ -88,7 +104,7 @@ export const QuotationList: React.FC<Props> = ({
 
   useEffect(() => {
     loadQuotations();
-  }, [page, debouncedSearch, status]);
+  }, [page, debouncedSearch, status, selectedSalesPersonId]);
 
   // Real-time synchronization
   useEffect(() => {
@@ -98,7 +114,7 @@ export const QuotationList: React.FC<Props> = ({
       }
     });
     return () => unsubscribe();
-  }, [page, debouncedSearch, status]);
+  }, [page, debouncedSearch, status, selectedSalesPersonId]);
 
   const handleOpenPdf = (q: Quotation, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -168,13 +184,13 @@ export const QuotationList: React.FC<Props> = ({
 
       {/* Filter and Search Bar */}
       <div className="card p-3 space-y-2.5">
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           {/* Search Box */}
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
-              className="input input-sm pl-8 pr-8"
+              className="input input-sm pl-8 pr-8 w-full"
               placeholder="Search by quotation number, customer name, mobile, project..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -189,9 +205,45 @@ export const QuotationList: React.FC<Props> = ({
             )}
           </div>
 
+          {/* Sales Associate Filter Dropdown */}
+          <div className="relative min-w-[220px]">
+            <Users size={13} className="absolute left-2.5 top-2.5 text-slate-400 pointer-events-none" />
+            <select
+              className={`select select-sm pl-8 pr-7 w-full text-xs font-medium cursor-pointer ${
+                selectedSalesPersonId
+                  ? 'border-indigo-500 bg-indigo-50/50 text-indigo-950 font-semibold'
+                  : 'text-slate-700'
+              }`}
+              value={selectedSalesPersonId || ''}
+              onChange={(e) => {
+                setSelectedSalesPersonId(e.target.value ? Number(e.target.value) : null);
+                setPage(1);
+              }}
+            >
+              <option value="">All Sales Associates</option>
+              {salesTeam.map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {sp.full_name} ({sp.role})
+                </option>
+              ))}
+            </select>
+            {selectedSalesPersonId && (
+              <button
+                onClick={() => {
+                  setSelectedSalesPersonId(null);
+                  setPage(1);
+                }}
+                className="absolute right-7 top-2 text-slate-400 hover:text-slate-600"
+                title="Clear sales associate filter"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
           <button
             onClick={loadQuotations}
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm shrink-0"
             title="Refresh list"
           >
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
@@ -285,7 +337,17 @@ export const QuotationList: React.FC<Props> = ({
                       <span className={`badge badge-${q.status}`}>{q.status}</span>
                     </td>
                     <td className="py-2.5 px-3 text-right font-bold text-slate-900 tabular-nums">
-                      ₹ {formatCurrency(q.net_total)}
+                      <div>₹ {formatCurrency(q.net_total)}</div>
+                      {selectedSalesPersonId && q.assisted_sales_person_id && (
+                        <div className="text-[10px] text-indigo-700 font-semibold font-mono">
+                          Credit: ₹{' '}
+                          {formatCurrency(
+                            q.sales_person_id === selectedSalesPersonId
+                              ? (q.primary_sales_share_amount || Math.round((q.net_total * (q.primary_sales_share_percent || 100)) / 100))
+                              : (q.assisted_sales_share_amount || Math.round((q.net_total * (q.assisted_sales_share_percent || 0)) / 100))
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold tabular-nums">
                       ₹ {formatCurrency(q.total_paid || 0)}

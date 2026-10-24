@@ -116,9 +116,30 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
 
     const whereSql = whereClauses.join(' AND ');
 
-    // Total count and aggregate total
+    // Total count and aggregate total (split-aware when filtering by salesperson)
+    const targetSpId = req.user!.role === 'salesperson' ? req.user!.id : (salesPersonId || null);
+    const countAmountExpr = targetSpId
+      ? `COALESCE(SUM(
+          CASE
+            WHEN q.sales_person_id = ${targetSpId} THEN
+              CASE
+                WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_amount > 0 THEN q.primary_sales_share_amount
+                WHEN q.assisted_sales_person_id IS NOT NULL AND q.primary_sales_share_percent > 0 THEN ROUND((q.net_total * q.primary_sales_share_percent / 100.0)::numeric, 2)
+                ELSE q.net_total
+              END
+            WHEN q.assisted_sales_person_id = ${targetSpId} THEN
+              CASE
+                WHEN q.assisted_sales_share_amount > 0 THEN q.assisted_sales_share_amount
+                WHEN q.assisted_sales_share_percent > 0 THEN ROUND((q.net_total * q.assisted_sales_share_percent / 100.0)::numeric, 2)
+                ELSE 0
+              END
+            ELSE q.net_total
+          END
+        ), 0)`
+      : `COALESCE(SUM(q.net_total), 0)`;
+
     const countQuery = `
-      SELECT count(*) as total_count, COALESCE(sum(net_total), 0) as total_amount
+      SELECT count(*) as total_count, ${countAmountExpr} as total_amount
       FROM quotations q
       WHERE ${whereSql}
     `;
@@ -322,6 +343,7 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
       delivery_address,
       site_location,
       project_name,
+      status: reqStatus,
       special_notes,
       discount_percent,
       discount_amount,
@@ -354,6 +376,11 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
       parseFloat(discount_amount) || 0,
       tax_type
     );
+
+    const initialStatus = reqStatus && ['draft', 'in_review', 'approved', 'closed'].includes(String(reqStatus).toLowerCase())
+      ? String(reqStatus).toLowerCase()
+      : 'draft';
+    const isApprovedOrClosed = ['approved', 'closed'].includes(initialStatus);
 
     const result = await withTransaction(async (client) => {
       const qNumber = await generateNextQuotationNumber(client);
@@ -393,7 +420,7 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
           sales_person_name, assisted_sales_person_id, assisted_sales_person_name,
           split_share_type, primary_sales_share_percent, primary_sales_share_amount,
           assisted_sales_share_percent, assisted_sales_share_amount,
-          project_name, status, gross_total, discount_percent,
+          project_name, status, approved_by_id, approved_at, gross_total, discount_percent,
           discount_amount, taxable_amount, tax_type, cgst_rate, cgst_amount,
           sgst_rate, sgst_amount, igst_rate, igst_amount, round_off, net_total,
           special_notes, version
@@ -403,10 +430,10 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
           $10, $11, $12,
           $13, $14, $15,
           $16, $17,
-          $18, 'draft', $19, $20,
-          $21, $22, $23, $24, $25,
-          $26, $27, $28, $29, $30, $31,
-          $32, 1
+          $18, $19, $20, $21, $22, $23,
+          $24, $25, $26, $27, $28,
+          $29, $30, $31, $32, $33, $34,
+          $35, 1
         ) RETURNING *`,
         [
           qNumber,
@@ -427,6 +454,9 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
           assistedPct,
           assistedAmt,
           project_name?.trim() || '',
+          initialStatus,
+          isApprovedOrClosed ? req.user!.id : null,
+          isApprovedOrClosed ? new Date() : null,
           totals.grossTotal,
           parseFloat(discount_percent) || 0,
           totals.discountAmount,
@@ -524,6 +554,7 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
       delivery_address,
       site_location,
       project_name,
+      status: reqStatus,
       special_notes,
       discount_percent,
       discount_amount,
@@ -600,6 +631,11 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
         }
       }
 
+      const nextStatus = reqStatus && ['draft', 'in_review', 'approved', 'closed', 'rejected'].includes(String(reqStatus).toLowerCase())
+        ? String(reqStatus).toLowerCase()
+        : current.rows[0].status;
+      const isNextApproved = ['approved', 'closed'].includes(nextStatus);
+
       // Update Quotation Header and bump version
       const nextVersion = current.rows[0].version + 1;
       const qRes = await client.query(
@@ -619,23 +655,26 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
              primary_sales_share_amount = $13,
              assisted_sales_share_percent = $14,
              assisted_sales_share_amount = $15,
-             gross_total = $16,
-             discount_percent = $17,
-             discount_amount = $18,
-             taxable_amount = $19,
-             tax_type = $20,
-             cgst_rate = $21,
-             cgst_amount = $22,
-             sgst_rate = $23,
-             sgst_amount = $24,
-             igst_rate = $25,
-             igst_amount = $26,
-             round_off = $27,
-             net_total = $28,
-             special_notes = $29,
-             version = $30,
+             status = $16,
+             approved_by_id = CASE WHEN $17 THEN COALESCE(approved_by_id, $18) ELSE approved_by_id END,
+             approved_at = CASE WHEN $17 THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
+             gross_total = $19,
+             discount_percent = $20,
+             discount_amount = $21,
+             taxable_amount = $22,
+             tax_type = $23,
+             cgst_rate = $24,
+             cgst_amount = $25,
+             sgst_rate = $26,
+             sgst_amount = $27,
+             igst_rate = $28,
+             igst_amount = $29,
+             round_off = $30,
+             net_total = $31,
+             special_notes = $32,
+             version = $33,
              updated_at = NOW()
-         WHERE id = $31 AND version = $32
+         WHERE id = $34 AND version = $35
          RETURNING *`,
         [
           quotation_date,
@@ -653,6 +692,9 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
           primaryAmt,
           assistedPct,
           assistedAmt,
+          nextStatus,
+          isNextApproved,
+          req.user!.id,
           totals.grossTotal,
           parseFloat(discount_percent) || 0,
           totals.discountAmount,
