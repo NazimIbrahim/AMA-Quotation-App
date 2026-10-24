@@ -326,7 +326,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
   ];
 
   return (
-    <div className="flex-1 p-6 space-y-5 overflow-y-auto max-w-7xl">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0">
       {/* Top Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -443,7 +443,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
       </div>
 
       {/* KPI Performance Cards for Selected Salesperson */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Sales Target & Achievement Card */}
         <div className="card p-4 flex flex-col justify-between">
           <div>

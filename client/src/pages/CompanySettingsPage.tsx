@@ -59,7 +59,7 @@ export const CompanySettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 p-6 space-y-6 overflow-y-auto max-w-5xl">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-6 overflow-y-auto w-full min-w-0">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -102,7 +102,7 @@ export const CompanySettingsPage: React.FC = () => {
             </h2>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-gray-700 font-semibold mb-1">Company Name *</label>
               <input
@@ -189,7 +189,7 @@ export const CompanySettingsPage: React.FC = () => {
             </h2>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-gray-700 font-semibold mb-1">Beneficiary Name (Account Name)</label>
               <input

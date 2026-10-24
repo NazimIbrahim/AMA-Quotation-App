@@ -112,7 +112,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
   const totalQuotesCount = Object.values(statusMap).reduce((acc, curr) => acc + curr.count, 0) || 1;
 
   return (
-    <div className="flex-1 p-6 space-y-5 overflow-y-auto max-w-7xl">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0">
       {/* Top Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -144,7 +144,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
       </div>
 
       {/* KPI Stat Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Approved Sales */}
         <div className="card p-4 flex items-center justify-between">
           <div>
@@ -264,7 +264,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
         </div>
 
         {/* Pill status summary cards */}
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div className="p-2.5 rounded-md border border-slate-200 bg-slate-50">
             <span className="text-[11px] font-medium text-slate-600 flex items-center space-x-1">
               <span className="w-2 h-2 rounded-full bg-slate-400"></span>
@@ -333,9 +333,9 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
       </div>
 
       {/* Main Bottom Grid: Recent Activity & Sales Leaderboard */}
-      <div className="grid grid-cols-3 gap-5">
-        {/* Recent Quotations Table (2 Cols) */}
-        <div className="col-span-2 card p-4 flex flex-col justify-between">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Recent Quotations Table (2 Cols on lg) */}
+        <div className="col-span-1 lg:col-span-2 card p-4 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-3">
               <div>

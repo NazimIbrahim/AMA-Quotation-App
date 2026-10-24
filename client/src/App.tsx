@@ -159,7 +159,7 @@ const AppContent: React.FC = () => {
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        <main className="flex-1 flex flex-col overflow-hidden bg-slate-100">
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100">
           {renderMainContent()}
         </main>
       </div>

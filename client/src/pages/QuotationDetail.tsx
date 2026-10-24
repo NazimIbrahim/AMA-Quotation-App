@@ -140,7 +140,7 @@ export const QuotationDetail: React.FC<Props> = ({
   const { quotation, areas = [], payments = [] } = data;
 
   return (
-    <div className="flex-1 p-6 space-y-5 overflow-y-auto max-w-7xl">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0">
       {/* Top Header & Actions */}
       <div className="card p-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -203,7 +203,7 @@ export const QuotationDetail: React.FC<Props> = ({
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Customer Box */}
         <div className="card p-4 text-xs space-y-1.5">
           <div className="flex items-center space-x-1.5 text-slate-900 font-bold tracking-wider uppercase text-[11px] mb-1">

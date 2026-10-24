@@ -225,7 +225,7 @@ export const QuotationList: React.FC<Props> = ({
   ];
 
   return (
-    <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 overflow-y-auto w-full min-w-0">
       {/* Top Header */}
       <div className="flex justify-between items-center">
         <div>

@@ -90,7 +90,7 @@ export const TargetsManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-6 overflow-y-auto w-full min-w-0">
       {/* Top Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -114,11 +114,11 @@ export const TargetsManagement: React.FC = () => {
       </div>
 
       {/* Performance Cards */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
         {loading && performance.length === 0 ? (
-          <div className="col-span-2 text-center py-12 text-gray-400">Loading performance data...</div>
+          <div className="col-span-full text-center py-12 text-gray-400">Loading performance data...</div>
         ) : performance.length === 0 ? (
-          <div className="col-span-2 text-center py-12 text-gray-400">No active salesperson targets found.</div>
+          <div className="col-span-full text-center py-12 text-gray-400">No active salesperson targets found.</div>
         ) : (
           performance.map((p) => {
             const pct = Math.min(100, p.percentage);

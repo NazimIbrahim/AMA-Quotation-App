@@ -816,7 +816,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   };
 
   return (
-    <div className="flex-1 p-6 space-y-5 overflow-y-auto max-w-7xl">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0">
       {/* Top Action Header */}
       <div className="card p-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -998,15 +998,15 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         )}
 
         {/* Customer Fields Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          {/* Customer Name with popup */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs">
+          {/* Row 1, Col 1: Customer Name with popup */}
           <div className="relative">
-            <label className="block text-slate-700 font-semibold mb-1">
-              Customer Name *
+            <label className="flex items-center justify-between text-slate-700 font-semibold h-5 mb-1.5">
+              <span>Customer Name *</span>
             </label>
             <input
               type="text"
-              className="input input-sm w-full"
+              className="input input-sm w-full font-medium"
               value={customerName}
               onChange={(e) => {
                 setCustomerName(e.target.value);
@@ -1024,11 +1024,11 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             {renderSuggestionsPopup('name')}
           </div>
 
-          {/* Contact Number with phone search popup */}
+          {/* Row 1, Col 2: Contact Number with phone search popup */}
           <div className="relative">
-            <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+            <label className="flex items-center justify-between text-slate-700 font-semibold h-5 mb-1.5">
               <span>Contact Number *</span>
-              <span className="text-[10px] text-slate-400 font-normal">Search by number</span>
+              <span className="text-[10px] text-slate-400 font-normal">Search by mobile</span>
             </label>
             <div className="relative">
               <input
@@ -1052,20 +1052,51 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             {renderSuggestionsPopup('phone')}
           </div>
 
-          {/* Quotation Date */}
+          {/* Row 1, Col 3: Customer GSTIN */}
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Quotation Date</label>
+            <label className="flex items-center justify-between text-slate-600 font-medium h-5 mb-1.5">
+              <span>Customer GSTIN</span>
+              <span className="text-[10px] text-slate-400">Optional</span>
+            </label>
+            <input
+              type="text"
+              className="input input-sm font-mono w-full uppercase"
+              value={customerGstin}
+              onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())}
+              placeholder="e.g. 29ABCDE1234F1Z5"
+            />
+          </div>
+
+          {/* Row 1, Col 4: Quotation Date */}
+          <div>
+            <label className="flex items-center justify-between text-slate-700 font-semibold h-5 mb-1.5">
+              <span>Quotation Date</span>
+            </label>
             <input
               type="date"
-              className="input input-sm w-full"
+              className="input input-sm w-full font-medium"
               value={quotationDate}
               onChange={(e) => setQuotationDate(e.target.value)}
             />
           </div>
 
-          {/* Deal Stage / Quotation Status */}
+          {/* Row 2, Col 1: Project / Villa Name */}
           <div>
-            <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+            <label className="flex items-center justify-between text-slate-600 font-medium h-5 mb-1.5">
+              <span>Project / Villa Name</span>
+            </label>
+            <input
+              type="text"
+              className="input input-sm w-full"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="e.g. Vinayak Villa Residence"
+            />
+          </div>
+
+          {/* Row 2, Col 2: Deal Stage / Quotation Status */}
+          <div>
+            <label className="flex items-center justify-between text-slate-700 font-semibold h-5 mb-1.5">
               <span>Deal Stage / Status</span>
               {['approved', 'closed'].includes(status) && (
                 <span className="text-[10px] text-emerald-600 font-medium flex items-center">
@@ -1090,33 +1121,11 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             </select>
           </div>
 
-          {/* Project / Villa Name */}
+          {/* Row 2, Col 3: Site Location / City */}
           <div>
-            <label className="block text-slate-600 font-medium mb-1">Project / Villa Name</label>
-            <input
-              type="text"
-              className="input input-sm w-full"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              placeholder="e.g. Vinayak Villa Residence"
-            />
-          </div>
-
-          {/* Customer GSTIN */}
-          <div>
-            <label className="block text-slate-600 font-medium mb-1">Customer GSTIN (Optional)</label>
-            <input
-              type="text"
-              className="input input-sm font-mono w-full uppercase"
-              value={customerGstin}
-              onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())}
-              placeholder="e.g. 29ABCDE1234F1Z5"
-            />
-          </div>
-
-          {/* Site Location / City */}
-          <div>
-            <label className="block text-slate-600 font-medium mb-1">Site Location / Area</label>
+            <label className="flex items-center justify-between text-slate-600 font-medium h-5 mb-1.5">
+              <span>Site Location / Area</span>
+            </label>
             <input
               type="text"
               className="input input-sm w-full"
@@ -1126,15 +1135,17 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             />
           </div>
 
-          {/* Site Delivery Address */}
-          <div className="col-span-1 sm:col-span-2">
-            <label className="block text-slate-600 font-medium mb-1">Site Delivery Address</label>
+          {/* Row 2, Col 4: Site Delivery Address */}
+          <div>
+            <label className="flex items-center justify-between text-slate-600 font-medium h-5 mb-1.5">
+              <span>Site Delivery Address</span>
+            </label>
             <input
               type="text"
               className="input input-sm w-full"
               value={deliveryAddress}
               onChange={(e) => setDeliveryAddress(e.target.value)}
-              placeholder="e.g. Villa 42, Palm Meadows, Whitefield, Bengaluru"
+              placeholder="e.g. Villa 42, Palm Meadows"
             />
           </div>
         </div>
@@ -1480,13 +1491,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           <div key={areaIdx} className="card overflow-hidden">
             {/* Area Header Bar */}
             <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex justify-between items-center">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+              <div className="flex items-center space-x-2 flex-1 max-w-xl">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wide whitespace-nowrap">
                   AREA #{areaIdx + 1}:
                 </span>
                 <input
                   type="text"
-                  className="input input-sm w-64 font-bold text-slate-900 uppercase tracking-wide bg-white"
+                  className="input input-sm font-bold text-slate-900 uppercase tracking-wide bg-white flex-1"
                   value={area.name}
                   onChange={(e) => {
                     const newAreas = [...areas];
@@ -1497,7 +1508,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 ml-4">
                 <button
                   type="button"
                   onClick={() => handleAddItem(areaIdx)}
@@ -1518,22 +1529,22 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             </div>
 
             {/* Area Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-600 font-semibold text-[11px]">
-                    <th className="py-2 px-1 text-center w-7">Sl</th>
-                    <th className="py-2 px-1.5 w-52">Tile Description</th>
-                    <th className="py-2 px-1.5 w-32">Brand</th>
-                    <th className="py-2 px-1.5 w-32">Size</th>
-                    <th className="py-2 px-1.5 w-24">Type</th>
-                    <th className="py-2 px-1.5 text-right w-16">Cov/Box</th>
-                    <th className="py-2 px-1.5 text-right w-20">Sqft</th>
-                    <th className="py-2 px-1.5 text-right w-20">Rate/Sqft</th>
-                    <th className="py-2 px-1.5 text-right w-20">Boxes/Qty</th>
-                    <th className="py-2 px-1.5 text-right w-20">Rate/Unit</th>
-                    <th className="py-2 px-1.5 text-right w-24">Total (₹)</th>
-                    <th className="py-2 px-1 text-center w-8">Del</th>
+                  <tr className="border-b border-slate-200 bg-slate-50/75 text-slate-700 font-semibold text-[11px] uppercase tracking-wider">
+                    <th className="py-2.5 px-1.5 text-center w-8">Sl</th>
+                    <th className="py-2.5 px-2 text-left min-w-[200px]">Tile / Surface Description</th>
+                    <th className="py-2.5 px-2 text-left w-36 min-w-[130px]">Brand</th>
+                    <th className="py-2.5 px-2 text-left w-36 min-w-[130px]">Size</th>
+                    <th className="py-2.5 px-1.5 text-left w-24 min-w-[90px]">Type</th>
+                    <th className="py-2.5 px-1.5 text-right w-20 min-w-[70px]">Cov/Box</th>
+                    <th className="py-2.5 px-1.5 text-right w-24 min-w-[85px]">Sqft</th>
+                    <th className="py-2.5 px-1.5 text-right w-24 min-w-[95px]">Rate/Sqft</th>
+                    <th className="py-2.5 px-1.5 text-right w-24 min-w-[85px]">Boxes/Qty</th>
+                    <th className="py-2.5 px-1.5 text-right w-24 min-w-[95px]">Rate/Unit</th>
+                    <th className="py-2.5 px-2 text-right w-28 min-w-[110px]">Total (₹)</th>
+                    <th className="py-2.5 px-1 text-center w-10">Del</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1542,11 +1553,11 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
                     return (
                       <tr key={itemIdx} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-1.5 px-1 text-center font-mono text-slate-400">
+                        <td className="align-top pt-3 px-1.5 text-center font-mono text-slate-400 font-semibold text-xs">
                           {item.sl_no}
                         </td>
 
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-2">
                           <input
                             type="text"
                             className="input input-sm py-1 font-medium text-slate-900 w-full"
@@ -1558,9 +1569,9 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                           />
                         </td>
 
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-2">
                           <select
-                            className="input input-sm py-1 w-full"
+                            className="select select-sm py-1 w-full"
                             value={item.brand}
                             onChange={(e) =>
                               handleItemChange(areaIdx, itemIdx, 'brand', e.target.value)
@@ -1578,9 +1589,9 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                           </select>
                         </td>
 
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-2">
                           <select
-                            className="input input-sm py-1 font-mono text-xs w-full"
+                            className="select select-sm py-1 font-mono text-xs w-full"
                             value={item.size}
                             onChange={(e) =>
                               handleItemChange(areaIdx, itemIdx, 'size', e.target.value)
@@ -1604,9 +1615,9 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         </td>
 
                         {/* Product Type selector */}
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-1.5">
                           <select
-                            className={`input input-sm py-1 font-semibold text-[11px] w-full ${
+                            className={`select select-sm py-1 font-semibold text-[11px] w-full ${
                               pType === 'box'
                                 ? 'text-blue-700 bg-blue-50/50'
                                 : pType === 'sqft'
@@ -1631,7 +1642,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         </td>
 
                         {/* Coverage / Box */}
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-1.5 text-right">
                           {pType === 'box' ? (
                             <input
                               type="number"
@@ -1643,12 +1654,12 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                               }
                             />
                           ) : (
-                            <span className="text-slate-300 font-mono text-center block">-</span>
+                            <span className="text-slate-300 font-mono text-center block pt-2">-</span>
                           )}
                         </td>
 
                         {/* Quantity Sqft */}
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-1.5 text-right">
                           {pType === 'box' || pType === 'sqft' ? (
                             <input
                               type="number"
@@ -1661,12 +1672,12 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                               }
                             />
                           ) : (
-                            <span className="text-slate-300 font-mono text-center block">-</span>
+                            <span className="text-slate-300 font-mono text-center block pt-2">-</span>
                           )}
                         </td>
 
                         {/* Rate / Sqft */}
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-1.5 text-right">
                           {pType === 'box' || pType === 'sqft' ? (
                             <div>
                               <input
@@ -1680,24 +1691,24 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                                 }
                               />
                               {isCeraBrand(item.brand) ? (
-                                <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5" title="CERA brand excluded from discounts">
+                                <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5 whitespace-nowrap" title="CERA brand excluded from discounts">
                                   CERA (0% Disc)
                                 </div>
                               ) : (computedDiscountPercent > 0 && item.discount_percent ? (
-                                <div className="text-[10px] text-emerald-700 font-mono font-semibold text-right mt-0.5" title="Effective discounted rate">
+                                <div className="text-[10px] text-emerald-700 font-mono font-semibold text-right mt-0.5 whitespace-nowrap" title="Effective discounted rate">
                                   ₹{formatCurrency(item.rate_per_sqft)} (-{item.discount_percent}%)
                                 </div>
                               ) : null)}
                             </div>
                           ) : (
-                            <span className="text-slate-300 font-mono text-center block">-</span>
+                            <span className="text-slate-300 font-mono text-center block pt-2">-</span>
                           )}
                         </td>
 
                         {/* Boxes / Unit Quantity */}
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-1.5 text-right">
                           {pType === 'sqft' ? (
-                            <span className="text-slate-300 font-mono text-center block">-</span>
+                            <span className="text-slate-300 font-mono text-center block pt-2">-</span>
                           ) : (
                             <input
                               type="number"
@@ -1729,9 +1740,9 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         </td>
 
                         {/* Rate / Unit */}
-                        <td className="py-1.5 px-1.5">
+                        <td className="align-top py-1.5 px-1.5 text-right">
                           {pType === 'sqft' ? (
-                            <span className="text-slate-300 font-mono text-center block">-</span>
+                            <span className="text-slate-300 font-mono text-center block pt-2">-</span>
                           ) : (
                             <div>
                               <input
@@ -1761,11 +1772,11 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                                 }
                               />
                               {isCeraBrand(item.brand) ? (
-                                <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5" title="CERA brand excluded from discounts">
+                                <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5 whitespace-nowrap" title="CERA brand excluded from discounts">
                                   CERA (0% Disc)
                                 </div>
                               ) : (computedDiscountPercent > 0 && item.discount_percent ? (
-                                <div className="text-[10px] text-emerald-700 font-mono font-semibold text-right mt-0.5" title="Effective discounted rate">
+                                <div className="text-[10px] text-emerald-700 font-mono font-semibold text-right mt-0.5 whitespace-nowrap" title="Effective discounted rate">
                                   ₹{formatCurrency(item.rate_per_box)} (-{item.discount_percent}%)
                                 </div>
                               ) : null)}
@@ -1774,20 +1785,20 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         </td>
 
                         {/* Total Amount */}
-                        <td className="py-1.5 px-1.5 text-right font-bold text-slate-900 tabular-nums">
+                        <td className="align-top py-2 px-2 text-right font-bold text-slate-900 tabular-nums">
                           <div>₹ {formatCurrency(item.total_amount)}</div>
                           {computedDiscountPercent > 0 && !isCeraBrand(item.brand) && (item._itemBaseTotal || 0) > item.total_amount && (
-                            <div className="text-[10px] text-slate-400 line-through font-normal">
+                            <div className="text-[10px] text-slate-400 line-through font-normal whitespace-nowrap">
                               ₹ {formatCurrency(item._itemBaseTotal || 0)}
                             </div>
                           )}
                         </td>
 
-                        <td className="py-1.5 px-1 text-center">
+                        <td className="align-top pt-3 px-1 text-center">
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(areaIdx, itemIdx)}
-                            className="text-slate-400 hover:text-rose-600 transition-colors"
+                            className="text-slate-400 hover:text-rose-600 transition-colors p-1"
                             title="Delete line"
                           >
                             <Trash2 size={13} />
@@ -1804,13 +1815,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
       </div>
 
       {/* Section 3: Summary, GST, Discount & Notes */}
-      <div className="grid grid-cols-2 gap-5 card p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 card p-4">
         {/* Left Side: Special Notes & Tax Options */}
         <div className="space-y-3 text-xs">
           <div>
             <label className="block text-slate-700 font-semibold mb-1">GST Tax Framework</label>
             <select
-              className="input input-sm w-72"
+              className="select select-sm w-full max-w-md"
               value={taxType}
               onChange={(e) => setTaxType(e.target.value as any)}
             >

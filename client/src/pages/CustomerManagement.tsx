@@ -114,7 +114,7 @@ export const CustomerManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 overflow-y-auto w-full min-w-0">
       {/* Top Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -146,11 +146,11 @@ export const CustomerManagement: React.FC = () => {
       </div>
 
       {/* Customer Grid */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {loading && customers.length === 0 ? (
-          <div className="col-span-3 text-center py-10 text-gray-400">Loading customers...</div>
+          <div className="col-span-full text-center py-10 text-gray-400">Loading customers...</div>
         ) : customers.length === 0 ? (
-          <div className="col-span-3 text-center py-10 text-gray-400">No customers found.</div>
+          <div className="col-span-full text-center py-10 text-gray-400">No customers found.</div>
         ) : (
           customers.map((c) => (
             <div key={c.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm space-y-2 text-xs">

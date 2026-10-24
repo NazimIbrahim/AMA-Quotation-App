@@ -95,7 +95,7 @@ export const ProductManagement: React.FC = () => {
     : coverages;
 
   return (
-    <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 overflow-y-auto w-full min-w-0">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -127,9 +127,9 @@ export const ProductManagement: React.FC = () => {
       </div>
 
       {/* Main Grid: Brands Sidebar & Coverage Table */}
-      <div className="grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
         {/* Brands List */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 space-y-2">
+        <div className="col-span-1 bg-white rounded-lg border border-gray-200 shadow-sm p-4 space-y-2">
           <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Ceramic Brands</h2>
           <div className="space-y-1">
             {brands.map((b) => (
@@ -152,7 +152,7 @@ export const ProductManagement: React.FC = () => {
         </div>
 
         {/* Coverage Formulas Table */}
-        <div className="col-span-3 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+        <div className="col-span-1 lg:col-span-3 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
           <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
             <span className="text-xs font-bold text-primary uppercase tracking-wide">
               {brands.find((b) => b.id === selectedBrandId)?.name || 'All Brands'} — Size & Sqft Coverages

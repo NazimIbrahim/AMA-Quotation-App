@@ -58,7 +58,7 @@ export const ReportsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 space-y-6 overflow-y-auto max-w-5xl">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-6 overflow-y-auto w-full min-w-0">
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Reports & Data Exports</h1>
@@ -67,7 +67,7 @@ export const ReportsPage: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         {/* Quotations Export Card */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 space-y-4">
           <div className="flex items-center space-x-2.5 pb-2 border-b">
