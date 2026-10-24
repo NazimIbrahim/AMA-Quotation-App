@@ -91,16 +91,18 @@ export const ServerSetupModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          <div className="bg-gray-50 p-3 rounded border text-xs text-gray-600 space-y-1">
-            <div className="flex justify-between">
+          <div className="bg-slate-50 p-3 rounded border text-xs text-slate-600 space-y-1.5">
+            <div className="flex justify-between items-center">
               <span>Current Status:</span>
-              <span className={`font-semibold capitalize ${status === 'connected' ? 'text-green-600' : 'text-red-600'}`}>
+              <span className={`font-semibold capitalize px-2 py-0.5 rounded text-[11px] ${status === 'connected' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
                 {status}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span>Client Architecture:</span>
-              <span>Zero client database footprint (4 GB RAM optimized)</span>
+            <div className="pt-1 border-t border-slate-200 text-[11px] text-slate-500 space-y-1">
+              <p className="font-semibold text-slate-700">LAN Troubleshooting Tips:</p>
+              <p>• Ensure both Host and Client PCs are connected to the <strong>exact same Wi-Fi router</strong> or switch.</p>
+              <p>• <strong>iPhone / Mobile Hotspot Warning:</strong> iPhone Personal Hotspots block device-to-device communication (AP Isolation). Please use an office/home Wi-Fi router or Android hotspot.</p>
+              <p>• Check that the Host Server is running and Windows Firewall permits Port 4000.</p>
             </div>
           </div>
 

@@ -50,6 +50,9 @@ Section "Install Host Server Files" SecMain
     SetOutPath "$INSTDIR\server\dist"
     File /r "..\server\dist\*.*"
     
+    SetOutPath "$INSTDIR\server\bin"
+    File "..\server\bin\node.exe"
+    
     SetOutPath "$INSTDIR\server\src\db"
     File "..\server\src\db\schema.sql"
     

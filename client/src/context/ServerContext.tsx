@@ -47,23 +47,41 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const subscribersRef = useRef<Set<(event: any) => void>>(new Set());
   const reconnectTimeoutRef = useRef<any>(null);
 
-  // Load persisted server URL from Electron preload if available
+  // Auto-normalize user input (e.g., "192.168.1.100" -> "http://192.168.1.100:4000")
+  const normalizeUrl = (input: string): string => {
+    let clean = input.trim();
+    if (!clean) return 'http://localhost:4000';
+    if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+      clean = `http://${clean}`;
+    }
+    const withoutProto = clean.replace(/^https?:\/\//, '');
+    if (!withoutProto.includes(':')) {
+      clean = `${clean}:4000`;
+    }
+    return clean.replace(/\/$/, '');
+  };
+
+  // Load persisted server URL from Electron preload if available, or open wizard on first run
   useEffect(() => {
+    const hasConfigured = localStorage.getItem('ama_server_url');
     if (window.electronAPI) {
       window.electronAPI.getServerUrl().then((savedUrl) => {
         if (savedUrl && savedUrl !== serverUrl) {
-          setServerUrlState(savedUrl);
-          localStorage.setItem('ama_server_url', savedUrl);
+          const normalized = normalizeUrl(savedUrl);
+          setServerUrlState(normalized);
+          localStorage.setItem('ama_server_url', normalized);
+        } else if (!hasConfigured) {
+          // On client machines where no server URL has ever been configured, open wizard
+          setOpenServerWizard(true);
         }
       });
+    } else if (!hasConfigured) {
+      setOpenServerWizard(true);
     }
   }, []);
 
   const saveUrl = async (newUrl: string) => {
-    let cleanUrl = newUrl.trim();
-    if (cleanUrl.endsWith('/')) {
-      cleanUrl = cleanUrl.slice(0, -1);
-    }
+    const cleanUrl = normalizeUrl(newUrl);
     setServerUrlState(cleanUrl);
     localStorage.setItem('ama_server_url', cleanUrl);
     if (window.electronAPI) {
@@ -75,7 +93,7 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Test connection to server
   const testConnection = async (targetUrl?: string): Promise<{ ok: boolean; message: string; latency: number }> => {
-    const url = (targetUrl || serverUrl).trim().replace(/\/$/, '');
+    const url = normalizeUrl(targetUrl || serverUrl);
     const start = performance.now();
     try {
       const response = await fetch(`${url}/api/health`, {
@@ -96,7 +114,13 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } catch (err: any) {
       const latency = Math.round(performance.now() - start);
-      return { ok: false, message: err.message || 'Connection failed', latency };
+      return {
+        ok: false,
+        message: err.message === 'Failed to fetch' 
+          ? `Cannot reach server at ${url}. Check LAN connection, firewall, or Host IP.`
+          : (err.message || 'Connection failed'),
+        latency,
+      };
     }
   };
 

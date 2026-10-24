@@ -71,6 +71,25 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {status !== 'connected' && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-md text-xs flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                <div>
+                  <span className="font-semibold block">Host Server Disconnected</span>
+                  <span className="text-[11px] text-amber-700">Enter your Host PC's LAN IP address to connect.</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenServerSettings}
+                className="btn btn-primary btn-xs py-1 px-2.5 text-[11px] shrink-0 font-medium"
+              >
+                Configure IP
+              </button>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-md text-xs flex items-start space-x-2">
               <AlertCircle size={15} className="mt-0.5 shrink-0" />
