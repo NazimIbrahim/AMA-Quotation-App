@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Printer,
   Download,
@@ -8,7 +8,9 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
+  ShieldAlert,
 } from 'lucide-react';
+import { useServer } from '../context/ServerContext';
 
 interface Props {
   isOpen: boolean;
@@ -16,6 +18,8 @@ interface Props {
   pdfUrl: string;
   title: string;
   fileName?: string;
+  quotationId?: number;
+  initialEncrypted?: boolean;
 }
 
 export const PdfPreviewModal: React.FC<Props> = ({
@@ -24,24 +28,49 @@ export const PdfPreviewModal: React.FC<Props> = ({
   pdfUrl,
   title,
   fileName = 'document.pdf',
+  quotationId,
+  initialEncrypted = false,
 }) => {
+  const { getPdfUrl } = useServer();
+  const [isEncrypted, setIsEncrypted] = useState(initialEncrypted);
   const [downloading, setDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
+  useEffect(() => {
+    setIsEncrypted(initialEncrypted);
+  }, [initialEncrypted, pdfUrl, isOpen]);
+
   if (!isOpen) return null;
+
+  // Active URL and file name based on encrypted state
+  const activePdfUrl = quotationId ? getPdfUrl(quotationId, isEncrypted) : pdfUrl;
+  const activeFileName = quotationId
+    ? (isEncrypted
+        ? fileName.replace(/\.pdf$/i, '').replace(/_Encrypted$/i, '') + '_Encrypted.pdf'
+        : fileName.replace(/_Encrypted\.pdf$/i, '.pdf'))
+    : fileName;
+  const activeTitle = quotationId && isEncrypted
+    ? `${title.replace(/\s*\(Encrypted\)/i, '')} (Encrypted)`
+    : title;
+
+  const handleToggleEncrypted = (nextEncrypted: boolean) => {
+    if (nextEncrypted === isEncrypted) return;
+    setLoaded(false);
+    setIsEncrypted(nextEncrypted);
+  };
 
   const handlePrint = async () => {
     if (window.electronAPI) {
-      await window.electronAPI.printQuotationPdf(pdfUrl);
+      await window.electronAPI.printQuotationPdf(activePdfUrl);
     } else {
       const iframe = document.getElementById('pdf-preview-frame') as HTMLIFrameElement;
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
       } else {
-        window.open(pdfUrl, '_blank');
+        window.open(activePdfUrl, '_blank');
       }
     }
   };
@@ -51,7 +80,7 @@ export const PdfPreviewModal: React.FC<Props> = ({
     setError(null);
     try {
       if (window.electronAPI) {
-        const res = await window.electronAPI.downloadFile(pdfUrl, fileName);
+        const res = await window.electronAPI.downloadFile(activePdfUrl, activeFileName);
         if (res.success) {
           setDownloadSuccess(`Saved to ${res.filePath}`);
           setTimeout(() => setDownloadSuccess(null), 4000);
@@ -60,13 +89,13 @@ export const PdfPreviewModal: React.FC<Props> = ({
         }
       } else {
         // Web browser direct fetch & blob download
-        const res = await fetch(pdfUrl);
+        const res = await fetch(activePdfUrl);
         if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
-        a.download = fileName;
+        a.download = activeFileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -83,9 +112,9 @@ export const PdfPreviewModal: React.FC<Props> = ({
 
   const handleOpenExternal = () => {
     if (window.electronAPI) {
-      window.electronAPI.openExternal(pdfUrl);
+      window.electronAPI.openExternal(activePdfUrl);
     } else {
-      window.open(pdfUrl, '_blank');
+      window.open(activePdfUrl, '_blank');
     }
   };
 
@@ -103,13 +132,41 @@ export const PdfPreviewModal: React.FC<Props> = ({
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
-                {title}
+                {activeTitle}
               </h2>
               <p className="text-[11px] text-slate-500 font-medium">
                 Official PDF Preview & Print Engine
               </p>
             </div>
           </div>
+
+          {/* Optional Mode Switcher (Standard vs Encrypted) */}
+          {quotationId && (
+            <div className="flex items-center bg-slate-200/90 p-1 rounded-md border border-slate-300 text-xs">
+              <button
+                onClick={() => handleToggleEncrypted(false)}
+                className={`px-3 py-1 rounded transition-all font-medium ${
+                  !isEncrypted
+                    ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Standard PDF
+              </button>
+              <button
+                onClick={() => handleToggleEncrypted(true)}
+                className={`px-3 py-1 rounded transition-all font-medium flex items-center space-x-1.5 ${
+                  isEncrypted
+                    ? 'bg-slate-900 text-amber-300 shadow-sm font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Export with brand removed and product name replaced with random code"
+              >
+                <ShieldAlert size={12} className={isEncrypted ? 'text-amber-400' : 'text-slate-500'} />
+                <span>Encrypted Export</span>
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center space-x-2">
             {downloadSuccess && (
@@ -176,9 +233,10 @@ export const PdfPreviewModal: React.FC<Props> = ({
           )}
 
           <iframe
+            key={activePdfUrl}
             id="pdf-preview-frame"
-            src={pdfUrl}
-            title={title}
+            src={activePdfUrl}
+            title={activeTitle}
             className="w-full h-full border-0"
             onLoad={() => setLoaded(true)}
           />

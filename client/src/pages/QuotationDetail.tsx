@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
 import { Quotation, QuotationArea, Payment } from '../types';
@@ -13,8 +13,10 @@ import {
   IndianRupee,
   RefreshCw,
   Receipt,
+  ShieldAlert,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
+import { buildEncryptedProductMap } from '../utils/encryptedCode';
 
 interface Props {
   quotationId: number;
@@ -40,7 +42,13 @@ export const QuotationDetail: React.FC<Props> = ({
   const [loading, setLoading] = useState(true);
 
   // PDF Preview State
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; title: string; fileName: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{
+    url: string;
+    title: string;
+    fileName: string;
+    quotationId?: number;
+    initialEncrypted?: boolean;
+  } | null>(null);
 
   const loadDetail = async () => {
     try {
@@ -68,6 +76,15 @@ export const QuotationDetail: React.FC<Props> = ({
     return () => unsubscribe();
   }, [quotationId]);
 
+  const allQuotationItems = useMemo(() => {
+    return (data?.areas || []).flatMap((a) => a.items || []);
+  }, [data]);
+
+  const encryptedProductMap = useMemo(() => {
+    if (!data?.quotation) return new Map<string, string>();
+    return buildEncryptedProductMap(data.quotation.quotation_number || data.quotation.id, allQuotationItems);
+  }, [data, allQuotationItems]);
+
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('en-IN', {
       maximumFractionDigits: 2,
@@ -77,11 +94,25 @@ export const QuotationDetail: React.FC<Props> = ({
 
   const handleOpenQuotationPdf = () => {
     if (!data) return;
-    const url = getPdfUrl(data.quotation.id);
+    const url = getPdfUrl(data.quotation.id, false);
     setPreviewPdf({
       url,
       title: `Quotation ${data.quotation.quotation_number} — ${data.quotation.customer_name}`,
       fileName: `Quotation_${data.quotation.quotation_number}.pdf`,
+      quotationId: data.quotation.id,
+      initialEncrypted: false,
+    });
+  };
+
+  const handleOpenEncryptedQuotationPdf = () => {
+    if (!data) return;
+    const url = getPdfUrl(data.quotation.id, true);
+    setPreviewPdf({
+      url,
+      title: `Quotation ${data.quotation.quotation_number} (Encrypted Export)`,
+      fileName: `Quotation_${data.quotation.quotation_number}_Encrypted.pdf`,
+      quotationId: data.quotation.id,
+      initialEncrypted: true,
     });
   };
 
@@ -145,9 +176,19 @@ export const QuotationDetail: React.FC<Props> = ({
           <button
             onClick={handleOpenQuotationPdf}
             className="btn btn-secondary btn-sm"
+            title="View & Export Official PDF with Brand & Tile names"
           >
             <Printer size={13} />
-            <span>View & Export PDF</span>
+            <span>Standard PDF</span>
+          </button>
+
+          <button
+            onClick={handleOpenEncryptedQuotationPdf}
+            className="btn btn-secondary btn-sm flex items-center space-x-1.5 bg-slate-900 hover:bg-black text-white border-transparent shadow-sm"
+            title="Export Encrypted PDF: Brand removed, Product name replaced with random code (e.g. HSDS-AMA)"
+          >
+            <ShieldAlert size={13} className="text-amber-400" />
+            <span>Encrypted Export</span>
           </button>
 
           <button
@@ -295,7 +336,15 @@ export const QuotationDetail: React.FC<Props> = ({
                           <td className="py-2 px-3 text-center text-slate-400 font-mono">
                             {item.sl_no}
                           </td>
-                          <td className="py-2 px-3 font-semibold text-slate-900">{item.description}</td>
+                          <td className="py-2 px-3 text-slate-900">
+                            <div className="font-semibold">{item.description}</div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center space-x-1">
+                              <span>Ref:</span>
+                              <span className="bg-amber-50 text-amber-800 font-semibold px-1 rounded border border-amber-200/60" title="Masked product code on Encrypted Export">
+                                {encryptedProductMap.get((item.description || '').trim()) || `${item.description}-AMA`}
+                              </span>
+                            </div>
+                          </td>
                           <td className="py-2 px-3 text-slate-600">{item.brand}</td>
                           <td className="py-2 px-3 text-slate-600 font-mono">{item.size}</td>
                           <td className="py-2 px-2.5">
@@ -429,6 +478,8 @@ export const QuotationDetail: React.FC<Props> = ({
           pdfUrl={previewPdf.url}
           title={previewPdf.title}
           fileName={previewPdf.fileName}
+          quotationId={previewPdf.quotationId}
+          initialEncrypted={previewPdf.initialEncrypted}
         />
       )}
     </div>

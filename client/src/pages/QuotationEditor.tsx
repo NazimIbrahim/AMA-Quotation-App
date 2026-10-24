@@ -24,6 +24,7 @@ import {
   User as UserIcon,
   Award,
   Percent,
+  ShieldAlert,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { numberToWordsIndian } from '../utils/numberToWords';
@@ -294,7 +295,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   const [error, setError] = useState<string | null>(null);
 
   // PDF Preview State
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; title: string; fileName: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{
+    url: string;
+    title: string;
+    fileName: string;
+    quotationId?: number;
+    initialEncrypted?: boolean;
+  } | null>(null);
 
   // Load Reference Data
   useEffect(() => {
@@ -748,13 +755,19 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     }
   };
 
-  const handleOpenPdf = () => {
+  const handleOpenPdf = (encrypted: boolean = false) => {
     if (!quotationId) return;
-    const url = getPdfUrl(quotationId);
+    const url = getPdfUrl(quotationId, encrypted);
     setPreviewPdf({
       url,
-      title: `Quotation ${quotationNumber} — ${customerName}`,
-      fileName: `Quotation_${quotationNumber}.pdf`,
+      title: encrypted
+        ? `Quotation ${quotationNumber} — ${customerName} (Encrypted)`
+        : `Quotation ${quotationNumber} — ${customerName}`,
+      fileName: encrypted
+        ? `Quotation_${quotationNumber}_Encrypted.pdf`
+        : `Quotation_${quotationNumber}.pdf`,
+      quotationId,
+      initialEncrypted: encrypted,
     });
   };
 
@@ -789,14 +802,25 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
         <div className="flex items-center space-x-2">
           {quotationId && (
-            <button
-              onClick={handleOpenPdf}
-              className="btn btn-secondary btn-sm"
-              title="Preview and Print PDF"
-            >
-              <Printer size={13} />
-              <span>Preview PDF</span>
-            </button>
+            <>
+              <button
+                onClick={() => handleOpenPdf(false)}
+                className="btn btn-secondary btn-sm"
+                title="Preview Standard PDF with Brand & Tile Names"
+              >
+                <Printer size={13} />
+                <span>Standard PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenPdf(true)}
+                className="btn btn-secondary btn-sm flex items-center space-x-1.5 bg-slate-900 hover:bg-black text-white border-transparent"
+                title="Export Encrypted PDF: Brand removed, Product name replaced with random code"
+              >
+                <ShieldAlert size={13} className="text-amber-400" />
+                <span>Encrypted Export</span>
+              </button>
+            </>
           )}
 
           <button
@@ -1836,6 +1860,8 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           pdfUrl={previewPdf.url}
           title={previewPdf.title}
           fileName={previewPdf.fileName}
+          quotationId={previewPdf.quotationId}
+          initialEncrypted={previewPdf.initialEncrypted}
         />
       )}
     </div>

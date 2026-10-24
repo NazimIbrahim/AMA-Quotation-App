@@ -29,7 +29,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
   const [loading, setLoading] = useState<boolean>(true);
 
   // PDF Preview State
-  const [previewPdf, setPreviewPdf] = useState<{ url: string; title: string; fileName: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; title: string; fileName: string; quotationId?: number } | null>(null);
 
   const loadDashboard = async () => {
     try {
@@ -75,6 +75,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
       url,
       title: `Quotation ${quotation.quotation_number} — ${quotation.customer_name}`,
       fileName: `Quotation_${quotation.quotation_number}.pdf`,
+      quotationId: quotation.id,
     });
   };
 
@@ -474,6 +475,7 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
           pdfUrl={previewPdf.url}
           title={previewPdf.title}
           fileName={previewPdf.fileName}
+          quotationId={previewPdf.quotationId}
         />
       )}
     </div>

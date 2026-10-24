@@ -12,6 +12,7 @@ export const quotationsRouter = Router();
 quotationsRouter.get('/:id/pdf', optionalAuthenticateToken, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
+    const isEncrypted = req.query.encrypted === 'true' || req.query.encrypted === '1';
 
     const qRows = await query('SELECT * FROM quotations WHERE id = $1', [id]);
     if (qRows.length === 0) {
@@ -45,12 +46,17 @@ quotationsRouter.get('/:id/pdf', optionalAuthenticateToken, async (req: Request,
           ? (typeof company.terms_json === 'string' ? JSON.parse(company.terms_json) : company.terms_json)
           : [],
       },
+      encrypted: isEncrypted,
     });
+
+    const filename = isEncrypted
+      ? `Quotation_${quotation.quotation_number}_Encrypted.pdf`
+      : `Quotation_${quotation.quotation_number}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="Quotation_${quotation.quotation_number}.pdf"`
+      `inline; filename="${filename}"`
     );
 
     doc.pipe(res);

@@ -25,7 +25,7 @@ interface ServerContextType {
   lastSyncTime: Date | null;
   testConnection: (targetUrl?: string) => Promise<{ ok: boolean; message: string; latency: number }>;
   fetchApi: <T = any>(endpoint: string, options?: RequestInit) => Promise<T>;
-  getPdfUrl: (quotationId: number) => string;
+  getPdfUrl: (quotationId: number, encrypted?: boolean) => string;
   getReceiptUrl: (paymentId: number) => string;
   subscribeToEvents: (callback: (event: any) => void) => () => void;
   openServerWizard: boolean;
@@ -239,10 +239,13 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const getPdfUrl = useCallback(
-    (quotationId: number) => {
+    (quotationId: number, encrypted?: boolean) => {
       const token = localStorage.getItem('ama_token');
-      const query = token ? `?token=${encodeURIComponent(token)}` : '';
-      return `${serverUrl}/api/quotations/${quotationId}/pdf${query}`;
+      const params = new URLSearchParams();
+      if (token) params.set('token', token);
+      if (encrypted) params.set('encrypted', 'true');
+      const query = params.toString();
+      return `${serverUrl}/api/quotations/${quotationId}/pdf${query ? `?${query}` : ''}`;
     },
     [serverUrl]
   );
