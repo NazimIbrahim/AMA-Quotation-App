@@ -159,9 +159,13 @@ CREATE TABLE IF NOT EXISTS quotation_items (
     product_type VARCHAR(30) NOT NULL DEFAULT 'box',
     coverage_area NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     quantity_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    base_rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     quantity_boxes NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    base_rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0.00,
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00
 );
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items (quotation_id);

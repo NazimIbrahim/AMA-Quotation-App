@@ -5,6 +5,7 @@ import { generateNextQuotationNumber } from '../utils/quotationNumber';
 import { generateQuotationPdf } from '../utils/pdfGenerator';
 import { recordAuditLog } from '../utils/audit';
 import { broadcast } from '../ws';
+import { calculateQuotationDiscountAndTotals, isCeraBrand } from '../utils/discountCalculator';
 
 export const quotationsRouter = Router();
 
@@ -288,62 +289,9 @@ quotationsRouter.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Helper: Calculate Totals on Server
+// Helper: Calculate Totals on Server with CERA-excluded direct item rate discount
 function calculateTotals(items: any[], discountPercent: number, discountAmount: number, taxType: string) {
-  let grossTotal = 0;
-  for (const it of items) {
-    const pType = String(it.product_type || 'box').toLowerCase();
-    let total = 0;
-    if (['bags', 'pieces', 'nos'].includes(pType)) {
-      const qty = parseFloat(it.quantity_boxes) || 0;
-      const rate = parseFloat(it.rate_per_box) || 0;
-      total = parseFloat((qty * rate).toFixed(2));
-    } else {
-      // 'box' or 'sqft'
-      const qtySqft = parseFloat(it.quantity_sqft) || 0;
-      const rateSqft = parseFloat(it.rate_per_sqft) || 0;
-      total = parseFloat((qtySqft * rateSqft).toFixed(2));
-    }
-    it.total_amount = total;
-    grossTotal += total;
-  }
-  grossTotal = parseFloat(grossTotal.toFixed(2));
-
-  let finalDiscount = typeof discountAmount === 'number' ? discountAmount : (parseFloat(discountAmount) || 0);
-  if (discountPercent > 0 && !finalDiscount) {
-    finalDiscount = parseFloat(((grossTotal * discountPercent) / 100).toFixed(2));
-  }
-
-  const taxableAmount = Math.max(0, parseFloat((grossTotal - finalDiscount).toFixed(2)));
-
-  let cgstRate = 0, cgstAmount = 0, sgstRate = 0, sgstAmount = 0, igstRate = 0, igstAmount = 0;
-  if (taxType === 'cgst_sgst') {
-    cgstRate = 9.0;
-    sgstRate = 9.0;
-    cgstAmount = parseFloat(((taxableAmount * cgstRate) / 100).toFixed(2));
-    sgstAmount = parseFloat(((taxableAmount * sgstRate) / 100).toFixed(2));
-  } else if (taxType === 'igst') {
-    igstRate = 18.0;
-    igstAmount = parseFloat(((taxableAmount * igstRate) / 100).toFixed(2));
-  }
-
-  const subTotalWithTax = taxableAmount + cgstAmount + sgstAmount + igstAmount;
-  const roundedNet = Math.round(subTotalWithTax);
-  const roundOff = parseFloat((roundedNet - subTotalWithTax).toFixed(2));
-
-  return {
-    grossTotal,
-    discountAmount: finalDiscount,
-    taxableAmount,
-    cgstRate,
-    cgstAmount,
-    sgstRate,
-    sgstAmount,
-    igstRate,
-    igstAmount,
-    roundOff,
-    netTotal: roundedNet,
-  };
+  return calculateQuotationDiscountAndTotals(items, discountAmount, discountPercent, taxType);
 }
 
 // 3. Create Quotation (Transactional)
@@ -526,11 +474,17 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
               total = parseFloat((sqft * rSqft).toFixed(2));
             }
 
+            const baseSqft = parseFloat(item.base_rate_per_sqft) || rSqft;
+            const baseBox = parseFloat(item.base_rate_per_box) || rBox;
+            const discPct = parseFloat(item.discount_percent) || 0;
+            const discAmt = parseFloat(item.discount_amount) || 0;
+
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
-                product_type, coverage_area, quantity_sqft, rate_per_sqft, quantity_boxes, rate_per_box, total_amount
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                product_type, coverage_area, quantity_sqft, base_rate_per_sqft, rate_per_sqft,
+                quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
               [
                 newQ.id,
                 areaId,
@@ -541,9 +495,13 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
                 pType,
                 cov,
                 sqft,
+                baseSqft,
                 rSqft,
                 boxes,
+                baseBox,
                 rBox,
+                discPct,
+                discAmt,
                 total,
               ]
             );
@@ -785,11 +743,17 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
               total = parseFloat((sqft * rSqft).toFixed(2));
             }
 
+            const baseSqft = parseFloat(item.base_rate_per_sqft) || rSqft;
+            const baseBox = parseFloat(item.base_rate_per_box) || rBox;
+            const discPct = parseFloat(item.discount_percent) || 0;
+            const discAmt = parseFloat(item.discount_amount) || 0;
+
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
-                product_type, coverage_area, quantity_sqft, rate_per_sqft, quantity_boxes, rate_per_box, total_amount
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                product_type, coverage_area, quantity_sqft, base_rate_per_sqft, rate_per_sqft,
+                quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
               [
                 id,
                 areaId,
@@ -800,9 +764,13 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
                 pType,
                 cov,
                 sqft,
+                baseSqft,
                 rSqft,
                 boxes,
+                baseBox,
                 rBox,
+                discPct,
+                discAmt,
                 total,
               ]
             );

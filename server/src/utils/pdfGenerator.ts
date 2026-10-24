@@ -14,6 +14,7 @@ export interface QuotationPdfData {
     assisted_sales_person_name?: string;
     status: string;
     gross_total: number;
+    discount_percent?: number;
     discount_amount: number;
     taxable_amount: number;
     tax_type: string;
@@ -373,9 +374,18 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
     totalsY += 16;
   };
 
-  renderTotalRow('GROSS TOTAL', formatCurrency(quotation.gross_total));
-  if (quotation.discount_amount > 0) {
-    renderTotalRow(`DISCOUNT`, `-${formatCurrency(quotation.discount_amount)}`);
+  const discAmt = Number(quotation.discount_amount || 0);
+  if (discAmt > 0) {
+    const listTotal = Number(quotation.gross_total || 0) + discAmt;
+    const discPct = Number(quotation.discount_percent || 0);
+    renderTotalRow('LIST TOTAL', formatCurrency(listTotal));
+    renderTotalRow(
+      discPct > 0 ? `DIRECT DISCOUNT (${discPct}%)` : 'DIRECT DISCOUNT',
+      `-${formatCurrency(discAmt)}`
+    );
+    renderTotalRow('TAXABLE TOTAL', formatCurrency(quotation.gross_total), true);
+  } else {
+    renderTotalRow('GROSS TOTAL', formatCurrency(quotation.gross_total));
   }
   if (quotation.round_off !== 0) {
     renderTotalRow('ROUND OFF', formatCurrency(quotation.round_off));

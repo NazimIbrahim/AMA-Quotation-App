@@ -57,10 +57,15 @@ export interface QuotationItem {
   product_type?: ProductType;
   coverage_area: number;
   quantity_sqft: number;
+  base_rate_per_sqft?: number;
   rate_per_sqft: number;
   quantity_boxes: number;
+  base_rate_per_box?: number;
   rate_per_box: number;
+  discount_percent?: number;
+  discount_amount?: number;
   total_amount: number;
+  _itemBaseTotal?: number;
 }
 
 export interface QuotationArea {

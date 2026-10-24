@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { buildEncryptedProductMap } from '../utils/encryptedCode';
+import { isCeraBrand } from '../utils/discountCalculator';
 
 interface Props {
   quotationId: number;
@@ -270,8 +271,33 @@ export const QuotationDetail: React.FC<Props> = ({
             <IndianRupee size={13} className="text-slate-700" />
             <span>Financial Settlement</span>
           </div>
-          <div className="flex justify-between text-slate-600">
-            <span>Net Total:</span>
+
+          {Number(quotation.discount_amount || 0) > 0 ? (
+            <>
+              <div className="flex justify-between text-slate-500">
+                <span>List Gross Total:</span>
+                <span className="tabular-nums">
+                  ₹ {formatCurrency(Number(quotation.gross_total || 0) + Number(quotation.discount_amount || 0))}
+                </span>
+              </div>
+              <div className="flex justify-between text-emerald-700 font-medium">
+                <span>Direct Trade Discount ({quotation.discount_percent}%):</span>
+                <span className="tabular-nums">-₹ {formatCurrency(quotation.discount_amount)}</span>
+              </div>
+              <div className="flex justify-between text-slate-700 font-medium">
+                <span>Taxable Total:</span>
+                <span className="tabular-nums">₹ {formatCurrency(quotation.taxable_amount || quotation.gross_total)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between text-slate-600">
+              <span>Gross Total:</span>
+              <span className="tabular-nums">₹ {formatCurrency(quotation.gross_total)}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between text-slate-900 font-bold border-t border-slate-200 pt-1">
+            <span>Net Payable:</span>
             <span className="font-bold text-slate-900 text-sm tabular-nums">
               ₹ {formatCurrency(quotation.net_total)}
             </span>
@@ -359,7 +385,20 @@ export const QuotationDetail: React.FC<Props> = ({
                             {pType === 'box' || pType === 'sqft' ? item.quantity_sqft : '-'}
                           </td>
                           <td className="py-2 px-3 text-right tabular-nums">
-                            {pType === 'box' || pType === 'sqft' ? `₹ ${formatCurrency(item.rate_per_sqft)}` : '-'}
+                            {pType === 'box' || pType === 'sqft' ? (
+                              <div>
+                                <div>₹ {formatCurrency(item.rate_per_sqft)}</div>
+                                {Number(item.discount_percent || 0) > 0 ? (
+                                  <div className="text-[10px] text-emerald-700 font-medium">
+                                    (-{item.discount_percent}%) <span className="line-through text-slate-400">₹{formatCurrency(item.base_rate_per_sqft || item.rate_per_sqft)}</span>
+                                  </div>
+                                ) : isCeraBrand(item.brand) && Number(quotation.discount_amount || 0) > 0 ? (
+                                  <div className="text-[10px] text-amber-700 font-medium">CERA (0%)</div>
+                                ) : null}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
                           </td>
                           <td className="py-2 px-3 text-right text-slate-700 font-semibold tabular-nums">
                             {pType === 'sqft'
@@ -375,10 +414,28 @@ export const QuotationDetail: React.FC<Props> = ({
                                 }`}
                           </td>
                           <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
-                            {pType === 'sqft' ? '-' : `₹ ${formatCurrency(item.rate_per_box)}`}
+                            {pType === 'sqft' ? (
+                              '-'
+                            ) : (
+                              <div>
+                                <div>₹ {formatCurrency(item.rate_per_box)}</div>
+                                {Number(item.discount_percent || 0) > 0 ? (
+                                  <div className="text-[10px] text-emerald-700 font-medium">
+                                    (-{item.discount_percent}%) <span className="line-through text-slate-400">₹{formatCurrency(item.base_rate_per_box || item.rate_per_box)}</span>
+                                  </div>
+                                ) : isCeraBrand(item.brand) && Number(quotation.discount_amount || 0) > 0 ? (
+                                  <div className="text-[10px] text-amber-700 font-medium">CERA (0%)</div>
+                                ) : null}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums">
-                            ₹ {formatCurrency(item.total_amount)}
+                            <div>₹ {formatCurrency(item.total_amount)}</div>
+                            {Number(item.discount_percent || 0) > 0 && Number(item.discount_amount || 0) > 0 && (
+                              <div className="text-[10px] text-slate-400 line-through font-normal">
+                                ₹ {formatCurrency(Number(item.total_amount) + Number(item.discount_amount))}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );

@@ -28,6 +28,14 @@ import {
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { numberToWordsIndian } from '../utils/numberToWords';
+import { calculateQuotationDiscountAndTotals, isCeraBrand } from '../utils/discountCalculator';
+
+const formatCurrency = (val: number) => {
+  return Number(val || 0).toLocaleString('en-IN', {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  });
+};
 
 interface Props {
   quotationId?: number | null;
@@ -282,9 +290,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           product_type: 'box',
           coverage_area: 46.5,
           quantity_sqft: 326,
+          base_rate_per_sqft: 145,
           rate_per_sqft: 145,
           quantity_boxes: 7,
+          base_rate_per_box: 6743,
           rate_per_box: 6743,
+          discount_percent: 0,
+          discount_amount: 0,
           total_amount: 47197.5,
         },
       ],
@@ -359,7 +371,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             setAreas(
               res.areas.map((a: any) => ({
                 name: a.area_name,
-                items: a.items || [],
+                items: (a.items || []).map((it: any) => ({
+                  ...it,
+                  base_rate_per_sqft: parseFloat(it.base_rate_per_sqft) || parseFloat(it.rate_per_sqft) || 0,
+                  base_rate_per_box: parseFloat(it.base_rate_per_box) || parseFloat(it.rate_per_box) || 0,
+                  discount_percent: parseFloat(it.discount_percent) || 0,
+                  discount_amount: parseFloat(it.discount_amount) || 0,
+                })),
               }))
             );
           }
@@ -402,9 +420,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
       product_type: 'box',
       coverage_area: 46.5,
       quantity_sqft: 100,
+      base_rate_per_sqft: 120,
       rate_per_sqft: 120,
       quantity_boxes: 2.15,
+      base_rate_per_box: 5580,
       rate_per_box: 5580,
+      discount_percent: 0,
+      discount_amount: 0,
       total_amount: 12000,
     });
     setAreas(newAreas);
@@ -443,21 +465,27 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           item.coverage_area = 0;
           item.quantity_boxes = 0;
           item.rate_per_box = 0;
-          item.rate_per_sqft = match.default_rate_sqft || rSqft;
-          item.total_amount = parseFloat((sqft * (match.default_rate_sqft || rSqft)).toFixed(2));
+          item.base_rate_per_box = 0;
+          item.base_rate_per_sqft = match.default_rate_sqft || rSqft;
+          item.rate_per_sqft = item.base_rate_per_sqft;
+          item.total_amount = parseFloat((sqft * item.rate_per_sqft).toFixed(2));
         } else if (['bags', 'pieces', 'nos'].includes(matchedType)) {
           item.coverage_area = 0;
           item.quantity_sqft = 0;
           item.rate_per_sqft = 0;
+          item.base_rate_per_sqft = 0;
           const unitRate = match.default_rate_box || match.default_rate_sqft || rBox;
+          item.base_rate_per_box = unitRate;
           item.rate_per_box = unitRate;
           item.total_amount = parseFloat((boxes * unitRate).toFixed(2));
         } else {
           // 'box'
           item.coverage_area = match.coverage_sqft;
-          item.rate_per_sqft = match.default_rate_sqft || rSqft;
-          item.rate_per_box = match.default_rate_box || (match.default_rate_sqft * match.coverage_sqft);
-          item.total_amount = parseFloat((sqft * (match.default_rate_sqft || rSqft)).toFixed(2));
+          item.base_rate_per_sqft = match.default_rate_sqft || rSqft;
+          item.rate_per_sqft = item.base_rate_per_sqft;
+          item.base_rate_per_box = match.default_rate_box || (item.base_rate_per_sqft * match.coverage_sqft);
+          item.rate_per_box = item.base_rate_per_box;
+          item.total_amount = parseFloat((sqft * item.rate_per_sqft).toFixed(2));
         }
       }
     } else if (field === 'product_type') {
@@ -467,11 +495,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         item.coverage_area = 0;
         item.quantity_boxes = 0;
         item.rate_per_box = 0;
+        item.base_rate_per_box = 0;
         item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
       } else if (['bags', 'pieces', 'nos'].includes(newType)) {
         item.coverage_area = 0;
         item.quantity_sqft = 0;
         item.rate_per_sqft = 0;
+        item.base_rate_per_sqft = 0;
         item.total_amount = parseFloat((boxes * rBox).toFixed(2));
       } else {
         // 'box'
@@ -479,6 +509,8 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : 0;
         item.quantity_boxes = boxes;
         item.rate_per_box = rBox;
+        item.base_rate_per_box = rBox;
+        item.base_rate_per_sqft = rSqft;
         item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
       }
     } else if (pType === 'sqft') {
@@ -487,6 +519,8 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
       } else if (field === 'rate_per_sqft') {
         rSqft = parseFloat(val) || 0;
+        item.base_rate_per_sqft = rSqft;
+        item.rate_per_sqft = rSqft;
         item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
       }
     } else if (['bags', 'pieces', 'nos'].includes(pType)) {
@@ -495,6 +529,8 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         item.total_amount = parseFloat((boxes * rBox).toFixed(2));
       } else if (field === 'rate_per_box') {
         rBox = parseFloat(val) || 0;
+        item.base_rate_per_box = rBox;
+        item.rate_per_box = rBox;
         item.total_amount = parseFloat((boxes * rBox).toFixed(2));
       }
     } else {
@@ -512,11 +548,17 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
       } else if (field === 'rate_per_sqft') {
         rSqft = parseFloat(val) || 0;
         rBox = cov > 0 ? parseFloat((rSqft * cov).toFixed(2)) : 0;
+        item.base_rate_per_sqft = rSqft;
+        item.base_rate_per_box = rBox;
+        item.rate_per_sqft = rSqft;
         item.rate_per_box = rBox;
         item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
       } else if (field === 'rate_per_box') {
         rBox = parseFloat(val) || 0;
         rSqft = cov > 0 ? parseFloat((rBox / cov).toFixed(2)) : 0;
+        item.base_rate_per_box = rBox;
+        item.base_rate_per_sqft = rSqft;
+        item.rate_per_box = rBox;
         item.rate_per_sqft = rSqft;
         item.total_amount = parseFloat((sqft * rSqft).toFixed(2));
       } else if (field === 'coverage_area') {
@@ -524,6 +566,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         boxes = newCov > 0 ? parseFloat((sqft / newCov).toFixed(2)) : 0;
         item.quantity_boxes = boxes;
         item.rate_per_box = parseFloat((rSqft * newCov).toFixed(2));
+        item.base_rate_per_box = item.rate_per_box;
       }
     }
 
@@ -531,42 +574,39 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     setAreas(newAreas);
   };
 
-  // Re-number SL Nos across all items
+  // Re-number SL Nos across all items and collect flat array
   let runningSl = 1;
+  const allItems: QuotationItem[] = [];
   areas.forEach((a) => {
     a.items.forEach((it) => {
       it.sl_no = runningSl++;
+      allItems.push(it);
     });
   });
 
-  // Financial Totals Calculation
-  let grossTotal = 0;
-  areas.forEach((a) => {
-    a.items.forEach((it) => {
-      grossTotal += parseFloat(String(it.total_amount)) || 0;
-    });
-  });
-  grossTotal = parseFloat(grossTotal.toFixed(2));
+  // Calculate CERA-excluded direct item rate discounts and financial totals
+  const calculationResult = calculateQuotationDiscountAndTotals(
+    allItems,
+    discountAmount,
+    discountPercent,
+    taxType
+  );
 
-  let finalDiscount = discountAmount;
-  if (discountPercent > 0 && !discountAmount) {
-    finalDiscount = parseFloat(((grossTotal * discountPercent) / 100).toFixed(2));
-  }
-  const taxableAmount = Math.max(0, parseFloat((grossTotal - finalDiscount).toFixed(2)));
+  const {
+    ceraBaseTotal,
+    nonCeraBaseTotal,
+    totalBaseQuote,
+    taxableAmount,
+    cgstAmount,
+    sgstAmount,
+    igstAmount,
+    roundOff,
+    netTotal,
+    grossTotal,
+  } = calculationResult;
 
-  let cgstAmount = 0,
-    sgstAmount = 0,
-    igstAmount = 0;
-  if (taxType === 'cgst_sgst') {
-    cgstAmount = parseFloat(((taxableAmount * 9) / 100).toFixed(2));
-    sgstAmount = parseFloat(((taxableAmount * 9) / 100).toFixed(2));
-  } else if (taxType === 'igst') {
-    igstAmount = parseFloat(((taxableAmount * 18) / 100).toFixed(2));
-  }
-
-  const rawTotal = taxableAmount + cgstAmount + sgstAmount + igstAmount;
-  const netTotal = Math.round(rawTotal);
-  const roundOff = parseFloat((netTotal - rawTotal).toFixed(2));
+  const finalDiscount = calculationResult.discountAmount;
+  const computedDiscountPercent = calculationResult.discountPercent;
   const amountInWords = numberToWordsIndian(netTotal);
 
   // Synchronize split amounts whenever netTotal changes
@@ -707,7 +747,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         status: status,
         tax_type: taxType,
         special_notes: specialNotes,
-        discount_percent: discountPercent,
+        discount_percent: computedDiscountPercent,
         discount_amount: finalDiscount,
         assisted_sales_person_id: enableSplitSale ? assistedSalesPersonId : null,
         assisted_sales_person_name: enableSplitSale ? assistedSalesPersonName : null,
@@ -727,9 +767,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             product_type: it.product_type || 'box',
             coverage_area: parseFloat(String(it.coverage_area)) || 0,
             quantity_sqft: parseFloat(String(it.quantity_sqft)) || 0,
+            base_rate_per_sqft: parseFloat(String(it.base_rate_per_sqft || it.rate_per_sqft)) || 0,
             rate_per_sqft: parseFloat(String(it.rate_per_sqft)) || 0,
             quantity_boxes: parseFloat(String(it.quantity_boxes)) || 0,
+            base_rate_per_box: parseFloat(String(it.base_rate_per_box || it.rate_per_box)) || 0,
             rate_per_box: parseFloat(String(it.rate_per_box)) || 0,
+            discount_percent: parseFloat(String(it.discount_percent || 0)) || 0,
+            discount_amount: parseFloat(String(it.discount_amount || 0)) || 0,
             total_amount: parseFloat(String(it.total_amount)) || 0,
           })),
         })),
@@ -768,13 +812,6 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         : `Quotation_${quotationNumber}.pdf`,
       quotationId,
       initialEncrypted: encrypted,
-    });
-  };
-
-  const formatCurrency = (val: number) => {
-    return Number(val || 0).toLocaleString('en-IN', {
-      maximumFractionDigits: 2,
-      minimumFractionDigits: 2,
     });
   };
 
@@ -1631,16 +1668,27 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         {/* Rate / Sqft */}
                         <td className="py-1.5 px-1.5">
                           {pType === 'box' || pType === 'sqft' ? (
-                            <input
-                              type="number"
-                              step="0.01"
-                              className="input input-sm py-1 text-right text-slate-700 tabular-nums w-full"
-                              placeholder="₹/Sqft"
-                              value={item.rate_per_sqft}
-                              onChange={(e) =>
-                                handleItemChange(areaIdx, itemIdx, 'rate_per_sqft', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="input input-sm py-1 text-right text-slate-700 tabular-nums w-full"
+                                placeholder="₹/Sqft"
+                                value={item.base_rate_per_sqft !== undefined && item.base_rate_per_sqft !== null ? item.base_rate_per_sqft : item.rate_per_sqft}
+                                onChange={(e) =>
+                                  handleItemChange(areaIdx, itemIdx, 'rate_per_sqft', e.target.value)
+                                }
+                              />
+                              {isCeraBrand(item.brand) ? (
+                                <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5" title="CERA brand excluded from discounts">
+                                  CERA (0% Disc)
+                                </div>
+                              ) : (computedDiscountPercent > 0 && item.discount_percent ? (
+                                <div className="text-[10px] text-emerald-700 font-mono font-semibold text-right mt-0.5" title="Effective discounted rate">
+                                  ₹{formatCurrency(item.rate_per_sqft)} (-{item.discount_percent}%)
+                                </div>
+                              ) : null)}
+                            </div>
                           ) : (
                             <span className="text-slate-300 font-mono text-center block">-</span>
                           )}
@@ -1685,38 +1733,54 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                           {pType === 'sqft' ? (
                             <span className="text-slate-300 font-mono text-center block">-</span>
                           ) : (
-                            <input
-                              type="number"
-                              step="0.01"
-                              className={`input input-sm py-1 text-right tabular-nums w-full ${
-                                pType === 'bags'
-                                  ? 'font-bold text-amber-900 bg-amber-50/50'
-                                  : pType === 'pieces'
-                                  ? 'font-bold text-purple-900 bg-purple-50/50'
-                                  : pType === 'nos'
-                                  ? 'font-bold text-slate-900 bg-slate-50'
-                                  : 'text-slate-700'
-                              }`}
-                              placeholder={
-                                pType === 'box'
-                                  ? '₹/Box'
-                                  : pType === 'bags'
-                                  ? '₹/Bag'
-                                  : pType === 'pieces'
-                                  ? '₹/Pc'
-                                  : '₹/No'
-                              }
-                              value={item.rate_per_box}
-                              onChange={(e) =>
-                                handleItemChange(areaIdx, itemIdx, 'rate_per_box', e.target.value)
-                              }
-                            />
+                            <div>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className={`input input-sm py-1 text-right tabular-nums w-full ${
+                                  pType === 'bags'
+                                    ? 'font-bold text-amber-900 bg-amber-50/50'
+                                    : pType === 'pieces'
+                                    ? 'font-bold text-purple-900 bg-purple-50/50'
+                                    : pType === 'nos'
+                                    ? 'font-bold text-slate-900 bg-slate-50'
+                                    : 'text-slate-700'
+                                }`}
+                                placeholder={
+                                  pType === 'box'
+                                    ? '₹/Box'
+                                    : pType === 'bags'
+                                    ? '₹/Bag'
+                                    : pType === 'pieces'
+                                    ? '₹/Pc'
+                                    : '₹/No'
+                                }
+                                value={item.base_rate_per_box !== undefined && item.base_rate_per_box !== null ? item.base_rate_per_box : item.rate_per_box}
+                                onChange={(e) =>
+                                  handleItemChange(areaIdx, itemIdx, 'rate_per_box', e.target.value)
+                                }
+                              />
+                              {isCeraBrand(item.brand) ? (
+                                <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5" title="CERA brand excluded from discounts">
+                                  CERA (0% Disc)
+                                </div>
+                              ) : (computedDiscountPercent > 0 && item.discount_percent ? (
+                                <div className="text-[10px] text-emerald-700 font-mono font-semibold text-right mt-0.5" title="Effective discounted rate">
+                                  ₹{formatCurrency(item.rate_per_box)} (-{item.discount_percent}%)
+                                </div>
+                              ) : null)}
+                            </div>
                           )}
                         </td>
 
                         {/* Total Amount */}
                         <td className="py-1.5 px-1.5 text-right font-bold text-slate-900 tabular-nums">
-                          ₹ {formatCurrency(item.total_amount)}
+                          <div>₹ {formatCurrency(item.total_amount)}</div>
+                          {computedDiscountPercent > 0 && !isCeraBrand(item.brand) && (item._itemBaseTotal || 0) > item.total_amount && (
+                            <div className="text-[10px] text-slate-400 line-through font-normal">
+                              ₹ {formatCurrency(item._itemBaseTotal || 0)}
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-1.5 px-1 text-center">
@@ -1786,26 +1850,87 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         {/* Right Side: Totals Card */}
         <div className="bg-slate-50 p-4 rounded-md border border-slate-200 space-y-2 text-xs">
           <div className="flex justify-between py-1">
-            <span className="text-slate-600 font-medium">Gross Product Total:</span>
+            <span className="text-slate-600 font-medium">List Total (Gross):</span>
             <span className="font-bold text-slate-900 tabular-nums">
-              ₹ {formatCurrency(grossTotal)}
+              ₹ {formatCurrency(totalBaseQuote)}
             </span>
           </div>
 
-          {/* Discount Input */}
-          <div className="flex justify-between items-center py-1">
-            <span className="text-slate-600 font-medium">Trade Discount (INR):</span>
-            <input
-              type="number"
-              step="0.01"
-              className="input input-sm w-36 text-right tabular-nums font-semibold"
-              value={discountAmount}
-              onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-              placeholder="0.00"
-            />
+          {ceraBaseTotal > 0 && (
+            <div className="p-2.5 rounded bg-amber-50/80 border border-amber-200 text-[11px] space-y-1">
+              <div className="flex justify-between text-amber-900 font-semibold">
+                <span>CERA Excluded (0% Disc):</span>
+                <span className="tabular-nums">₹ {formatCurrency(ceraBaseTotal)}</span>
+              </div>
+              <div className="flex justify-between text-slate-700">
+                <span>Eligible Non-CERA Base:</span>
+                <span className="tabular-nums font-medium">₹ {formatCurrency(nonCeraBaseTotal)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Trade Discount Input Block */}
+          <div className="py-2 border-t border-b border-slate-200 space-y-1.5">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="text-slate-700 font-semibold block">Trade Discount</span>
+                {ceraBaseTotal > 0 && (
+                  <span className="text-[10px] text-amber-700 font-medium block">
+                    (Excluded from CERA)
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input input-sm w-28 text-right tabular-nums font-semibold pr-6"
+                    value={discountAmount || ''}
+                    onChange={(e) => {
+                      const amt = parseFloat(e.target.value) || 0;
+                      setDiscountAmount(amt);
+                      if (nonCeraBaseTotal > 0) {
+                        setDiscountPercent(parseFloat(((amt / nonCeraBaseTotal) * 100).toFixed(2)));
+                      } else {
+                        setDiscountPercent(0);
+                      }
+                    }}
+                    placeholder="0.00"
+                  />
+                  <span className="absolute right-2 top-1.5 text-slate-400 text-xs font-semibold">₹</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input input-sm w-20 text-right tabular-nums font-semibold pr-6"
+                    value={discountPercent || ''}
+                    onChange={(e) => {
+                      const pct = parseFloat(e.target.value) || 0;
+                      setDiscountPercent(pct);
+                      if (nonCeraBaseTotal > 0) {
+                        setDiscountAmount(parseFloat(((nonCeraBaseTotal * pct) / 100).toFixed(2)));
+                      } else {
+                        setDiscountAmount(0);
+                      }
+                    }}
+                    placeholder="0.0"
+                  />
+                  <span className="absolute right-2 top-1.5 text-slate-400 text-xs font-semibold">%</span>
+                </div>
+              </div>
+            </div>
+
+            {finalDiscount > 0 && nonCeraBaseTotal > 0 && (
+              <div className="text-[10px] text-emerald-700 font-mono text-right bg-emerald-50 px-2 py-1 rounded border border-emerald-200/60">
+                Formula: ₹{formatCurrency(finalDiscount)} / ₹{formatCurrency(nonCeraBaseTotal)} × 100 ={' '}
+                <strong>{computedDiscountPercent}%</strong> deducted from eligible items
+              </div>
+            )}
           </div>
 
-          <div className="flex justify-between py-1 border-t border-slate-200 pt-2">
+          <div className="flex justify-between py-1">
             <span className="text-slate-600 font-medium">Taxable Base Amount:</span>
             <span className="font-bold text-slate-900 tabular-nums">
               ₹ {formatCurrency(taxableAmount)}
