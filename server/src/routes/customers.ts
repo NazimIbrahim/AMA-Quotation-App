@@ -63,6 +63,39 @@ customersRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// Fast customer lookup by phone, name, email, or address for autocomplete popup
+customersRouter.get('/lookup', async (req: Request, res: Response) => {
+  try {
+    const q = ((req.query.q as string) || '').trim();
+    if (!q) {
+      res.json({ customers: [] });
+      return;
+    }
+    const cleanDigits = q.replace(/\D/g, '');
+    let sql = `
+      SELECT id, name, mobile_number, email, delivery_address, site_location, gstin, notes
+      FROM customers
+      WHERE is_active = true AND (
+        name ILIKE $1 
+        OR mobile_number ILIKE $1 
+        OR site_location ILIKE $1 
+        OR email ILIKE $1 
+        OR gstin ILIKE $1
+    `;
+    const params = [`%${q}%`];
+    if (cleanDigits.length >= 3) {
+      sql += ` OR REPLACE(mobile_number, ' ', '') ILIKE $2`;
+      params.push(`%${cleanDigits}%`);
+    }
+    sql += `) ORDER BY name ASC LIMIT 10`;
+
+    const rows = await query(sql, params);
+    res.json({ customers: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get single customer with their quotations
 customersRouter.get('/:id', async (req: Request, res: Response) => {
   try {
