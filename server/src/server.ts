@@ -4,7 +4,8 @@ import cors from 'cors';
 import os from 'os';
 import { config } from './config';
 import { logger } from './utils/logger';
-import { testConnection } from './db/connection';
+import { testConnection, query } from './db/connection';
+import { seedDatabase } from './db/seed';
 import { initWebSocketServer, getConnectedClientCount } from './ws';
 
 import { authRouter } from './routes/auth';
@@ -83,8 +84,23 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // Initialize WebSocket server
 initWebSocketServer(server);
 
+// Ensure default users and company settings exist if database was just created
+async function ensureBootstrapData() {
+  try {
+    const userCount = await query('SELECT count(*) FROM users');
+    if (parseInt(userCount[0]?.count || '0', 10) === 0) {
+      logger.info('Fresh database detected (0 users). Seeding default admin, manager, accounts, and salesperson accounts...');
+      await seedDatabase();
+      logger.info('Default accounts and company settings seeded successfully.');
+    }
+  } catch (err: any) {
+    logger.warn('Bootstrap data check warning:', err.message);
+  }
+}
+
 // Start listening on 0.0.0.0 (all LAN interfaces)
-server.listen(config.port, '0.0.0.0', () => {
+server.listen(config.port, '0.0.0.0', async () => {
+  await ensureBootstrapData();
   logger.info(`========================================================`);
   logger.info(`AMA Ceramics Quotation Central Server is running!`);
   logger.info(`Port: ${config.port}`);
