@@ -223,3 +223,22 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity_type, entity_id);
+
+CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
+    id SERIAL PRIMARY KEY,
+    item_code VARCHAR(100) NOT NULL,
+    brand VARCHAR(150) NOT NULL DEFAULT 'Sanitary',
+    category VARCHAR(100) NOT NULL DEFAULT 'General',
+    item_description TEXT NOT NULL,
+    mrp_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    item_image TEXT,
+    catalog_name VARCHAR(255),
+    page_number INTEGER,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_code ON sanitary_catalog_items (item_code);
+CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
+CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);
+

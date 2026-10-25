@@ -25,8 +25,11 @@ import {
   Percent,
   Copy,
   Eye,
+  Bath,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
+import { SanitaryCatalogPickerModal } from '../components/SanitaryCatalogPickerModal';
+import { SanitaryCatalogItem } from '../types';
 import { numberToWordsIndian } from '../utils/numberToWords';
 
 const formatCurrency = (val: number) => {
@@ -130,6 +133,13 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfIsEncrypted, setPdfIsEncrypted] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
+
+  // Catalog Autocomplete & Auto-Fetch State
+  const [catalogPickerOpen, setCatalogPickerOpen] = useState(false);
+  const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
+  const [catalogSuggestions, setCatalogSuggestions] = useState<SanitaryCatalogItem[]>([]);
+  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
+  const catalogSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
@@ -415,6 +425,119 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
     setItems((prev) =>
       prev.filter((_, i) => i !== index).map((it, idx) => ({ ...it, sl_no: idx + 1 }))
     );
+  };
+
+  // Catalog Autocomplete & Auto-Fetch Handlers
+  const handleItemCodeChange = (index: number, code: string) => {
+    updateItem(index, 'item_code', code);
+    setActiveSuggestRow(index);
+
+    if (catalogSearchTimeoutRef.current) {
+      clearTimeout(catalogSearchTimeoutRef.current);
+    }
+
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setCatalogSuggestions([]);
+      return;
+    }
+
+    catalogSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        setIsSearchingCatalog(true);
+        const res = await fetchApi<any>(
+          `/api/sanitary-catalog/lookup?code=${encodeURIComponent(trimmed)}&q=${encodeURIComponent(trimmed)}`
+        );
+        const found: SanitaryCatalogItem[] = res.suggestions || [];
+        setCatalogSuggestions(found);
+
+        // If exact code match found and user hasn't typed description yet, auto-fill it!
+        if (res.item && res.item.item_code.toLowerCase() === trimmed.toLowerCase()) {
+          const currentItem = items[index];
+          if (!currentItem.item_description || currentItem.item_description.startsWith('Sanitary Item')) {
+            applyCatalogItem(index, res.item);
+          }
+        }
+      } catch (err) {
+        console.error('Catalog lookup error:', err);
+      } finally {
+        setIsSearchingCatalog(false);
+      }
+    }, 200);
+  };
+
+  const applyCatalogItem = (index: number, catItem: SanitaryCatalogItem) => {
+    setItems((prev) => {
+      const next = [...prev];
+      if (!next[index]) return prev;
+      const cur = { ...next[index] };
+      cur.item_code = catItem.item_code;
+      cur.item_description = catItem.item_description;
+      if (catItem.item_image) {
+        cur.item_image = catItem.item_image;
+      }
+      const mrp = Number(catItem.mrp_price || 0);
+      cur.mrp_price = mrp;
+      const discPct = cur.discount_percent || 0;
+      const discPrice = discPct > 0 ? parseFloat((mrp * (1 - discPct / 100)).toFixed(2)) : mrp;
+      cur.discounted_price = discPrice;
+      cur.total_price = parseFloat((cur.quantity * discPrice).toFixed(2));
+
+      next[index] = cur;
+      return next;
+    });
+
+    setActiveSuggestRow(null);
+    setCatalogSuggestions([]);
+  };
+
+  const handleItemCodeBlur = (index: number) => {
+    // Slight delay to allow clicks on dropdown items
+    setTimeout(async () => {
+      setActiveSuggestRow(null);
+      const currentItem = items[index];
+      if (
+        currentItem &&
+        currentItem.item_code.trim() &&
+        (!currentItem.item_description || currentItem.item_description.startsWith('Sanitary Item') || currentItem.mrp_price === 0)
+      ) {
+        try {
+          const res = await fetchApi<any>(
+            `/api/sanitary-catalog/lookup?code=${encodeURIComponent(currentItem.item_code.trim())}`
+          );
+          if (res.item) {
+            applyCatalogItem(index, res.item);
+          }
+        } catch (e) {
+          console.warn('Catalog blur lookup error:', e);
+        }
+      }
+    }, 250);
+  };
+
+  const handleSelectFromPicker = (catItem: SanitaryCatalogItem) => {
+    const lastIdx = items.length - 1;
+    const isLastBlank = lastIdx >= 0 && !items[lastIdx].item_code.trim() && !items[lastIdx].item_description.trim();
+
+    if (isLastBlank) {
+      applyCatalogItem(lastIdx, catItem);
+    } else {
+      const mrp = Number(catItem.mrp_price || 0);
+      setItems((prev) => [
+        ...prev,
+        {
+          sl_no: prev.length + 1,
+          item_code: catItem.item_code,
+          item_description: catItem.item_description,
+          item_image: catItem.item_image || '',
+          quantity: 1,
+          mrp_price: mrp,
+          discount_percent: 0,
+          discounted_price: mrp,
+          total_price: mrp,
+        },
+      ]);
+    }
   };
 
   // 5. Financial Summary Calculations
@@ -936,14 +1059,25 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={addItem}
-            className="btn btn-primary text-xs px-3 py-1.5 font-bold inline-flex items-center space-x-1.5 shadow-xs"
-          >
-            <Plus size={14} />
-            <span>Add Item</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setCatalogPickerOpen(true)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 bg-teal-50 border border-teal-300 text-teal-900 hover:bg-teal-100 transition-colors shadow-2xs"
+              title="Browse catalog and insert items directly"
+            >
+              <Bath size={14} className="text-teal-700" />
+              <span>Browse Catalog</span>
+            </button>
+            <button
+              type="button"
+              onClick={addItem}
+              className="btn btn-primary text-xs px-3 py-1.5 font-bold inline-flex items-center space-x-1.5 shadow-xs"
+            >
+              <Plus size={14} />
+              <span>Add Item</span>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -951,7 +1085,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
             <thead>
               <tr className="bg-slate-100/90 text-[11px] font-bold text-[#1B263B] uppercase tracking-wider border-b border-slate-200">
                 <th className="py-2.5 px-3 w-12 text-center">Sl.</th>
-                <th className="py-2.5 px-3 w-28">Item Code</th>
+                <th className="py-2.5 px-3 w-32">Item Code</th>
                 <th className="py-2.5 px-3 min-w-[200px]">Item Description</th>
                 <th className="py-2.5 px-3 w-24 text-center">Item Image</th>
                 <th className="py-2.5 px-3 w-24 text-right">Qty (Nos)</th>
@@ -970,15 +1104,76 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                     {item.sl_no}
                   </td>
 
-                  {/* Item Code */}
-                  <td className="py-3 px-3 align-middle">
-                    <input
-                      type="text"
-                      placeholder="e.g. SN-101"
-                      value={item.item_code}
-                      onChange={(e) => updateItem(index, 'item_code', e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
-                    />
+                  {/* Item Code with Autocomplete */}
+                  <td className="py-3 px-3 align-middle relative">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="e.g. SN-101"
+                        value={item.item_code}
+                        onChange={(e) => handleItemCodeChange(index, e.target.value)}
+                        onFocus={() => {
+                          if (item.item_code) handleItemCodeChange(index, item.item_code);
+                        }}
+                        onBlur={() => handleItemCodeBlur(index)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
+                      />
+                      {isSearchingCatalog && activeSuggestRow === index && (
+                        <div className="absolute right-2 top-2.5">
+                          <Loader2 size={12} className="animate-spin text-teal-600" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Autocomplete Dropdown */}
+                    {activeSuggestRow === index && catalogSuggestions.length > 0 && (
+                      <div className="absolute left-3 top-full mt-1 w-80 bg-white/95 backdrop-blur-md rounded-xl border border-slate-200 shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
+                        <div className="px-2.5 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                          <span>Catalog Matches</span>
+                          <span className="text-teal-700 font-medium">Click to auto-fill</span>
+                        </div>
+                        {catalogSuggestions.map((cat) => (
+                          <div
+                            key={cat.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              applyCatalogItem(index, cat);
+                            }}
+                            className="p-2 flex items-center space-x-2.5 hover:bg-teal-50/80 cursor-pointer transition-colors text-left"
+                          >
+                            {cat.item_image ? (
+                              <img
+                                src={cat.item_image}
+                                alt={cat.item_code}
+                                className="w-10 h-10 object-cover rounded-lg border border-slate-200 shrink-0 bg-white"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                                <Bath size={16} />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono font-bold text-xs text-teal-900 truncate">
+                                  {cat.item_code}
+                                </span>
+                                <span className="font-mono font-bold text-xs text-slate-900 shrink-0 ml-2">
+                                  ₹{formatCurrency(cat.mrp_price)}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 truncate mt-0.5">
+                                {cat.item_description}
+                              </p>
+                              {cat.brand && (
+                                <span className="inline-block text-[9px] font-semibold px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded mt-0.5">
+                                  {cat.brand}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </td>
 
                   {/* Item Description */}
@@ -1370,6 +1565,13 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
           initialEncrypted={pdfIsEncrypted}
         />
       )}
+
+      {/* Sanitary Catalog Visual Picker Modal */}
+      <SanitaryCatalogPickerModal
+        isOpen={catalogPickerOpen}
+        onClose={() => setCatalogPickerOpen(false)}
+        onSelectItem={handleSelectFromPicker}
+      />
     </div>
   );
 };

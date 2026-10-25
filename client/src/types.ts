@@ -62,6 +62,21 @@ export interface SanitaryItem {
   total_price: number; // quantity * discounted_price
 }
 
+export interface SanitaryCatalogItem {
+  id?: number;
+  item_code: string;
+  brand?: string;
+  category?: string;
+  item_description: string;
+  mrp_price: number;
+  item_image?: string | null;
+  catalog_name?: string | null;
+  page_number?: number | null;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface QuotationItem {
   id?: number;
   area_id?: number;

@@ -19,6 +19,7 @@ import { companyRouter } from './routes/company';
 import { auditRouter } from './routes/audit';
 import { reportsRouter } from './routes/reports';
 import { backupRouter } from './routes/backup';
+import { sanitaryCatalogRouter } from './routes/sanitaryCatalog';
 
 const app = express();
 const server = http.createServer(app);
@@ -32,8 +33,8 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Request logging (lightweight, excludes health check)
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -62,6 +63,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/quotations', quotationsRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/products', productsRouter);
+app.use('/api/sanitary-catalog', sanitaryCatalogRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/targets', targetsRouter);
 app.use('/api/dashboard', dashboardRouter);

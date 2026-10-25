@@ -29,6 +29,7 @@ export type NavTab =
   | 'salespersons'
   | 'customers'
   | 'products'
+  | 'sanitary-catalog'
   | 'payments'
   | 'targets'
   | 'reports'
@@ -206,6 +207,22 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
                 <Layers size={16} className="nav-icon" />
                 <span className="tracking-wide">Tile Catalog</span>
               </div>
+            </button>
+
+            {/* Sanitary Catalog */}
+            <button
+              onClick={() => setActiveTab('sanitary-catalog')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs cursor-pointer text-left ${
+                activeTab === 'sanitary-catalog' ? 'sidebar-nav-active' : 'sidebar-nav-item'
+              }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Bath size={16} className={activeTab === 'sanitary-catalog' ? 'text-teal-300' : 'nav-icon'} />
+                <span className="tracking-wide">Sanitary Catalog</span>
+              </div>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-300 font-mono border border-teal-400/20">
+                PDF
+              </span>
             </button>
 
             {/* Payments & Receipts */}

@@ -14,6 +14,7 @@ import { QuotationEditor } from './pages/QuotationEditor';
 import { SanitaryQuotationEditor } from './pages/SanitaryQuotationEditor';
 import { CustomerManagement } from './pages/CustomerManagement';
 import { ProductManagement } from './pages/ProductManagement';
+import { SanitaryCatalogManagement } from './pages/SanitaryCatalogManagement';
 import { PaymentManagement } from './pages/PaymentManagement';
 import { TargetsManagement } from './pages/TargetsManagement';
 import { ReportsPage } from './pages/ReportsPage';
@@ -197,6 +198,8 @@ const AppContent: React.FC = () => {
         return <CustomerManagement />;
       case 'products':
         return <ProductManagement />;
+      case 'sanitary-catalog':
+        return <SanitaryCatalogManagement />;
       case 'payments':
         return <PaymentManagement />;
       case 'targets':
