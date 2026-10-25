@@ -35,6 +35,12 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "English"
 
 Section "Install Host Server Files" SecMain
+    ; Stop existing host server service to prevent file locks during overwrite
+    DetailPrint "Stopping existing background service..."
+    nsExec::Exec 'schtasks /end /tn "AMACeramicsServer"'
+    nsExec::Exec 'taskkill /F /IM node.exe'
+    Sleep 1000
+
     SetOutPath "$INSTDIR"
     
     ; Copy root launchers and docs
@@ -71,13 +77,17 @@ Section "Install Host Server Files" SecMain
     WriteRegStr HKLM "Software\AMACeramics\HostServer" "Install_Dir" "$INSTDIR"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayName" "AMA Ceramics Quotation Host Server"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "UninstallString" '"$INSTDIR\uninstall.exe"'
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayVersion" "1.3.2"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayVersion" "2.4.0"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "Publisher" "AMA Ceramics Pvt Ltd"
     WriteUninstaller "$INSTDIR\uninstall.exe"
     
     ; Run the automated setup script
     DetailPrint "Configuring PostgreSQL, Firewall, and Background Scheduled Task..."
     nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\setup_host_server.ps1" -Unattended'
+
+    ; Start the background service
+    DetailPrint "Starting AMA Ceramics Host Server..."
+    nsExec::Exec 'schtasks /run /tn "AMACeramicsServer"'
     
     ; Create Start Menu Shortcuts
     CreateDirectory "$SMPROGRAMS\AMA Ceramics Host Server"

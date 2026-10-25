@@ -208,14 +208,14 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
       doc.rect(30, y, 535, 20).fillAndStroke(primaryColor, primaryColor);
       doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#FFFFFF');
       doc.text('Sl.', 30, y + 6, { width: 20, align: 'center' });
-      doc.text('Image', 50, y + 6, { width: 54, align: 'center' });
-      doc.text('Item Code', 106, y + 6, { width: 68 });
-      doc.text('Item Description', 176, y + 6, { width: 142 });
-      doc.text('Qty (Nos)', 320, y + 6, { width: 40, align: 'right' });
-      doc.text('MRP (Rs.)', 362, y + 6, { width: 50, align: 'right' });
-      doc.text('Disc %', 414, y + 6, { width: 36, align: 'right' });
-      doc.text('Price/Nos', 452, y + 6, { width: 52, align: 'right' });
-      doc.text('Total (Rs.)', 506, y + 6, { width: 56, align: 'right' });
+      doc.text('Image', 50, y + 6, { width: 68, align: 'center' });
+      doc.text('Item Code', 120, y + 6, { width: 68 });
+      doc.text('Item Description', 190, y + 6, { width: 132 });
+      doc.text('Qty (Nos)', 324, y + 6, { width: 40, align: 'right' });
+      doc.text('MRP (Rs.)', 366, y + 6, { width: 48, align: 'right' });
+      doc.text('Disc %', 416, y + 6, { width: 34, align: 'right' });
+      doc.text('Price/Nos', 452, y + 6, { width: 54, align: 'right' });
+      doc.text('Total (Rs.)', 508, y + 6, { width: 56, align: 'right' });
     }
 
     drawSanitaryTableHeader(currentY);
@@ -228,31 +228,31 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
       currentY += 28;
     } else {
       for (const item of allItems) {
-        if (currentY > 670) {
+        if (currentY > 660) {
           doc.addPage();
           currentY = 40;
           drawSanitaryTableHeader(currentY);
           currentY += 20;
         }
 
-        // Scaled product image row (38 pt height)
-        doc.rect(30, currentY, 535, 38).stroke(tableBorder);
+        // Scaled product image row (44 pt height with larger image)
+        doc.rect(30, currentY, 535, 44).stroke(tableBorder);
         doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
 
         // Sl.
-        doc.text(String(item.sl_no), 30, currentY + 14, { width: 20, align: 'center' });
+        doc.text(String(item.sl_no), 30, currentY + 17, { width: 20, align: 'center' });
 
-        // Item Image - scaled up fit bounds [50, 32]
+        // Item Image - scaled up fit bounds [62, 38] in 68pt wide column
         if (item.item_image && item.item_image.startsWith('data:image')) {
           try {
             const base64Data = item.item_image.replace(/^data:image\/\w+;base64,/, '');
             const imgBuffer = Buffer.from(base64Data, 'base64');
-            doc.image(imgBuffer, 52, currentY + 3, { fit: [50, 32], align: 'center', valign: 'center' });
+            doc.image(imgBuffer, 53, currentY + 3, { fit: [62, 38], align: 'center', valign: 'center' });
           } catch (e) {
-            doc.fontSize(7).fillColor('#999999').text('-', 50, currentY + 14, { width: 54, align: 'center' });
+            doc.fontSize(7).fillColor('#999999').text('-', 50, currentY + 17, { width: 68, align: 'center' });
           }
         } else {
-          doc.fontSize(7).fillColor('#999999').text('-', 50, currentY + 14, { width: 54, align: 'center' });
+          doc.fontSize(7).fillColor('#999999').text('-', 50, currentY + 17, { width: 68, align: 'center' });
         }
 
         // Item Code
@@ -260,47 +260,47 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
           ? (encryptedMap.get(item.item_code || item.size || 'CODE') || 'AMA-SAN')
           : (item.item_code || item.size || '-');
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor(primaryColor);
-        doc.text(codeText, 106, currentY + 14, { width: 68, height: 12, ellipsis: true });
+        doc.text(codeText, 120, currentY + 17, { width: 68, height: 12, ellipsis: true });
 
-        // Item Description (fits 1-2 lines nicely inside 38pt row)
+        // Item Description (fits 2 lines cleanly inside 44pt row)
         const descText = isEncrypted
           ? (encryptedMap.get((item.description || '').trim()) || `${item.description}-AMA`)
           : item.description;
         doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
-        doc.text(descText, 176, currentY + 10, { width: 142, height: 20, ellipsis: true });
+        doc.text(descText, 190, currentY + 11, { width: 132, height: 24, ellipsis: true });
 
         // Qty (Nos)
         const qtyVal = Number(item.quantity_boxes || 1).toFixed(0);
-        doc.text(`${qtyVal} Nos`, 320, currentY + 14, { width: 40, align: 'right' });
+        doc.text(`${qtyVal} Nos`, 324, currentY + 17, { width: 40, align: 'right' });
 
         // MRP (Rs.)
         const mrpVal = Number(item.mrp_price || item.base_rate_per_box || item.rate_per_box || 0);
-        doc.text(formatCurrency(mrpVal), 362, currentY + 14, { width: 50, align: 'right' });
+        doc.text(formatCurrency(mrpVal), 366, currentY + 17, { width: 48, align: 'right' });
 
         // Disc %
         const discVal = Number(item.discount_percent || 0);
-        doc.text(discVal > 0 ? `${discVal.toFixed(1)}%` : '-', 414, currentY + 14, { width: 36, align: 'right' });
+        doc.text(discVal > 0 ? `${discVal.toFixed(1)}%` : '-', 416, currentY + 17, { width: 34, align: 'right' });
 
         // Discounted Price/Nos
         const priceVal = Number(item.rate_per_box || 0);
-        doc.text(formatCurrency(priceVal), 452, currentY + 14, { width: 52, align: 'right' });
+        doc.text(formatCurrency(priceVal), 452, currentY + 17, { width: 54, align: 'right' });
 
         // Total (Rs.)
         doc.font('Helvetica-Bold');
-        doc.text(formatCurrency(item.total_amount), 506, currentY + 14, { width: 56, align: 'right' });
+        doc.text(formatCurrency(item.total_amount), 508, currentY + 17, { width: 56, align: 'right' });
 
-        currentY += 38;
+        currentY += 44;
       }
     }
   } else {
-    // Encrypted mode: Brand column omitted, Description gets 156 width
-    // Standard mode: Brand column included (10 columns)
+    // Encrypted mode: Brand column omitted, Description gets 154 width
+    // Standard mode: Brand column included (10 columns mathematically aligned)
     const colX = isEncrypted
-      ? [30, 52, 210, 260, 306, 350, 404, 456, 508]
-      : [30, 52, 170, 236, 282, 324, 364, 414, 462, 512];
+      ? [30, 52, 208, 260, 306, 350, 404, 456, 508]
+      : [30, 52, 168, 232, 280, 322, 364, 412, 462, 512];
     const colW = isEncrypted
-      ? [20, 156, 48, 44, 42, 52, 50, 50, 54]
-      : [20, 116, 64, 44, 40, 38, 48, 46, 48, 50];
+      ? [20, 154, 50, 44, 42, 52, 50, 50, 56]
+      : [20, 114, 62, 46, 40, 40, 46, 48, 48, 52];
 
     function drawTableHeader(y: number) {
       doc.rect(30, y, 535, 20).fillAndStroke(primaryColor, primaryColor);
@@ -552,31 +552,45 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
 
   currentY += 68;
 
-  // Terms and Conditions Section
-  if (currentY > 670) {
-    doc.addPage();
-    currentY = 40;
-  }
-
-  doc.fontSize(8).font('Helvetica-Bold').fillColor(primaryColor).text('TERMS & CONDITIONS:', 30, currentY);
-  currentY += 12;
-
+  // Terms and Conditions Section (Compact 2-Column Layout to prevent blank 2nd page overflow)
   const termsList = Array.isArray(company.terms_json) ? company.terms_json : [];
-  doc.fontSize(6.8).font('Helvetica').fillColor('#444444');
-  termsList.forEach((term, idx) => {
-    if (currentY > 770) {
+  if (termsList.length > 0) {
+    if (currentY > 700) {
       doc.addPage();
       currentY = 40;
     }
-    doc.text(`${idx + 1}. ${term}`, 30, currentY, { width: 535 });
-    currentY += 10;
-  });
+
+    doc.fontSize(8).font('Helvetica-Bold').fillColor(primaryColor).text('TERMS & CONDITIONS:', 30, currentY);
+    currentY += 12;
+
+    const half = Math.ceil(termsList.length / 2);
+    const col1 = termsList.slice(0, half);
+    const col2 = termsList.slice(half);
+
+    const startTermsY = currentY;
+    doc.fontSize(6.5).font('Helvetica').fillColor('#444444');
+    let y1 = startTermsY;
+    col1.forEach((term, idx) => {
+      const text = `${idx + 1}. ${term}`;
+      doc.text(text, 30, y1, { width: 260 });
+      y1 += doc.heightOfString(text, { width: 260 }) + 2;
+    });
+
+    let y2 = startTermsY;
+    col2.forEach((term, idx) => {
+      const realIdx = half + idx + 1;
+      const text = `${realIdx}. ${term}`;
+      doc.text(text, 300, y2, { width: 265 });
+      y2 += doc.heightOfString(text, { width: 265 }) + 2;
+    });
+    currentY = Math.max(y1, y2) + 6;
+  }
 
   // Footer on all pages (margins.bottom tightened to prevent auto-overflow)
   const totalPages = doc.bufferedPageRange().count;
   for (let i = 0; i < totalPages; i++) {
     doc.switchToPage(i);
-    doc.page.margins.bottom = 10;
+    doc.page.margins.bottom = 5;
     doc
       .fontSize(7)
       .font('Helvetica')

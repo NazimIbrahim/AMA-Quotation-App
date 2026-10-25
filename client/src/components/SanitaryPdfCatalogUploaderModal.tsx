@@ -340,37 +340,82 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         createdOffscreen = offscreen;
       }
 
-      const results: StagedItem[] = [];
+      // Group candidates into vertical clusters (contiguous variants within 18pt of each other at similar X)
+      interface ClusterInfo {
+        cluster: typeof candidates;
+        matchedImg: PageImg | null;
+      }
+      const clusters: ClusterInfo[] = [];
+      let curCluster: typeof candidates = [];
 
-      for (const cand of candidates) {
-        let descLines: string[] = cand.modelTitle ? [cand.modelTitle] : [];
-        let mrp = 0;
+      for (let i = 0; i < candidates.length; i++) {
+        const cand = candidates[i];
+        if (curCluster.length === 0) {
+          curCluster.push(cand);
+        } else {
+          const last = curCluster[curCluster.length - 1];
+          const dy = Math.abs(last.pdfY - cand.pdfY);
+          const dx = Math.abs(last.pdfX - cand.pdfX);
+          if (dy <= 18 && dx <= 35) {
+            curCluster.push(cand);
+          } else {
+            clusters.push({ cluster: curCluster, matchedImg: null });
+            curCluster = [cand];
+          }
+        }
+      }
+      if (curCluster.length > 0) clusters.push({ cluster: curCluster, matchedImg: null });
 
-        // 1. Exact row price matching (within 8pt vertically, horizontally aligned across row)
-        for (let j = 0; j < items.length; j++) {
-          const it = items[j];
-          if (!it.str || !it.transform) continue;
-          const iy = it.transform[5];
-          const ix = it.transform[4];
-          if (Math.abs(iy - cand.pdfY) <= 8 && ix >= cand.pdfX - 20) {
-            const p = parsePrice(it.str);
-            if (p && p >= 100) {
-              mrp = p;
-              break;
+      // Match the best image for each cluster as a whole so variants in a block never leak across sections
+      for (const cl of clusters) {
+        const minY = Math.min(...cl.cluster.map((c) => c.pdfY));
+        const maxY = Math.max(...cl.cluster.map((c) => c.pdfY));
+        const avgX = cl.cluster.reduce((sum, c) => sum + c.pdfX, 0) / cl.cluster.length;
+        const centerY = (minY + maxY) / 2;
+
+        let bestImg: PageImg | null = null;
+        let bestDist = Infinity;
+        for (const img of pageImages) {
+          // Photo directly to the left of cluster
+          const isLeft =
+            img.x < avgX &&
+            img.x >= avgX - 220 &&
+            centerY >= img.y - 50 &&
+            centerY <= img.y + img.h + 50;
+
+          // Photo directly above cluster
+          const isAbove =
+            img.y >= maxY - 20 &&
+            img.y <= maxY + 180 &&
+            Math.abs(img.centerX - (avgX + 50)) <= 85;
+
+          if (isLeft || isAbove) {
+            const dist = Math.hypot(img.centerX - avgX, img.centerY - centerY);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestImg = img;
             }
           }
         }
+        cl.matchedImg = bestImg;
+      }
 
-        // 2. Fallback: Card price below code (within 85pt vertically, 140pt horizontally)
-        if (!mrp) {
+      const results: StagedItem[] = [];
+
+      for (const cl of clusters) {
+        const clusterImg = cl.matchedImg;
+
+        for (const cand of cl.cluster) {
+          let descLines: string[] = cand.modelTitle ? [cand.modelTitle] : [];
+          let mrp = 0;
+
+          // 1. Exact row price matching (within 8pt vertically, horizontally aligned across row)
           for (let j = 0; j < items.length; j++) {
             const it = items[j];
             if (!it.str || !it.transform) continue;
             const iy = it.transform[5];
             const ix = it.transform[4];
-            const dy = cand.pdfY - iy;
-            const dx = Math.abs(ix - cand.pdfX);
-            if (dy > 0 && dy <= 85 && dx <= 140) {
+            if (Math.abs(iy - cand.pdfY) <= 8 && ix >= cand.pdfX - 20) {
               const p = parsePrice(it.str);
               if (p && p >= 100) {
                 mrp = p;
@@ -378,87 +423,81 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               }
             }
           }
-        }
 
-        // 3. Sibling text placed directly below or around the code for description
-        for (let j = 0; j < items.length; j++) {
-          if (j === cand.index) continue;
-          const it = items[j];
-          const str = (it.str || '').trim();
-          if (!str || !it.transform) continue;
-
-          const ix = it.transform[4];
-          const iy = it.transform[5];
-          const dx = ix - cand.pdfX;
-          const dy = cand.pdfY - iy;
-
-          if (dx >= -40 && dx <= 160 && dy > 0 && dy < 75) {
-            if (
-              str !== '`' &&
-              str !== '₹' &&
-              !str.toLowerCase().startsWith('per piece') &&
-              !str.match(codeRegex) &&
-              !parsePrice(str)
-            ) {
-              descLines.push(str);
-            }
-          }
-        }
-
-        // 4. If no direct sibling description (e.g. multi-variant diverter block), find common block title below group
-        if (descLines.length === 0) {
-          for (let j = 0; j < items.length; j++) {
-            if (j === cand.index) continue;
-            const it = items[j];
-            if (!it.str || !it.transform) continue;
-            const iy = it.transform[5];
-            const ix = it.transform[4];
-            const dy = cand.pdfY - iy;
-            const dx = Math.abs(ix - cand.pdfX);
-            if (dy > 0 && dy <= 160 && dx <= 70) {
-              const s = (it.str || '').trim();
-              if (
-                s.length >= 8 &&
-                !s.includes('/') &&
-                !codeRegex.test(s) &&
-                !parsePrice(s)
-              ) {
-                descLines.push(s);
-                break;
+          // 2. Fallback: Card price below code (within 85pt vertically, 140pt horizontally)
+          if (!mrp) {
+            for (let j = 0; j < items.length; j++) {
+              const it = items[j];
+              if (!it.str || !it.transform) continue;
+              const iy = it.transform[5];
+              const ix = it.transform[4];
+              const dy = cand.pdfY - iy;
+              const dx = Math.abs(ix - cand.pdfX);
+              if (dy > 0 && dy <= 85 && dx <= 140) {
+                const p = parsePrice(it.str);
+                if (p && p >= 100) {
+                  mrp = p;
+                  break;
+                }
               }
             }
           }
-        }
 
-        const cleanDesc =
-          descLines.join(' ').replace(/\s+/g, ' ').trim() ||
-          `${brandToUse} ${cand.code} ${pageCategory}`;
+          // 3. Sibling text placed directly below or around the code for description
+          for (let j = 0; j < items.length; j++) {
+            if (j === cand.index) continue;
+            const it = items[j];
+            const str = (it.str || '').trim();
+            if (!str || !it.transform) continue;
 
-        // Match closest genuine product photo on this page
-        let bestImg: PageImg | null = null;
-        let bestDist = Infinity;
-        for (const img of pageImages) {
-          // Photo directly to the left of code/variant block
-          const isLeft =
-            img.x < cand.pdfX &&
-            img.x >= cand.pdfX - 220 &&
-            cand.pdfY >= img.y - 50 &&
-            cand.pdfY <= img.y + img.h + 55;
+            const ix = it.transform[4];
+            const iy = it.transform[5];
+            const dx = ix - cand.pdfX;
+            const dy = cand.pdfY - iy;
 
-          // Photo directly above code (card layout)
-          const isAbove =
-            img.y >= cand.pdfY - 20 &&
-            img.y <= cand.pdfY + 180 &&
-            Math.abs(img.centerX - (cand.pdfX + 50)) <= 85;
-
-          if (isLeft || isAbove) {
-            const dist = Math.hypot(img.centerX - cand.pdfX, img.centerY - cand.pdfY);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestImg = img;
+            if (dx >= -40 && dx <= 160 && dy > 0 && dy < 75) {
+              if (
+                str !== '`' &&
+                str !== '₹' &&
+                !str.toLowerCase().startsWith('per piece') &&
+                !str.match(codeRegex) &&
+                !parsePrice(str)
+              ) {
+                descLines.push(str);
+              }
             }
           }
-        }
+
+          // 4. If no direct sibling description (e.g. multi-variant diverter block), find common block title below group
+          if (descLines.length === 0) {
+            for (let j = 0; j < items.length; j++) {
+              if (j === cand.index) continue;
+              const it = items[j];
+              if (!it.str || !it.transform) continue;
+              const iy = it.transform[5];
+              const ix = it.transform[4];
+              const dy = cand.pdfY - iy;
+              const dx = Math.abs(ix - cand.pdfX);
+              if (dy > 0 && dy <= 160 && dx <= 70) {
+                const s = (it.str || '').trim();
+                if (
+                  s.length >= 8 &&
+                  !s.includes('/') &&
+                  !codeRegex.test(s) &&
+                  !parsePrice(s)
+                ) {
+                  descLines.push(s);
+                  break;
+                }
+              }
+            }
+          }
+
+          const cleanDesc =
+            descLines.join(' ').replace(/\s+/g, ' ').trim() ||
+            `${brandToUse} ${cand.code} ${pageCategory}`;
+
+          const bestImg = clusterImg;
 
         // Auto-crop photo in PDF coordinates
         let photoDataUrl = '';
@@ -516,18 +555,19 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           console.warn('Failed auto-cropping photo for', cand.code, cropErr);
         }
 
-        results.push({
-          id: Math.random().toString(36).substring(2, 9),
-          item_code: cand.code,
-          brand: brandToUse,
-          category: pageCategory,
-          item_description: cleanDesc,
-          mrp_price: mrp,
-          item_image: photoDataUrl,
-          page_number: pageNum,
-          hasRealPhoto: Boolean(bestImg && photoDataUrl && photoDataUrl.length > 500),
-          isTableEntry: isTablePage,
-        });
+          results.push({
+            id: Math.random().toString(36).substring(2, 9),
+            item_code: cand.code,
+            brand: brandToUse,
+            category: pageCategory,
+            item_description: cleanDesc,
+            mrp_price: mrp,
+            item_image: photoDataUrl,
+            page_number: pageNum,
+            hasRealPhoto: Boolean(bestImg && photoDataUrl && photoDataUrl.length > 500),
+            isTableEntry: isTablePage,
+          });
+        }
       }
 
       // Explicitly release offscreen canvas and PDF page memory to prevent leaks

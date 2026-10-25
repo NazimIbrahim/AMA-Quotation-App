@@ -26,6 +26,7 @@ import {
   Copy,
   Eye,
   Bath,
+  ClipboardPaste,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { SanitaryCatalogPickerModal } from '../components/SanitaryCatalogPickerModal';
@@ -149,7 +150,9 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
 
   const isAdmin = user?.role === 'admin';
   const isManager = user?.role === 'manager';
+  const isAccounts = user?.role === 'accounts' || (user?.role as string) === 'accountant';
   const canApprove = isAdmin || isManager;
+  const canClearAll = isAdmin || isAccounts;
 
   // 1. Fetch Reference Data (Customers & Sales Team)
   useEffect(() => {
@@ -429,6 +432,75 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
     setItems((prev) =>
       prev.filter((_, i) => i !== index).map((it, idx) => ({ ...it, sl_no: idx + 1 }))
     );
+  };
+
+  const handleRemoveAllItems = () => {
+    if (!canClearAll) return;
+    if (window.confirm('Are you sure you want to remove all items from this sanitary quotation? This action cannot be undone.')) {
+      setItems([
+        {
+          sl_no: 1,
+          item_code: '',
+          item_description: '',
+          item_image: '',
+          quantity: 1,
+          mrp_price: 0,
+          discount_percent: 0,
+          discounted_price: 0,
+          total_price: 0,
+        },
+      ]);
+    }
+  };
+
+  const handlePasteFromClipboard = async (index: number) => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        alert('Clipboard API is not accessible directly in this browser context. You can focus on this item and press Ctrl+V to paste your image.');
+        return;
+      }
+      const clipItems = await navigator.clipboard.read();
+      for (const item of clipItems) {
+        for (const type of item.types) {
+          if (type.startsWith('image/')) {
+            const blob = await item.getType(type);
+            const file = new File([blob], 'clipboard_image.png', { type });
+            processImageUpload(file, index);
+            return;
+          }
+        }
+      }
+      alert('No image found in clipboard. Please copy an image first, then click Paste (or press Ctrl+V on the item row).');
+    } catch (err: any) {
+      console.warn('Clipboard read error:', err);
+      alert('Unable to read clipboard directly. Please focus on this item row and press Ctrl+V to paste your image.');
+    }
+  };
+
+  const handleRowPaste = (e: React.ClipboardEvent<HTMLTableRowElement>, index: number) => {
+    const clipItems = e.clipboardData?.items;
+    if (!clipItems) return;
+    for (let i = 0; i < clipItems.length; i++) {
+      const it = clipItems[i];
+      if (it.type.indexOf('image') !== -1) {
+        e.preventDefault();
+        const file = it.getAsFile();
+        if (file) {
+          processImageUpload(file, index);
+        }
+        return;
+      }
+    }
+  };
+
+  const handleToolbarPaste = async () => {
+    // Find first item without an image, or target the last item
+    const targetIdx = items.findIndex((it) => !it.item_image) !== -1
+      ? items.findIndex((it) => !it.item_image)
+      : items.length - 1;
+    if (targetIdx >= 0) {
+      await handlePasteFromClipboard(targetIdx);
+    }
   };
 
   // Catalog Autocomplete & Auto-Fetch Handlers
@@ -1068,6 +1140,15 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
           <div className="flex items-center space-x-2">
             <button
               type="button"
+              onClick={handleToolbarPaste}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
+              title="Paste image from clipboard into active/unfilled item"
+            >
+              <ClipboardPaste size={14} className="text-indigo-600" />
+              <span>Paste Image</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setCatalogPickerOpen(true)}
               className="px-3 py-1.5 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 bg-teal-50 border border-teal-300 text-teal-900 hover:bg-teal-100 transition-colors shadow-2xs"
               title="Browse catalog and insert items directly"
@@ -1075,6 +1156,17 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
               <Bath size={14} className="text-teal-700" />
               <span>Browse Catalog</span>
             </button>
+            {canClearAll && (
+              <button
+                type="button"
+                onClick={handleRemoveAllItems}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 bg-rose-50 border border-rose-300 text-rose-700 hover:bg-rose-100 transition-colors shadow-2xs"
+                title="Remove all items (Admin & Accounts only)"
+              >
+                <Trash2 size={14} className="text-rose-600" />
+                <span>Remove All</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={addItem}
@@ -1104,7 +1196,11 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {items.map((item, index) => (
-                <tr key={index} className="hover:bg-slate-50/70 transition-colors">
+                <tr
+                  key={index}
+                  className="hover:bg-slate-50/70 transition-colors"
+                  onPaste={(e) => handleRowPaste(e, index)}
+                >
                   {/* Sl. */}
                   <td className="py-3 px-3 text-center font-bold text-slate-600 align-middle">
                     {item.sl_no}
@@ -1219,7 +1315,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                           src={item.item_image}
                           alt={item.item_code}
                           onClick={() => setEnlargedImage(item.item_image)}
-                          className="w-11 h-11 object-cover rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
+                          className="w-12 h-12 object-cover rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
                           title="Click to view full image"
                         />
                         <button
@@ -1230,17 +1326,36 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                         >
                           <X size={10} />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePasteFromClipboard(index)}
+                          className="absolute -bottom-1 -right-1 bg-indigo-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 hover:bg-indigo-700 transition-all shadow-xs"
+                          title="Replace with image from clipboard"
+                        >
+                          <ClipboardPaste size={10} />
+                        </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRefs.current[index]?.click()}
-                        className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 text-slate-600 hover:text-slate-800 bg-slate-50 text-[10px] font-semibold cursor-pointer"
-                        title="Upload product image"
-                      >
-                        <Upload size={12} className="text-[#415A77]" />
-                        <span>Upload</span>
-                      </button>
+                      <div className="flex flex-col items-center space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRefs.current[index]?.click()}
+                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 text-slate-600 hover:text-slate-800 bg-slate-50 text-[10px] font-semibold cursor-pointer w-full justify-center"
+                          title="Upload product image file"
+                        >
+                          <Upload size={11} className="text-[#415A77]" />
+                          <span>Upload</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePasteFromClipboard(index)}
+                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg border border-dashed border-indigo-300 hover:border-indigo-400 text-indigo-700 hover:text-indigo-900 bg-indigo-50 text-[10px] font-semibold cursor-pointer w-full justify-center"
+                          title="Paste image from clipboard (or press Ctrl+V on this row)"
+                        >
+                          <ClipboardPaste size={11} className="text-indigo-600" />
+                          <span>Paste</span>
+                        </button>
+                      </div>
                     )}
                   </td>
 

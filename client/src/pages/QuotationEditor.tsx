@@ -48,6 +48,10 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   const { fetchApi, getPdfUrl } = useServer();
   const { user } = useAuth();
 
+  const isAdmin = user?.role === 'admin';
+  const isAccounts = user?.role === 'accounts' || (user?.role as string) === 'accountant';
+  const canClearAll = isAdmin || isAccounts;
+
   // Reference data
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [brands, setBrands] = useState<TileBrand[]>([]);
@@ -407,6 +411,37 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
       return;
     }
     setAreas(areas.filter((_, idx) => idx !== areaIdx));
+  };
+
+  const handleRemoveAllItems = () => {
+    if (!canClearAll) return;
+    if (window.confirm('Are you sure you want to remove all items and rooms from this tile quotation? This action cannot be undone.')) {
+      const defaultBrand = brands[0]?.name || 'Simpolo Ceramics';
+      setAreas([
+        {
+          name: 'AREA 1',
+          items: [
+            {
+              sl_no: 1,
+              description: '',
+              size: '1200X1800',
+              brand: defaultBrand,
+              product_type: 'box',
+              coverage_area: 0,
+              quantity_sqft: 0,
+              base_rate_per_sqft: 0,
+              rate_per_sqft: 0,
+              quantity_boxes: 0,
+              base_rate_per_box: 0,
+              rate_per_box: 0,
+              discount_percent: 0,
+              discount_amount: 0,
+              total_amount: 0,
+            },
+          ],
+        },
+      ]);
+    }
   };
 
   // Add Item to Area
@@ -1633,14 +1668,27 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
               Calculate quantities across square feet and full packaging boxes
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleAddArea}
-            className="btn btn-secondary btn-sm"
-          >
-            <Plus size={13} />
-            <span>Add Area / Room</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            {canClearAll && (
+              <button
+                type="button"
+                onClick={handleRemoveAllItems}
+                className="btn btn-secondary btn-sm text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+                title="Remove all items and areas (Admin & Accounts only)"
+              >
+                <Trash2 size={13} className="text-rose-600" />
+                <span>Remove All Items</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleAddArea}
+              className="btn btn-secondary btn-sm"
+            >
+              <Plus size={13} />
+              <span>Add Area / Room</span>
+            </button>
+          </div>
         </div>
 
         {areas.map((area, areaIdx) => (
