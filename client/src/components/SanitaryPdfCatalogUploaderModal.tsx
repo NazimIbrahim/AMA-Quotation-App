@@ -201,6 +201,61 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
       if (candidates.length === 0) return [];
 
+      // Extract actual PDF product images from operator list to guarantee accurate photo cropping
+      interface PageImg {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        centerX: number;
+        centerY: number;
+      }
+      const pageImages: PageImg[] = [];
+      try {
+        const opList = await page.getOperatorList();
+        let ctmStack: number[][] = [];
+        let currentCTM = [1, 0, 0, 1, 0, 0];
+        const multiply = (m1: number[], m2: number[]) => [
+          m1[0] * m2[0] + m1[2] * m2[1],
+          m1[1] * m2[0] + m1[3] * m2[1],
+          m1[0] * m2[2] + m1[2] * m2[3],
+          m1[1] * m2[2] + m1[3] * m2[3],
+          m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+          m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+        ];
+
+        for (let i = 0; i < opList.fnArray.length; i++) {
+          const fn = opList.fnArray[i];
+          const args = opList.argsArray[i];
+          if (fn === pdfjsLib.OPS.save) {
+            ctmStack.push([...currentCTM]);
+          } else if (fn === pdfjsLib.OPS.restore) {
+            if (ctmStack.length > 0) currentCTM = ctmStack.pop()!;
+          } else if (fn === pdfjsLib.OPS.transform) {
+            currentCTM = multiply(currentCTM, args);
+          } else if (
+            fn === pdfjsLib.OPS.paintImageXObject ||
+            fn === pdfjsLib.OPS.paintInlineImageXObject
+          ) {
+            const w = Math.hypot(currentCTM[0], currentCTM[1]);
+            const h = Math.hypot(currentCTM[2], currentCTM[3]);
+            // Exclude QR codes and small icons (<36 pt) and full page backgrounds (>480 x >680)
+            if (w >= 36 && h >= 36 && (w < 480 || h < 680)) {
+              pageImages.push({
+                x: currentCTM[4],
+                y: currentCTM[5],
+                w,
+                h,
+                centerX: currentCTM[4] + w / 2,
+                centerY: currentCTM[5] + h / 2,
+              });
+            }
+          }
+        }
+      } catch (imgErr) {
+        console.warn('Could not extract operator list images for page', pageNum, imgErr);
+      }
+
       // Viewport and source canvas for cropping photos
       const viewport = page.getViewport({ scale: renderScale });
       let sourceCanvas: HTMLCanvasElement;
@@ -266,13 +321,51 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           descLines.join(' ').replace(/\s+/g, ' ').trim() ||
           `${brandToUse} ${cand.code} ${pageCategory}`;
 
-        // Auto-crop photo above code in PDF coordinates
+        // Match closest genuine product photo on this page
+        let bestImg: PageImg | null = null;
+        let bestDist = Infinity;
+        for (const img of pageImages) {
+          // Photo directly above code
+          const isAbove =
+            img.y >= cand.pdfY - 15 &&
+            img.y <= cand.pdfY + 160 &&
+            Math.abs(img.centerX - (cand.pdfX + 35)) <= 90;
+          // Photo directly to the left of code
+          const isLeft =
+            img.x < cand.pdfX &&
+            img.x >= cand.pdfX - 160 &&
+            Math.abs(img.centerY - cand.pdfY) <= 75;
+
+          if (isAbove || isLeft) {
+            const dist = Math.hypot(img.centerX - cand.pdfX, img.centerY - cand.pdfY);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestImg = img;
+            }
+          }
+        }
+
+        // Auto-crop photo in PDF coordinates
         let photoDataUrl = '';
         try {
-          const cropPdfX = cand.pdfX - 28;
-          const cropPdfY = cand.pdfY + 10;
-          const cropPdfW = 150;
-          const cropPdfH = 140;
+          let cropPdfX: number;
+          let cropPdfY: number;
+          let cropPdfW: number;
+          let cropPdfH: number;
+
+          if (bestImg) {
+            // Exact image bounding box with minimal safe padding
+            cropPdfX = bestImg.x - 2;
+            cropPdfY = bestImg.y - 2;
+            cropPdfW = bestImg.w + 4;
+            cropPdfH = bestImg.h + 4;
+          } else {
+            // Tight fallback above code: strictly within row bounds, avoiding headers and QR codes
+            cropPdfX = cand.pdfX - 10;
+            cropPdfY = cand.pdfY + 12;
+            cropPdfW = 104;
+            cropPdfH = 88;
+          }
 
           const [imgLeft, imgBottom] = viewport.convertToViewportPoint(cropPdfX, cropPdfY);
           const [imgRight, imgTop] = viewport.convertToViewportPoint(
@@ -299,7 +392,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               const dx = Math.round((160 - dw) / 2);
               const dy = Math.round((160 - dh) / 2);
               tCtx.drawImage(sourceCanvas, cx, cy, cw, ch, dx, dy, dw, dh);
-              photoDataUrl = thumb.toDataURL('image/jpeg', 0.8);
+              photoDataUrl = thumb.toDataURL('image/jpeg', 0.82);
             }
           }
         } catch (cropErr) {

@@ -113,6 +113,10 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
       total_price: 12325,
     },
   ]);
+  const itemsRef = useRef<SanitaryLineItem[]>(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   // Customer Autocomplete State
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -451,19 +455,16 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
         const found: SanitaryCatalogItem[] = res.suggestions || [];
         setCatalogSuggestions(found);
 
-        // If exact code match found and user hasn't typed description yet, auto-fill it!
-        if (res.item && res.item.item_code.toLowerCase() === trimmed.toLowerCase()) {
-          const currentItem = items[index];
-          if (!currentItem.item_description || currentItem.item_description.startsWith('Sanitary Item')) {
-            applyCatalogItem(index, res.item);
-          }
+        // If exact code match found, immediately auto-fill it!
+        if (res.item && res.item.item_code.trim().toLowerCase() === trimmed.toLowerCase()) {
+          applyCatalogItem(index, res.item);
         }
       } catch (err) {
         console.error('Catalog lookup error:', err);
       } finally {
         setIsSearchingCatalog(false);
       }
-    }, 200);
+    }, 180);
   };
 
   const applyCatalogItem = (index: number, catItem: SanitaryCatalogItem) => {
@@ -472,7 +473,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
       if (!next[index]) return prev;
       const cur = { ...next[index] };
       cur.item_code = catItem.item_code;
-      cur.item_description = catItem.item_description;
+      cur.item_description = catItem.item_description || cur.item_description;
       if (catItem.item_image) {
         cur.item_image = catItem.item_image;
       }
@@ -495,15 +496,11 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
     // Slight delay to allow clicks on dropdown items
     setTimeout(async () => {
       setActiveSuggestRow(null);
-      const currentItem = items[index];
-      if (
-        currentItem &&
-        currentItem.item_code.trim() &&
-        (!currentItem.item_description || currentItem.item_description.startsWith('Sanitary Item') || currentItem.mrp_price === 0)
-      ) {
+      const currentCode = itemsRef.current[index]?.item_code?.trim();
+      if (currentCode) {
         try {
           const res = await fetchApi<any>(
-            `/api/sanitary-catalog/lookup?code=${encodeURIComponent(currentItem.item_code.trim())}`
+            `/api/sanitary-catalog/lookup?code=${encodeURIComponent(currentCode)}`
           );
           if (res.item) {
             applyCatalogItem(index, res.item);
@@ -1109,13 +1106,19 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                     <div className="relative">
                       <input
                         type="text"
-                        placeholder="e.g. SN-101"
+                        placeholder="e.g. KB1011011"
                         value={item.item_code}
                         onChange={(e) => handleItemCodeChange(index, e.target.value)}
                         onFocus={() => {
                           if (item.item_code) handleItemCodeChange(index, item.item_code);
                         }}
                         onBlur={() => handleItemCodeBlur(index)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleItemCodeBlur(index);
+                          }
+                        }}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
                       />
                       {isSearchingCatalog && activeSuggestRow === index && (

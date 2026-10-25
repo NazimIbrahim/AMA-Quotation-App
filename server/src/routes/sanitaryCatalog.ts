@@ -171,7 +171,7 @@ sanitaryCatalogRouter.post('/', requireRole(['admin', 'manager']), async (req: R
         category = EXCLUDED.category,
         item_description = EXCLUDED.item_description,
         mrp_price = EXCLUDED.mrp_price,
-        item_image = COALESCE(EXCLUDED.item_image, sanitary_catalog_items.item_image),
+        item_image = CASE WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 50 THEN EXCLUDED.item_image ELSE sanitary_catalog_items.item_image END,
         catalog_name = COALESCE(EXCLUDED.catalog_name, sanitary_catalog_items.catalog_name),
         page_number = COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number),
         updated_at = CURRENT_TIMESTAMP
@@ -217,7 +217,7 @@ sanitaryCatalogRouter.post('/batch', requireRole(['admin', 'manager']), async (r
           category = EXCLUDED.category,
           item_description = EXCLUDED.item_description,
           mrp_price = EXCLUDED.mrp_price,
-          item_image = COALESCE(EXCLUDED.item_image, sanitary_catalog_items.item_image),
+          item_image = CASE WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 50 THEN EXCLUDED.item_image ELSE sanitary_catalog_items.item_image END,
           catalog_name = COALESCE(EXCLUDED.catalog_name, sanitary_catalog_items.catalog_name),
           page_number = COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number),
           updated_at = CURRENT_TIMESTAMP`,

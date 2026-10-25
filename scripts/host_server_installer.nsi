@@ -71,7 +71,7 @@ Section "Install Host Server Files" SecMain
     WriteRegStr HKLM "Software\AMACeramics\HostServer" "Install_Dir" "$INSTDIR"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayName" "AMA Ceramics Quotation Host Server"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "UninstallString" '"$INSTDIR\uninstall.exe"'
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayVersion" "1.3.0"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayVersion" "1.3.2"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "Publisher" "AMA Ceramics Pvt Ltd"
     WriteUninstaller "$INSTDIR\uninstall.exe"
     
