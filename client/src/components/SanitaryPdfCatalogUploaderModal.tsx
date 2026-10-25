@@ -19,6 +19,9 @@ import {
   FileSpreadsheet,
   Layers,
   ArrowRight,
+  Square,
+  Zap,
+  CheckCircle2,
 } from 'lucide-react';
 import { useServer } from '../context/ServerContext';
 import { SanitaryCatalogItem } from '../types';
@@ -69,6 +72,11 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
   // Staged Items extracted from PDF or Excel
   const [stagedItems, setStagedItems] = useState<StagedItem[]>([]);
   const [isScanningPage, setIsScanningPage] = useState<boolean>(false);
+  const [isScanningAll, setIsScanningAll] = useState<boolean>(false);
+  const [scanProgress, setScanProgress] = useState<{ current: number; total: number; found: number } | null>(null);
+  const stopScanRef = useRef<boolean>(false);
+  const scannedPagesRef = useRef<Set<number>>(new Set());
+  const renderScaleRef = useRef<number>(1.2);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +113,214 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     'General',
   ];
 
+  // Robust spatial extractor: parses codes, categories, prices, descriptions, and auto-crops photo directly above each code
+  const extractItemsFromDocPage = async (
+    doc: pdfjsLib.PDFDocumentProxy,
+    pageNum: number,
+    brandToUse: string,
+    existingCanvas?: HTMLCanvasElement | null,
+    renderScale: number = 1.2
+  ): Promise<StagedItem[]> => {
+    try {
+      const page = await doc.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const items = textContent.items as any[];
+      if (!items || items.length === 0) return [];
+
+      // Detect category from page text
+      let pageCategory = 'Water Closet';
+      for (let i = 0; i < Math.min(30, items.length); i++) {
+        const s = ((items[i].str || '') as string).toLowerCase();
+        if (s.includes('faucet') || s.includes('tap') || s.includes('mixer') || s.includes('spout') || s.includes('cock')) {
+          pageCategory = 'Faucet';
+          break;
+        }
+        if (s.includes('water closet') || s.includes('ewc') || s.includes('toilet') || s.includes('commode') || s.includes('rimless') || s.includes('closet')) {
+          pageCategory = 'Water Closet';
+          break;
+        }
+        if (s.includes('basin') || s.includes('sink') || s.includes('vanity')) {
+          pageCategory = 'Wash Basin';
+          break;
+        }
+        if (s.includes('shower') || s.includes('diverter') || s.includes('overhead')) {
+          pageCategory = 'Shower';
+          break;
+        }
+        if (s.includes('urinal')) {
+          pageCategory = 'Urinal';
+          break;
+        }
+        if (s.includes('accessories') || s.includes('towel') || s.includes('holder') || s.includes('soap')) {
+          pageCategory = 'Bath Accessories';
+          break;
+        }
+        if (s.includes('kitchen')) {
+          pageCategory = 'Kitchen Sink';
+          break;
+        }
+      }
+
+      // Regex patterns
+      const codeRegex = /\b([A-Z]{1,5}[0-9]{4,10}[A-Z0-9]*|[A-Z]{2,5}[-_][0-9]{3,8}[A-Z0-9]*)\b/i;
+      const priceRegex = /(?:`|₹|Rs\.?|INR|Per\s*Piece|MRP)?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|\b[1-9][0-9]{3,5}\b)/i;
+
+      const candidates: Array<{ index: number; code: string; pdfX: number; pdfY: number }> = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const str = (it.str || '').trim();
+        const m = str.match(codeRegex);
+        if (m && it.transform) {
+          const prevStr = (items[i - 1]?.str || '').toLowerCase();
+          const nextStr = (items[i + 1]?.str || '').toLowerCase();
+          const surrounding = `${prevStr} ${str} ${nextStr}`.toLowerCase();
+          if (
+            surrounding.includes('compatible') ||
+            surrounding.includes('suit') ||
+            str.toLowerCase().includes('page') ||
+            str.length < 5
+          ) {
+            continue;
+          }
+          const code = m[1].toUpperCase();
+          if (!candidates.some((c) => c.code === code)) {
+            candidates.push({
+              index: i,
+              code,
+              pdfX: it.transform[4],
+              pdfY: it.transform[5],
+            });
+          }
+        }
+      }
+
+      if (candidates.length === 0) return [];
+
+      // Viewport and source canvas for cropping photos
+      const viewport = page.getViewport({ scale: renderScale });
+      let sourceCanvas: HTMLCanvasElement;
+
+      if (existingCanvas && existingCanvas.width > 100) {
+        sourceCanvas = existingCanvas;
+      } else {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = Math.floor(viewport.width);
+        offscreen.height = Math.floor(viewport.height);
+        const offCtx = offscreen.getContext('2d');
+        if (offCtx) {
+          offCtx.fillStyle = '#FFFFFF';
+          offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+          await page.render({ canvasContext: offCtx, viewport }).promise;
+        }
+        sourceCanvas = offscreen;
+      }
+
+      const results: StagedItem[] = [];
+
+      for (const cand of candidates) {
+        let descLines: string[] = [];
+        let mrp = 0;
+
+        for (let j = 0; j < items.length; j++) {
+          if (j === cand.index) continue;
+          const it = items[j];
+          const str = (it.str || '').trim();
+          if (!str || !it.transform) continue;
+
+          const ix = it.transform[4];
+          const iy = it.transform[5];
+          const dx = ix - cand.pdfX;
+          const dy = cand.pdfY - iy;
+
+          // Sibling text placed directly below or around the code
+          if (dx >= -25 && dx <= 130 && dy > 0 && dy < 70) {
+            const isDimension =
+              /\b\d+\s*(?:mm|cm|inch|inches|mtr|meter)\b/i.test(str) ||
+              /\b\d+\s*x\s*\d+/i.test(str);
+            const pMatch = str.match(priceRegex);
+            if (pMatch && pMatch[1] && !isDimension && !mrp) {
+              const val = parseFloat(pMatch[1].replace(/,/g, ''));
+              if (val >= 100 && val <= 500000) {
+                mrp = val;
+                continue;
+              }
+            }
+
+            if (
+              str !== '`' &&
+              !str.toLowerCase().startsWith('per piece') &&
+              str !== '₹' &&
+              !str.match(codeRegex)
+            ) {
+              descLines.push(str);
+            }
+          }
+        }
+
+        const cleanDesc =
+          descLines.join(' ').replace(/\s+/g, ' ').trim() ||
+          `${brandToUse} ${cand.code} ${pageCategory}`;
+
+        // Auto-crop photo above code in PDF coordinates
+        let photoDataUrl = '';
+        try {
+          const cropPdfX = cand.pdfX - 25;
+          const cropPdfY = cand.pdfY + 12;
+          const cropPdfW = 145;
+          const cropPdfH = 135;
+
+          const [imgLeft, imgBottom] = viewport.convertToViewportPoint(cropPdfX, cropPdfY);
+          const [imgRight, imgTop] = viewport.convertToViewportPoint(
+            cropPdfX + cropPdfW,
+            cropPdfY + cropPdfH
+          );
+
+          const cx = Math.max(0, Math.min(imgLeft, imgRight));
+          const cy = Math.max(0, Math.min(imgTop, imgBottom));
+          const cw = Math.min(sourceCanvas.width - cx, Math.abs(imgRight - imgLeft));
+          const ch = Math.min(sourceCanvas.height - cy, Math.abs(imgBottom - imgTop));
+
+          if (cw > 25 && ch > 25) {
+            const thumb = document.createElement('canvas');
+            thumb.width = 160;
+            thumb.height = 160;
+            const tCtx = thumb.getContext('2d');
+            if (tCtx) {
+              tCtx.fillStyle = '#FFFFFF';
+              tCtx.fillRect(0, 0, 160, 160);
+              const fitScale = Math.min(150 / cw, 150 / ch);
+              const dw = Math.round(cw * fitScale);
+              const dh = Math.round(ch * fitScale);
+              const dx = Math.round((160 - dw) / 2);
+              const dy = Math.round((160 - dh) / 2);
+              tCtx.drawImage(sourceCanvas, cx, cy, cw, ch, dx, dy, dw, dh);
+              photoDataUrl = thumb.toDataURL('image/jpeg', 0.8);
+            }
+          }
+        } catch (cropErr) {
+          console.warn('Failed auto-cropping photo for', cand.code, cropErr);
+        }
+
+        results.push({
+          id: Math.random().toString(36).substring(2, 9),
+          item_code: cand.code,
+          brand: brandToUse,
+          category: pageCategory,
+          item_description: cleanDesc,
+          mrp_price: mrp,
+          item_image: photoDataUrl,
+          page_number: pageNum,
+        });
+      }
+
+      return results;
+    } catch (e) {
+      console.error(`Error scanning page ${pageNum}:`, e);
+      return [];
+    }
+  };
+
   // 1. Handle PDF Selection
   const handleSelectPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
@@ -120,18 +336,72 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     setPdfFile(file);
     setCatalogName(file.name);
 
+    // Auto-detect brand from filename
+    const lowerName = file.name.toLowerCase();
+    let detectedBrand = 'Cera';
+    if (lowerName.includes('kerovit') || lowerName.includes('klassic')) {
+      detectedBrand = 'KEROVIT';
+    } else if (lowerName.includes('cera')) {
+      detectedBrand = 'Cera';
+    } else if (lowerName.includes('jaquar')) {
+      detectedBrand = 'Jaquar';
+    } else if (lowerName.includes('kohler')) {
+      detectedBrand = 'Kohler';
+    } else if (lowerName.includes('hindware')) {
+      detectedBrand = 'Hindware';
+    } else if (lowerName.includes('somany')) {
+      detectedBrand = 'Somany';
+    } else if (lowerName.includes('parryware')) {
+      detectedBrand = 'Parryware';
+    }
+    setDefaultBrand(detectedBrand);
+
     try {
       const buffer = await file.arrayBuffer();
       const loadingTask = pdfjsLib.getDocument({ data: buffer });
       const loadedPdf = await loadingTask.promise;
       setPdfDoc(loadedPdf);
       setNumPages(loadedPdf.numPages);
-      setCurrentPage(1);
+      scannedPagesRef.current.clear();
 
-      // Render first page with tiny delay to guarantee canvas DOM readiness
-      setTimeout(() => {
-        renderPage(1, loadedPdf);
-      }, 50);
+      // Find first page that contains product codes (skips blank covers or intro pages)
+      let initialPage = 1;
+      const codeRegex = /\b([A-Z]{1,5}[0-9]{4,10}[A-Z0-9]*|[A-Z]{2,5}[-_][0-9]{3,8}[A-Z0-9]*)\b/i;
+      for (let p = 1; p <= Math.min(25, loadedPdf.numPages); p++) {
+        try {
+          const pg = await loadedPdf.getPage(p);
+          const tc = await pg.getTextContent();
+          const hasCode = tc.items.some((it: any) => {
+            const s = (it.str || '').trim();
+            return s.length >= 5 && codeRegex.test(s) && !s.toLowerCase().includes('page');
+          });
+          if (hasCode) {
+            initialPage = p;
+            break;
+          }
+        } catch (_) {}
+      }
+
+      setCurrentPage(initialPage);
+
+      // Render page and immediately auto-detect products & photos!
+      setTimeout(async () => {
+        await renderPage(initialPage, loadedPdf);
+        const autoItems = await extractItemsFromDocPage(
+          loadedPdf,
+          initialPage,
+          detectedBrand,
+          canvasRef.current,
+          renderScaleRef.current || 1.2
+        );
+        if (autoItems.length > 0) {
+          scannedPagesRef.current.add(initialPage);
+          setStagedItems(autoItems);
+          setImportSuccess(
+            `Auto-detected ${autoItems.length} products with photos on Page ${initialPage}! Click "Scan All Pages" to scan all ${loadedPdf.numPages} pages automatically.`
+          );
+        }
+      }, 100);
     } catch (err: any) {
       setError('Failed to load PDF document: ' + err.message);
     }
@@ -165,6 +435,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       const unscaledViewport = page.getViewport({ scale: 1.0 });
       const desiredWidth = 540;
       const scale = Math.max(0.8, Math.min(2.0, desiredWidth / unscaledViewport.width));
+      renderScaleRef.current = scale;
       const viewport = page.getViewport({ scale });
 
       canvas.width = Math.floor(viewport.width);
@@ -199,117 +470,59 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
   };
 
   useEffect(() => {
-    if (pdfDoc && currentPage) {
-      const timer = setTimeout(() => {
-        renderPage(currentPage);
-      }, 40);
-      return () => clearTimeout(timer);
-    }
-  }, [pdfDoc, currentPage]);
+    if (!pdfDoc || !currentPage || isScanningAll) return;
+    const timer = setTimeout(async () => {
+      await renderPage(currentPage);
+      // Auto-extract current page if not already scanned
+      if (!scannedPagesRef.current.has(currentPage)) {
+        try {
+          const autoItems = await extractItemsFromDocPage(
+            pdfDoc,
+            currentPage,
+            defaultBrand,
+            canvasRef.current,
+            renderScaleRef.current || 1.2
+          );
+          if (autoItems.length > 0) {
+            scannedPagesRef.current.add(currentPage);
+            setStagedItems((prev) => {
+              const existingCodes = new Set(prev.map((it) => it.item_code));
+              const additions = autoItems.filter((it) => !existingCodes.has(it.item_code));
+              return [...additions, ...prev];
+            });
+            setImportSuccess(
+              `Auto-detected ${autoItems.length} products on Page ${currentPage}!`
+            );
+          }
+        } catch (_) {}
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [pdfDoc, currentPage, isScanningAll]);
 
   // 3. Scan Current Page for Item Codes, Descriptions & MRP Prices
-  const handleAutoScanPage = async () => {
+  const handleAutoScanCurrentPage = async () => {
     if (!pdfDoc) return;
     setIsScanningPage(true);
     setError(null);
 
     try {
-      const page = await pdfDoc.getPage(currentPage);
-      const textContent = await page.getTextContent();
-      const strings = textContent.items
-        .map((it: any) => (it as any).str?.trim())
-        .filter((s: string) => Boolean(s));
+      const newItems = await extractItemsFromDocPage(
+        pdfDoc,
+        currentPage,
+        defaultBrand,
+        canvasRef.current,
+        renderScaleRef.current || 1.2
+      );
 
-      console.log('Extracted text strings from page:', strings);
-
-      // Heuristic parsing for sanitary items:
-      const foundItems: StagedItem[] = [];
-
-      // Regex patterns
-      const codeRegex = /\b([A-Z]{1,5}[-_]?[0-9]{2,6}[A-Z0-9\-_]*|[0-9]{4,8}[A-Z0-9\-_]*)\b/i;
-      const priceRegex = /(?:₹|Rs\.?|MRP[:\s]*)?([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|\b[1-9][0-9]{3,5}(?:\.[0-9]{2})?\b)/i;
-
-      // Group neighboring strings
-      for (let i = 0; i < strings.length; i++) {
-        const str = strings[i];
-        const codeMatch = str.match(codeRegex);
-
-        if (codeMatch && codeMatch[1].length >= 3 && !codeMatch[1].toLowerCase().includes('page')) {
-          const code = codeMatch[1].toUpperCase();
-
-          // Avoid duplicates in the current page scan
-          if (foundItems.some((fi) => fi.item_code === code)) continue;
-
-          let mrp = 0;
-          let desc = '';
-          const windowSize = 8;
-          const start = Math.max(0, i - windowSize);
-          const end = Math.min(strings.length, i + windowSize);
-
-          for (let j = start; j < end; j++) {
-            if (j === i) continue;
-            const neighbor = strings[j];
-
-            // Look for price
-            if (!mrp) {
-              const pMatch = neighbor.match(priceRegex);
-              if (pMatch && pMatch[1]) {
-                const cleanP = parseFloat(pMatch[1].replace(/,/g, ''));
-                if (cleanP >= 100 && cleanP <= 500000) {
-                  mrp = cleanP;
-                }
-              }
-            }
-
-            // Look for description
-            if (!desc && neighbor.length >= 8 && /[a-zA-Z]{3,}/.test(neighbor) && !neighbor.match(codeRegex)) {
-              desc = neighbor;
-            }
-          }
-
-          // Guess category from description
-          let cat = 'Water Closet';
-          const lowerDesc = (desc + ' ' + str).toLowerCase();
-          if (lowerDesc.includes('basin') || lowerDesc.includes('sink')) cat = 'Wash Basin';
-          else if (lowerDesc.includes('closet') || lowerDesc.includes('ewc') || lowerDesc.includes('toilet') || lowerDesc.includes('commode')) cat = 'Water Closet';
-          else if (lowerDesc.includes('urinal')) cat = 'Urinal';
-          else if (lowerDesc.includes('faucet') || lowerDesc.includes('tap') || lowerDesc.includes('mixer')) cat = 'Faucet';
-          else if (lowerDesc.includes('shower')) cat = 'Shower';
-          else if (lowerDesc.includes('diverter')) cat = 'Diverter';
-
-          // Snapshot a clean thumbnail from the current page canvas
-          let pageSnapshot = '';
-          if (canvasRef.current) {
-            try {
-              const thumbCanvas = document.createElement('canvas');
-              thumbCanvas.width = 160;
-              thumbCanvas.height = 160;
-              const tCtx = thumbCanvas.getContext('2d');
-              if (tCtx) {
-                tCtx.fillStyle = '#FFFFFF';
-                tCtx.fillRect(0, 0, 160, 160);
-                tCtx.drawImage(canvasRef.current, 0, 0, thumbCanvas.width, thumbCanvas.height);
-                pageSnapshot = thumbCanvas.toDataURL('image/jpeg', 0.75);
-              }
-            } catch (_) {}
-          }
-
-          foundItems.push({
-            id: Math.random().toString(36).substring(2, 9),
-            item_code: code,
-            brand: defaultBrand || 'Sanitary',
-            category: cat,
-            item_description: desc || `${defaultBrand} Sanitary Item ${code}`,
-            mrp_price: mrp,
-            item_image: pageSnapshot,
-            page_number: currentPage,
-          });
-        }
-      }
-
-      if (foundItems.length > 0) {
-        setStagedItems((prev) => [...foundItems, ...prev]);
-        setImportSuccess(`Auto-scanned page ${currentPage}: found ${foundItems.length} sanitary item(s)!`);
+      if (newItems.length > 0) {
+        scannedPagesRef.current.add(currentPage);
+        setStagedItems((prev) => {
+          const existingCodes = new Set(prev.map((it) => it.item_code));
+          const additions = newItems.filter((it) => !existingCodes.has(it.item_code));
+          return [...additions, ...prev];
+        });
+        setImportSuccess(`Auto-detected ${newItems.length} items with photos on Page ${currentPage}!`);
       } else {
         setError(`No recognized product codes found on page ${currentPage}. You can draw a box with "Crop Photo" or use Quick Add.`);
       }
@@ -317,6 +530,63 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       setError('Page text extraction failed: ' + err.message);
     } finally {
       setIsScanningPage(false);
+    }
+  };
+
+  // 4. Scan Entire Catalogue (All Pages)
+  const handleScanEntireCatalogue = async () => {
+    if (!pdfDoc || isScanningAll) return;
+    setIsScanningAll(true);
+    stopScanRef.current = false;
+    setError(null);
+    setImportSuccess(null);
+
+    let allExtracted: StagedItem[] = [...stagedItems];
+    const existingCodes = new Set(allExtracted.map((it) => it.item_code));
+
+    try {
+      for (let p = 1; p <= pdfDoc.numPages; p++) {
+        if (stopScanRef.current) {
+          break;
+        }
+
+        setScanProgress({
+          current: p,
+          total: pdfDoc.numPages,
+          found: allExtracted.length,
+        });
+
+        const pageItems = await extractItemsFromDocPage(
+          pdfDoc,
+          p,
+          defaultBrand,
+          null, // uses offscreen canvas
+          1.2
+        );
+
+        if (pageItems.length > 0) {
+          scannedPagesRef.current.add(p);
+          for (const item of pageItems) {
+            if (!existingCodes.has(item.item_code)) {
+              existingCodes.add(item.item_code);
+              allExtracted.push(item);
+            }
+          }
+          setStagedItems([...allExtracted]);
+        }
+
+        // Allow UI to breathe
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      setImportSuccess(
+        `Catalogue scan finished! Auto-detected ${allExtracted.length} total products with photos. Click "Save Items to Catalog" to commit.`
+      );
+    } catch (err: any) {
+      setError('Catalogue scan interrupted: ' + err.message);
+    } finally {
+      setIsScanningAll(false);
+      setScanProgress(null);
     }
   };
 
@@ -714,45 +984,93 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
               {/* Action Toolbar above Canvas */}
               {pdfDoc && (
-                <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs font-bold text-slate-700">Brand:</label>
-                    <input
-                      type="text"
-                      className="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-slate-900 font-bold text-xs"
-                      value={defaultBrand}
-                      onChange={(e) => setDefaultBrand(e.target.value)}
-                      placeholder="e.g. Cera"
-                    />
+                <>
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center space-x-2">
+                      <label className="text-xs font-bold text-slate-700">Brand:</label>
+                      <input
+                        type="text"
+                        className="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-slate-900 font-bold text-xs"
+                        value={defaultBrand}
+                        onChange={(e) => setDefaultBrand(e.target.value)}
+                        placeholder="e.g. Cera"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        onClick={handleAutoScanCurrentPage}
+                        disabled={isScanningPage || isScanningAll}
+                        className="btn btn-sm bg-indigo-600 hover:bg-indigo-700 text-white inline-flex items-center space-x-1 px-2.5 py-1 font-bold rounded-lg shadow-xs disabled:opacity-40"
+                        title="Auto-detect codes, descriptions, prices and crop photos on current page"
+                      >
+                        <Sparkles size={13} className={isScanningPage ? 'animate-spin' : ''} />
+                        <span>{isScanningPage ? 'Detecting...' : 'Auto-Detect Page'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={isScanningAll ? () => { stopScanRef.current = true; } : handleScanEntireCatalogue}
+                        className={`btn btn-sm inline-flex items-center space-x-1 px-3 py-1 font-bold rounded-lg shadow-xs ${
+                          isScanningAll
+                            ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse'
+                            : 'bg-teal-700 hover:bg-teal-800 text-white'
+                        }`}
+                        title={isScanningAll ? 'Stop catalogue scan' : 'Auto-scan every page in this catalogue and auto-crop photos'}
+                      >
+                        {isScanningAll ? (
+                          <>
+                            <Square size={12} className="fill-white" />
+                            <span>Stop Scan</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={13} />
+                            <span>Scan All Pages</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setCropMode((prev) => !prev)}
+                        className={`btn btn-sm inline-flex items-center space-x-1 px-2.5 py-1 font-bold rounded-lg shadow-xs ${
+                          cropMode
+                            ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold'
+                            : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
+                        }`}
+                        title="Manual drag-to-crop product photo"
+                      >
+                        <Camera size={13} />
+                        <span>{cropMode ? 'Cancel' : 'Crop'}</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={handleAutoScanPage}
-                      disabled={isScanningPage}
-                      className="btn btn-sm bg-indigo-600 hover:bg-indigo-700 text-white inline-flex items-center space-x-1 px-3 py-1 font-bold rounded-lg shadow-xs"
-                      title="Scan current page text for codes and prices"
-                    >
-                      <Sparkles size={13} className={isScanningPage ? 'animate-spin' : ''} />
-                      <span>{isScanningPage ? 'Scanning...' : 'Auto-Scan Page'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setCropMode((prev) => !prev)}
-                      className={`btn btn-sm inline-flex items-center space-x-1 px-3 py-1 font-bold rounded-lg shadow-xs ${
-                        cropMode
-                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold'
-                          : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
-                      }`}
-                      title="Drag to crop product photo directly from page"
-                    >
-                      <Camera size={13} />
-                      <span>{cropMode ? 'Cancel Crop' : 'Crop Photo'}</span>
-                    </button>
-                  </div>
-                </div>
+                  {/* Live Progress Bar during Catalogue Scan */}
+                  {isScanningAll && scanProgress && (
+                    <div className="px-3 py-2 bg-indigo-50 border-b border-indigo-200 text-xs">
+                      <div className="flex items-center justify-between font-bold text-indigo-950 mb-1">
+                        <span className="flex items-center space-x-1.5">
+                          <RefreshCw size={12} className="animate-spin text-indigo-600" />
+                          <span>Scanning Page {scanProgress.current} of {scanProgress.total}...</span>
+                        </span>
+                        <span className="text-teal-700 font-mono font-bold">
+                          {scanProgress.found} products auto-detected
+                        </span>
+                      </div>
+                      <div className="w-full bg-indigo-200 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-indigo-600 h-2 rounded-full transition-all duration-150"
+                          style={{
+                            width: `${Math.max(3, Math.round((scanProgress.current / scanProgress.total) * 100))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Canvas Container with slate-700 background so white PDF page stands out */}
@@ -942,7 +1260,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                     <Sparkles size={32} className="mx-auto mb-2 text-teal-600 opacity-60" />
                     <p className="text-xs font-bold text-slate-700">No items staged yet</p>
                     <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
-                      Click <strong>"Auto-Scan Page"</strong> on the left, crop a photo, or use the Quick Add form to build the catalog list.
+                      Upload a PDF catalogue or click <strong>"Scan All Pages"</strong> to automatically extract codes, MRPs, descriptions and photos.
                     </p>
                   </div>
                 </div>
