@@ -207,15 +207,15 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
     function drawSanitaryTableHeader(y: number) {
       doc.rect(30, y, 535, 20).fillAndStroke(primaryColor, primaryColor);
       doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#FFFFFF');
-      doc.text('Sl.', 30, y + 6, { width: 22, align: 'center' });
-      doc.text('Image', 54, y + 6, { width: 38, align: 'center' });
-      doc.text('Item Code', 94, y + 6, { width: 66 });
-      doc.text('Item Description', 162, y + 6, { width: 158 });
-      doc.text('Qty (Nos)', 322, y + 6, { width: 40, align: 'right' });
-      doc.text('MRP (₹)', 364, y + 6, { width: 52, align: 'right' });
-      doc.text('Disc %', 418, y + 6, { width: 34, align: 'right' });
-      doc.text('Price/Nos', 454, y + 6, { width: 54, align: 'right' });
-      doc.text('Total (₹)', 510, y + 6, { width: 55, align: 'right' });
+      doc.text('Sl.', 30, y + 6, { width: 20, align: 'center' });
+      doc.text('Image', 50, y + 6, { width: 54, align: 'center' });
+      doc.text('Item Code', 106, y + 6, { width: 68 });
+      doc.text('Item Description', 176, y + 6, { width: 142 });
+      doc.text('Qty (Nos)', 320, y + 6, { width: 40, align: 'right' });
+      doc.text('MRP (Rs.)', 362, y + 6, { width: 50, align: 'right' });
+      doc.text('Disc %', 414, y + 6, { width: 36, align: 'right' });
+      doc.text('Price/Nos', 452, y + 6, { width: 52, align: 'right' });
+      doc.text('Total (Rs.)', 506, y + 6, { width: 56, align: 'right' });
     }
 
     drawSanitaryTableHeader(currentY);
@@ -228,30 +228,31 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
       currentY += 28;
     } else {
       for (const item of allItems) {
-        if (currentY > 700) {
+        if (currentY > 670) {
           doc.addPage();
           currentY = 40;
           drawSanitaryTableHeader(currentY);
           currentY += 20;
         }
 
-        doc.rect(30, currentY, 535, 28).stroke(tableBorder);
+        // Scaled product image row (38 pt height)
+        doc.rect(30, currentY, 535, 38).stroke(tableBorder);
         doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
 
         // Sl.
-        doc.text(String(item.sl_no), 30, currentY + 9, { width: 22, align: 'center' });
+        doc.text(String(item.sl_no), 30, currentY + 14, { width: 20, align: 'center' });
 
-        // Item Image
+        // Item Image - scaled up fit bounds [50, 32]
         if (item.item_image && item.item_image.startsWith('data:image')) {
           try {
             const base64Data = item.item_image.replace(/^data:image\/\w+;base64,/, '');
             const imgBuffer = Buffer.from(base64Data, 'base64');
-            doc.image(imgBuffer, 56, currentY + 3, { fit: [34, 22], align: 'center', valign: 'center' });
+            doc.image(imgBuffer, 52, currentY + 3, { fit: [50, 32], align: 'center', valign: 'center' });
           } catch (e) {
-            doc.fontSize(7).fillColor('#999999').text('-', 54, currentY + 9, { width: 38, align: 'center' });
+            doc.fontSize(7).fillColor('#999999').text('-', 50, currentY + 14, { width: 54, align: 'center' });
           }
         } else {
-          doc.fontSize(7).fillColor('#999999').text('-', 54, currentY + 9, { width: 38, align: 'center' });
+          doc.fontSize(7).fillColor('#999999').text('-', 50, currentY + 14, { width: 54, align: 'center' });
         }
 
         // Item Code
@@ -259,47 +260,47 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
           ? (encryptedMap.get(item.item_code || item.size || 'CODE') || 'AMA-SAN')
           : (item.item_code || item.size || '-');
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor(primaryColor);
-        doc.text(codeText, 94, currentY + 9, { width: 66, ellipsis: true });
+        doc.text(codeText, 106, currentY + 14, { width: 68, height: 12, ellipsis: true });
 
-        // Item Description
+        // Item Description (fits 1-2 lines nicely inside 38pt row)
         const descText = isEncrypted
           ? (encryptedMap.get((item.description || '').trim()) || `${item.description}-AMA`)
           : item.description;
         doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
-        doc.text(descText, 162, currentY + 9, { width: 158, ellipsis: true });
+        doc.text(descText, 176, currentY + 10, { width: 142, height: 20, ellipsis: true });
 
         // Qty (Nos)
         const qtyVal = Number(item.quantity_boxes || 1).toFixed(0);
-        doc.text(`${qtyVal} Nos`, 322, currentY + 9, { width: 40, align: 'right' });
+        doc.text(`${qtyVal} Nos`, 320, currentY + 14, { width: 40, align: 'right' });
 
-        // MRP
+        // MRP (Rs.)
         const mrpVal = Number(item.mrp_price || item.base_rate_per_box || item.rate_per_box || 0);
-        doc.text(formatCurrency(mrpVal), 364, currentY + 9, { width: 52, align: 'right' });
+        doc.text(formatCurrency(mrpVal), 362, currentY + 14, { width: 50, align: 'right' });
 
         // Disc %
         const discVal = Number(item.discount_percent || 0);
-        doc.text(discVal > 0 ? `${discVal.toFixed(1)}%` : '-', 418, currentY + 9, { width: 34, align: 'right' });
+        doc.text(discVal > 0 ? `${discVal.toFixed(1)}%` : '-', 414, currentY + 14, { width: 36, align: 'right' });
 
-        // Discounted Price
+        // Discounted Price/Nos
         const priceVal = Number(item.rate_per_box || 0);
-        doc.text(formatCurrency(priceVal), 454, currentY + 9, { width: 54, align: 'right' });
+        doc.text(formatCurrency(priceVal), 452, currentY + 14, { width: 52, align: 'right' });
 
-        // Total
+        // Total (Rs.)
         doc.font('Helvetica-Bold');
-        doc.text(formatCurrency(item.total_amount), 510, currentY + 9, { width: 55, align: 'right' });
+        doc.text(formatCurrency(item.total_amount), 506, currentY + 14, { width: 56, align: 'right' });
 
-        currentY += 28;
+        currentY += 38;
       }
     }
   } else {
-    // Encrypted mode: Brand column omitted, Description gets 158 width
+    // Encrypted mode: Brand column omitted, Description gets 156 width
     // Standard mode: Brand column included (10 columns)
     const colX = isEncrypted
-      ? [30, 52, 210, 260, 310, 355, 410, 455, 505]
-      : [30, 50, 165, 235, 280, 322, 362, 410, 455, 505];
+      ? [30, 52, 210, 260, 306, 350, 404, 456, 508]
+      : [30, 52, 170, 236, 282, 324, 364, 414, 462, 512];
     const colW = isEncrypted
-      ? [22, 158, 50, 50, 45, 55, 45, 50, 60]
-      : [20, 115, 70, 45, 42, 40, 48, 45, 50, 60];
+      ? [20, 156, 48, 44, 42, 52, 50, 50, 54]
+      : [20, 116, 64, 44, 40, 38, 48, 46, 48, 50];
 
     function drawTableHeader(y: number) {
       doc.rect(30, y, 535, 20).fillAndStroke(primaryColor, primaryColor);
@@ -314,7 +315,7 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
         doc.text('Rate/Sqft', colX[5], y + 6, { width: colW[5], align: 'right' });
         doc.text('Boxes/Qty', colX[6], y + 6, { width: colW[6], align: 'right' });
         doc.text('Rate/Unit', colX[7], y + 6, { width: colW[7], align: 'right' });
-        doc.text('Total', colX[8], y + 6, { width: colW[8], align: 'right' });
+        doc.text('Total (Rs.)', colX[8], y + 6, { width: colW[8], align: 'right' });
       } else {
         doc.text('Sl.', colX[0], y + 6, { width: colW[0], align: 'center' });
         doc.text('Description', colX[1], y + 6, { width: colW[1] });
@@ -325,7 +326,7 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
         doc.text('Rate/Sqft', colX[6], y + 6, { width: colW[6], align: 'right' });
         doc.text('Boxes/Qty', colX[7], y + 6, { width: colW[7], align: 'right' });
         doc.text('Rate/Unit', colX[8], y + 6, { width: colW[8], align: 'right' });
-        doc.text('Total', colX[9], y + 6, { width: colW[9], align: 'right' });
+        doc.text('Total (Rs.)', colX[9], y + 6, { width: colW[9], align: 'right' });
       }
     }
 
@@ -394,7 +395,7 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
 
         if (isEncrypted) {
           doc.text(String(item.sl_no), colX[0], currentY + 4, { width: colW[0], align: 'center' });
-          doc.text(descText, colX[1], currentY + 4, { width: colW[1], ellipsis: true });
+          doc.text(descText, colX[1], currentY + 4, { width: colW[1], height: 10, ellipsis: true });
           doc.text(item.size, colX[2], currentY + 4, { width: colW[2], align: 'center' });
           doc.text(covText, colX[3], currentY + 4, { width: colW[3], align: 'right' });
           doc.text(sqftText, colX[4], currentY + 4, { width: colW[4], align: 'right' });
@@ -404,8 +405,8 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
           doc.text(formatCurrency(item.total_amount), colX[8], currentY + 4, { width: colW[8], align: 'right' });
         } else {
           doc.text(String(item.sl_no), colX[0], currentY + 4, { width: colW[0], align: 'center' });
-          doc.text(descText, colX[1], currentY + 4, { width: colW[1], ellipsis: true });
-          doc.text(item.brand || '-', colX[2], currentY + 4, { width: colW[2], ellipsis: true });
+          doc.text(descText, colX[1], currentY + 4, { width: colW[1], height: 10, ellipsis: true });
+          doc.text(item.brand || '-', colX[2], currentY + 4, { width: colW[2], height: 10, ellipsis: true });
           doc.text(item.size, colX[3], currentY + 4, { width: colW[3], align: 'center' });
           doc.text(covText, colX[4], currentY + 4, { width: colW[4], align: 'right' });
           doc.text(sqftText, colX[5], currentY + 4, { width: colW[5], align: 'right' });
@@ -506,7 +507,7 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
   currentY = Math.max(wordsBoxY + 70, totalsY);
 
   // Page break check for Terms and Bank details
-  if (currentY > 620) {
+  if (currentY > 640) {
     doc.addPage();
     currentY = 40;
   }
@@ -552,7 +553,7 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
   currentY += 68;
 
   // Terms and Conditions Section
-  if (currentY > 700) {
+  if (currentY > 670) {
     doc.addPage();
     currentY = 40;
   }
@@ -563,7 +564,7 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
   const termsList = Array.isArray(company.terms_json) ? company.terms_json : [];
   doc.fontSize(6.8).font('Helvetica').fillColor('#444444');
   termsList.forEach((term, idx) => {
-    if (currentY > 780) {
+    if (currentY > 770) {
       doc.addPage();
       currentY = 40;
     }
@@ -571,10 +572,11 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
     currentY += 10;
   });
 
-  // Footer on all pages
+  // Footer on all pages (margins.bottom tightened to prevent auto-overflow)
   const totalPages = doc.bufferedPageRange().count;
   for (let i = 0; i < totalPages; i++) {
     doc.switchToPage(i);
+    doc.page.margins.bottom = 10;
     doc
       .fontSize(7)
       .font('Helvetica')
@@ -582,8 +584,8 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
       .text(
         `AMA Ceramics Pvt Ltd — Ref: ${quotation.quotation_number}${isEncrypted ? ' (Encrypted Export)' : ''} — Page ${i + 1} of ${totalPages}`,
         30,
-        805,
-        { align: 'center', width: 535 }
+        794,
+        { align: 'center', width: 535, lineBreak: false }
       );
   }
 
