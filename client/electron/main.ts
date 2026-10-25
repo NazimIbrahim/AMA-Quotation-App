@@ -4,10 +4,10 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 
-// Low-memory optimizations for 4 GB RAM Windows office PCs
+// Memory optimizations for stable execution during PDF processing
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=1024');
 
 // Single Instance Lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -85,6 +85,13 @@ function createWindow(): void {
       shell.openExternal(url);
     }
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details);
+    if (mainWindow && !mainWindow.isDestroyed() && details.reason !== 'clean-exit') {
+      mainWindow.reload();
+    }
   });
 
   mainWindow.on('closed', () => {

@@ -101,6 +101,11 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [excelParsing, setExcelParsing] = useState(false);
 
+  // Staged List Virtualization / Pagination & Filter State
+  const [stagedSearch, setStagedSearch] = useState<string>('');
+  const [stagedPage, setStagedPage] = useState<number>(1);
+  const itemsPerPage = 35;
+
   const categories = [
     'Water Closet',
     'Wash Basin',
@@ -232,7 +237,9 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           } else if (fn === pdfjsLib.OPS.restore) {
             if (ctmStack.length > 0) currentCTM = ctmStack.pop()!;
           } else if (fn === pdfjsLib.OPS.transform) {
-            currentCTM = multiply(currentCTM, args);
+            if (Array.isArray(args) && args.length >= 6) {
+              currentCTM = multiply(currentCTM, args);
+            }
           } else if (
             fn === pdfjsLib.OPS.paintImageXObject ||
             fn === pdfjsLib.OPS.paintInlineImageXObject
@@ -240,7 +247,15 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             const w = Math.hypot(currentCTM[0], currentCTM[1]);
             const h = Math.hypot(currentCTM[2], currentCTM[3]);
             // Exclude QR codes and small icons (<36 pt) and full page backgrounds (>480 x >680)
-            if (w >= 36 && h >= 36 && (w < 480 || h < 680)) {
+            if (
+              w >= 36 &&
+              h >= 36 &&
+              (w < 480 || h < 680) &&
+              !isNaN(w) &&
+              !isNaN(h) &&
+              isFinite(currentCTM[4]) &&
+              isFinite(currentCTM[5])
+            ) {
               pageImages.push({
                 x: currentCTM[4],
                 y: currentCTM[5],
@@ -259,6 +274,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       // Viewport and source canvas for cropping photos
       const viewport = page.getViewport({ scale: renderScale });
       let sourceCanvas: HTMLCanvasElement;
+      let createdOffscreen: HTMLCanvasElement | null = null;
 
       if (existingCanvas && existingCanvas.width > 100) {
         sourceCanvas = existingCanvas;
@@ -273,6 +289,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           await page.render({ canvasContext: offCtx, viewport }).promise;
         }
         sourceCanvas = offscreen;
+        createdOffscreen = offscreen;
       }
 
       const results: StagedItem[] = [];
@@ -394,6 +411,8 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               tCtx.drawImage(sourceCanvas, cx, cy, cw, ch, dx, dy, dw, dh);
               photoDataUrl = thumb.toDataURL('image/jpeg', 0.82);
             }
+            thumb.width = 0;
+            thumb.height = 0;
           }
         } catch (cropErr) {
           console.warn('Failed auto-cropping photo for', cand.code, cropErr);
@@ -410,6 +429,15 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           page_number: pageNum,
         });
       }
+
+      // Explicitly release offscreen canvas and PDF page memory to prevent leaks
+      if (createdOffscreen) {
+        createdOffscreen.width = 0;
+        createdOffscreen.height = 0;
+      }
+      try {
+        page.cleanup();
+      } catch (_) {}
 
       return results;
     } catch (e) {
@@ -574,9 +602,24 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           if (autoItems.length > 0) {
             scannedPagesRef.current.add(currentPage);
             setStagedItems((prev) => {
-              const existingCodes = new Set(prev.map((it) => it.item_code));
-              const additions = autoItems.filter((it) => !existingCodes.has(it.item_code));
-              return [...additions, ...prev];
+              const next = [...prev];
+              for (const item of autoItems) {
+                const codeKey = item.item_code.trim().toUpperCase();
+                const existingIdx = next.findIndex(
+                  (it) => it.item_code.trim().toUpperCase() === codeKey
+                );
+                if (existingIdx >= 0) {
+                  // REPLACE existing item with the newly detected item
+                  next[existingIdx] = {
+                    ...next[existingIdx],
+                    ...item,
+                    item_image: item.item_image || next[existingIdx].item_image,
+                  };
+                } else {
+                  next.unshift(item);
+                }
+              }
+              return next;
             });
             setImportSuccess(
               `Auto-detected ${autoItems.length} products on Page ${currentPage}!`
@@ -606,9 +649,24 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       if (newItems.length > 0) {
         scannedPagesRef.current.add(currentPage);
         setStagedItems((prev) => {
-          const existingCodes = new Set(prev.map((it) => it.item_code));
-          const additions = newItems.filter((it) => !existingCodes.has(it.item_code));
-          return [...additions, ...prev];
+          const next = [...prev];
+          for (const item of newItems) {
+            const codeKey = item.item_code.trim().toUpperCase();
+            const existingIdx = next.findIndex(
+              (it) => it.item_code.trim().toUpperCase() === codeKey
+            );
+            if (existingIdx >= 0) {
+              // REPLACE existing item
+              next[existingIdx] = {
+                ...next[existingIdx],
+                ...item,
+                item_image: item.item_image || next[existingIdx].item_image,
+              };
+            } else {
+              next.unshift(item);
+            }
+          }
+          return next;
         });
         setImportSuccess(`Auto-detected ${newItems.length} items with photos on Page ${currentPage}!`);
       } else {
@@ -636,7 +694,6 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     setImportSuccess(null);
 
     let allExtracted: StagedItem[] = [...stagedItems];
-    const existingCodes = new Set(allExtracted.map((it) => it.item_code));
 
     try {
       for (let p = 1; p <= doc.numPages; p++) {
@@ -661,18 +718,33 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         if (pageItems.length > 0) {
           scannedPagesRef.current.add(p);
           for (const item of pageItems) {
-            if (!existingCodes.has(item.item_code)) {
-              existingCodes.add(item.item_code);
+            const codeKey = item.item_code.trim().toUpperCase();
+            const existingIdx = allExtracted.findIndex(
+              (it) => it.item_code.trim().toUpperCase() === codeKey
+            );
+            if (existingIdx >= 0) {
+              // REPLACE existing item with newer data
+              allExtracted[existingIdx] = {
+                ...allExtracted[existingIdx],
+                ...item,
+                item_image: item.item_image || allExtracted[existingIdx].item_image,
+              };
+            } else {
               allExtracted.push(item);
             }
           }
-          setStagedItems([...allExtracted]);
+
+          // Batch React state updates every 5 pages or on final page to prevent DOM thrashing
+          if (p % 5 === 0 || p === doc.numPages) {
+            setStagedItems([...allExtracted]);
+          }
         }
 
         // Allow UI to breathe
         await new Promise((resolve) => setTimeout(resolve, 15));
       }
 
+      setStagedItems([...allExtracted]);
       setImportSuccess(
         `✅ Entire catalogue scanned! Auto-detected ${allExtracted.length} products with photos. Click "Save Items to Catalog" to commit.`
       );
@@ -798,7 +870,23 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       page_number: currentPage,
     };
 
-    setStagedItems((prev) => [newItem, ...prev]);
+    setStagedItems((prev) => {
+      const codeKey = newItem.item_code.trim().toUpperCase();
+      const existingIdx = prev.findIndex(
+        (it) => it.item_code.trim().toUpperCase() === codeKey
+      );
+      if (existingIdx >= 0) {
+        // REPLACE existing item with the newer data
+        const copy = [...prev];
+        copy[existingIdx] = {
+          ...copy[existingIdx],
+          ...newItem,
+          item_image: newItem.item_image || copy[existingIdx].item_image,
+        };
+        return copy;
+      }
+      return [newItem, ...prev];
+    });
     setManualCode('');
     setManualDesc('');
     setManualMrp('');
@@ -877,7 +965,25 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           });
         }
 
-        setStagedItems((prev) => [...parsed, ...prev]);
+        setStagedItems((prev) => {
+          const next = [...prev];
+          for (const item of parsed) {
+            const codeKey = item.item_code.trim().toUpperCase();
+            const existingIdx = next.findIndex(
+              (it) => it.item_code.trim().toUpperCase() === codeKey
+            );
+            if (existingIdx >= 0) {
+              next[existingIdx] = {
+                ...next[existingIdx],
+                ...item,
+                item_image: item.item_image || next[existingIdx].item_image,
+              };
+            } else {
+              next.push(item);
+            }
+          }
+          return next;
+        });
         setImportSuccess(`Imported ${parsed.length} items from ${file.name}!`);
       } catch (err: any) {
         setError('Failed to parse spreadsheet: ' + err.message);
@@ -944,6 +1050,23 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
   };
 
   if (!isOpen) return null;
+
+  // Staged Items Filter & Safe Pagination to prevent memory/DOM bloat
+  const filteredStaged = stagedItems.filter((it) => {
+    if (!stagedSearch.trim()) return true;
+    const q = stagedSearch.toLowerCase();
+    return (
+      it.item_code.toLowerCase().includes(q) ||
+      it.item_description.toLowerCase().includes(q) ||
+      it.category.toLowerCase().includes(q)
+    );
+  });
+  const totalStagedPages = Math.max(1, Math.ceil(filteredStaged.length / itemsPerPage));
+  const currentPageSafe = Math.min(stagedPage, totalStagedPages);
+  const displayedStaged = filteredStaged.slice(
+    (currentPageSafe - 1) * itemsPerPage,
+    currentPageSafe * itemsPerPage
+  );
 
   return (
     <div
@@ -1291,24 +1414,76 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             style={{ width: '50%' }}
           >
             {/* Header */}
-            <div className="p-3 border-b border-slate-200 bg-slate-100 flex items-center justify-between shrink-0">
+            <div className="p-3 border-b border-slate-200 bg-slate-100 flex flex-wrap items-center justify-between gap-2 shrink-0">
               <div className="flex items-center space-x-2">
                 <Layers size={16} className="text-teal-700" />
                 <span className="text-xs font-bold text-[#0D1B2A] uppercase tracking-wider">
-                  Extracted / Staged Items ({stagedItems.length})
+                  Extracted Items ({stagedItems.length})
                 </span>
               </div>
 
-              {stagedItems.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setStagedItems([])}
-                  className="text-xs font-bold text-rose-600 hover:text-rose-800 transition-colors"
-                >
-                  Clear All
-                </button>
-              )}
+              <div className="flex items-center space-x-2">
+                {stagedItems.length > 5 && (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search items..."
+                      value={stagedSearch}
+                      onChange={(e) => {
+                        setStagedSearch(e.target.value);
+                        setStagedPage(1);
+                      }}
+                      className="w-32 pl-6 pr-2 py-1 text-xs bg-white rounded-lg border border-slate-300 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-600 font-medium"
+                    />
+                    <Search size={12} className="absolute left-2 top-2 text-slate-400 pointer-events-none" />
+                  </div>
+                )}
+
+                {stagedItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStagedItems([]);
+                      setStagedSearch('');
+                      setStagedPage(1);
+                    }}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-800 transition-colors"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Pagination Bar for Staged Items */}
+            {filteredStaged.length > itemsPerPage && (
+              <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600 shrink-0">
+                <span className="font-medium text-[11px]">
+                  Showing {(currentPageSafe - 1) * itemsPerPage + 1} - {Math.min(currentPageSafe * itemsPerPage, filteredStaged.length)} of {filteredStaged.length}
+                </span>
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    type="button"
+                    disabled={currentPageSafe <= 1}
+                    onClick={() => setStagedPage((p) => Math.max(1, p - 1))}
+                    className="px-2 py-0.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-xs"
+                  >
+                    ‹ Prev
+                  </button>
+                  <span className="text-[11px] font-mono font-bold text-slate-800">
+                    {currentPageSafe} / {totalStagedPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={currentPageSafe >= totalStagedPages}
+                    onClick={() => setStagedPage((p) => Math.min(totalStagedPages, p + 1))}
+                    className="px-2 py-0.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-xs"
+                  >
+                    Next ›
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Quick Add Form */}
             <div className="p-3 bg-slate-50 border-b border-slate-200 shrink-0 space-y-2">
@@ -1375,7 +1550,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                   </div>
                 </div>
               ) : (
-                stagedItems.map((it) => (
+                displayedStaged.map((it) => (
                   <div
                     key={it.id}
                     className="p-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors gap-2 text-xs"

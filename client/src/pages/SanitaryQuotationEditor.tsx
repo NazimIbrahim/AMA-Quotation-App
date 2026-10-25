@@ -513,6 +513,15 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
   };
 
   const handleSelectFromPicker = (catItem: SanitaryCatalogItem) => {
+    const catCode = catItem.item_code.trim().toUpperCase();
+    const existingIdx = items.findIndex(
+      (it) => it.item_code.trim().toUpperCase() === catCode
+    );
+    if (existingIdx >= 0) {
+      applyCatalogItem(existingIdx, catItem);
+      return;
+    }
+
     const lastIdx = items.length - 1;
     const isLastBlank = lastIdx >= 0 && !items[lastIdx].item_code.trim() && !items[lastIdx].item_description.trim();
 
