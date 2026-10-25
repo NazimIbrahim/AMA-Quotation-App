@@ -29,8 +29,8 @@ export const ProductManagement: React.FC = () => {
   const [piecesPerBox, setPiecesPerBox] = useState('2');
   const [rateSqft, setRateSqft] = useState('130.0');
 
-  const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
-  const isAdminOrAccountant = ['admin', 'accounts', 'accountant', 'manager'].includes(user?.role || '');
+  const isAdminOrManager = ['admin', 'manager', 'accounts', 'accountant'].includes(user?.role || '');
+  const isAdminOrAccountant = ['admin', 'accounts', 'accountant'].includes(user?.role || '');
 
   const loadData = async () => {
     setLoading(true);
@@ -249,7 +249,7 @@ export const ProductManagement: React.FC = () => {
                 <Plus size={12} />
                 <span>+ Add Size Formula</span>
               </button>
-              {isAdminOrAccountant && brands.length > 0 && (
+              {isAdminOrAccountant && (
                 <button
                   onClick={handleClearAllTileCatalog}
                   className="btn btn-secondary btn-sm flex items-center space-x-1 border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100"

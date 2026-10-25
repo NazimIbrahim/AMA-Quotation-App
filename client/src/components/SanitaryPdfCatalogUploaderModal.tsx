@@ -163,94 +163,24 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         return [];
       }
 
-      // Regex patterns: matches 2-8 digits, e.g. KS110, KO117, KS277, KB1011011, FSW-007, KGP50001W-SR
-      const codeRegex = /\b([A-Z]{1,6}[-_]?[0-9]{2,8}[A-Z0-9\-_]*)\b/i;
-
-      // Price parser helper: handles currency prefixes, comma numbers, excludes dimensions
+      // Price parser helper: handles Indian comma numbers (8,70,000), western numbers (870,000), currency prefixes, excludes dimensions
       const parsePrice = (str: string): number | null => {
         if (!str) return null;
         const trimmed = str.trim();
         if (/\b\d+\s*(?:mm|cm|m\b|inch|inches|dia|"|'|litres?)\b/i.test(trimmed)) return null;
         if (/\b\d+\s*x\s*\d+/i.test(trimmed)) return null;
 
-        // Currency prefixed: e.g. '₹ 23,000' or 'Per Piece ` 2,100' or 'Rs. 5,675' or 'MRP: 11,000'
-        const m1 = trimmed.match(
-          /(?:`|₹|Rs\.?|INR|MRP|Per\s*Piece)\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|\b[1-9][0-9]{2,5}\b)/i
-        );
-        if (m1) {
-          const v = parseFloat(m1[1].replace(/,/g, ''));
-          if (v >= 100 && v <= 500000) return v;
+        const cleaned = trimmed.replace(/[₹`]|Rs\.?|INR|MRP|Per\s*Piece/gi, '').trim();
+        const m = cleaned.match(/\b\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?\b/);
+        if (m) {
+          const numStr = m[0].replace(/,/g, '');
+          const v = parseFloat(numStr);
+          if (!isNaN(v) && v >= 100 && v <= 50000000) {
+            return Math.round(v);
+          }
         }
-
-        // Comma formatted number alone (e.g. '23,000' or '5,675')
-        const m2 = trimmed.match(/\b([1-9][0-9]{0,2}(?:,[0-9]{3})+(?:\.[0-9]{2})?)\b/);
-        if (m2) {
-          const v = parseFloat(m2[1].replace(/,/g, ''));
-          if (v >= 100 && v <= 500000) return v;
-        }
-
         return null;
       };
-
-      const candidates: Array<{ index: number; code: string; modelTitle?: string; pdfX: number; pdfY: number }> = [];
-
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        const str = (it.str || '').trim();
-        if (!str || !it.transform) continue;
-
-        // Skip non-product accessory/compatibility notes
-        if (
-          str.toLowerCase().startsWith('with ') ||
-          str.toLowerCase().includes('(comp') ||
-          str.toLowerCase().includes('suitable for') ||
-          str.toLowerCase().startsWith('page')
-        ) {
-          continue;
-        }
-
-        const m = str.match(codeRegex);
-        if (m) {
-          const codePart = m[1].toUpperCase();
-          if (
-            codePart === 'FAUCET' ||
-            codePart === 'SANITARYWARE' ||
-            codePart === 'ROUGH-IN' ||
-            codePart.startsWith('SIZE') ||
-            codePart.length < 4
-          ) {
-            continue;
-          }
-
-          // Check if line is a slash variant line (e.g. "KB2211035 / KB2311035-CP")
-          const cleanCode = str.includes('/')
-            ? str.split('/').map((s: string) => s.trim()).filter(Boolean).join(' / ')
-            : codePart;
-
-          // Parse prefix as model title (e.g. "KADIN - KS277" -> "KADIN", "TARA - KO117" -> "TARA")
-          let modelTitle = '';
-          if (str.includes(' - ')) {
-            const parts = str.split(' - ');
-            if (parts[0] && parts[0].trim().length >= 3 && !parts[0].match(codeRegex)) {
-              modelTitle = parts[0].trim();
-            }
-          }
-
-          if (!candidates.some((c) => c.code === cleanCode)) {
-            candidates.push({
-              index: i,
-              code: cleanCode,
-              modelTitle,
-              pdfX: it.transform[4],
-              pdfY: it.transform[5],
-            });
-          }
-        }
-      }
-
-      if (candidates.length === 0) return [];
-
-      const isTablePage = candidates.length > 20 && items.length > 250;
 
       // Extract actual PDF product images from operator list to guarantee accurate photo cropping
       interface PageImg {
@@ -294,7 +224,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             const h = Math.hypot(currentCTM[2], currentCTM[3]);
             // Exclude QR codes (small squares <=35x35) and full page backgrounds (>480 x >680)
             const isQrCode = w <= 35 && h <= 35 && Math.abs(w - h) <= 2;
-            const isLarge = Math.max(w, h) >= 36 && Math.min(w, h) >= 15;
+            const isLarge = Math.max(w, h) >= 22 && Math.min(w, h) >= 15;
             if (
               isLarge &&
               !isQrCode &&
@@ -340,187 +270,10 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         createdOffscreen = offscreen;
       }
 
-      // Group candidates into vertical clusters (contiguous variants within 18pt of each other at similar X)
-      interface ClusterInfo {
-        cluster: typeof candidates;
-        matchedImg: PageImg | null;
-      }
-      const clusters: ClusterInfo[] = [];
-      let curCluster: typeof candidates = [];
-
-      for (let i = 0; i < candidates.length; i++) {
-        const cand = candidates[i];
-        if (curCluster.length === 0) {
-          curCluster.push(cand);
-        } else {
-          const last = curCluster[curCluster.length - 1];
-          const dy = Math.abs(last.pdfY - cand.pdfY);
-          const dx = Math.abs(last.pdfX - cand.pdfX);
-          if (dy <= 18 && dx <= 35) {
-            curCluster.push(cand);
-          } else {
-            clusters.push({ cluster: curCluster, matchedImg: null });
-            curCluster = [cand];
-          }
-        }
-      }
-      if (curCluster.length > 0) clusters.push({ cluster: curCluster, matchedImg: null });
-
-      // Match the best image for each cluster as a whole so variants in a block never leak across sections
-      for (const cl of clusters) {
-        const minY = Math.min(...cl.cluster.map((c) => c.pdfY));
-        const maxY = Math.max(...cl.cluster.map((c) => c.pdfY));
-        const avgX = cl.cluster.reduce((sum, c) => sum + c.pdfX, 0) / cl.cluster.length;
-        const centerY = (minY + maxY) / 2;
-
-        let bestImg: PageImg | null = null;
-        let bestDist = Infinity;
-        for (const img of pageImages) {
-          // Photo directly to the left of cluster
-          const isLeft =
-            img.x < avgX &&
-            img.x >= avgX - 220 &&
-            centerY >= img.y - 50 &&
-            centerY <= img.y + img.h + 50;
-
-          // Photo directly above cluster
-          const isAbove =
-            img.y >= maxY - 20 &&
-            img.y <= maxY + 180 &&
-            Math.abs(img.centerX - (avgX + 50)) <= 85;
-
-          if (isLeft || isAbove) {
-            const dist = Math.hypot(img.centerX - avgX, img.centerY - centerY);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestImg = img;
-            }
-          }
-        }
-        cl.matchedImg = bestImg;
-      }
-
-      const results: StagedItem[] = [];
-
-      for (const cl of clusters) {
-        const clusterImg = cl.matchedImg;
-
-        for (const cand of cl.cluster) {
-          let descLines: string[] = cand.modelTitle ? [cand.modelTitle] : [];
-          let mrp = 0;
-
-          // 1. Exact row price matching (within 8pt vertically, horizontally aligned across row)
-          for (let j = 0; j < items.length; j++) {
-            const it = items[j];
-            if (!it.str || !it.transform) continue;
-            const iy = it.transform[5];
-            const ix = it.transform[4];
-            if (Math.abs(iy - cand.pdfY) <= 8 && ix >= cand.pdfX - 20) {
-              const p = parsePrice(it.str);
-              if (p && p >= 100) {
-                mrp = p;
-                break;
-              }
-            }
-          }
-
-          // 2. Fallback: Card price below code (within 85pt vertically, 140pt horizontally)
-          if (!mrp) {
-            for (let j = 0; j < items.length; j++) {
-              const it = items[j];
-              if (!it.str || !it.transform) continue;
-              const iy = it.transform[5];
-              const ix = it.transform[4];
-              const dy = cand.pdfY - iy;
-              const dx = Math.abs(ix - cand.pdfX);
-              if (dy > 0 && dy <= 85 && dx <= 140) {
-                const p = parsePrice(it.str);
-                if (p && p >= 100) {
-                  mrp = p;
-                  break;
-                }
-              }
-            }
-          }
-
-          // 3. Sibling text placed directly below or around the code for description
-          for (let j = 0; j < items.length; j++) {
-            if (j === cand.index) continue;
-            const it = items[j];
-            const str = (it.str || '').trim();
-            if (!str || !it.transform) continue;
-
-            const ix = it.transform[4];
-            const iy = it.transform[5];
-            const dx = ix - cand.pdfX;
-            const dy = cand.pdfY - iy;
-
-            if (dx >= -40 && dx <= 160 && dy > 0 && dy < 75) {
-              if (
-                str !== '`' &&
-                str !== '₹' &&
-                !str.toLowerCase().startsWith('per piece') &&
-                !str.match(codeRegex) &&
-                !parsePrice(str)
-              ) {
-                descLines.push(str);
-              }
-            }
-          }
-
-          // 4. If no direct sibling description (e.g. multi-variant diverter block), find common block title below group
-          if (descLines.length === 0) {
-            for (let j = 0; j < items.length; j++) {
-              if (j === cand.index) continue;
-              const it = items[j];
-              if (!it.str || !it.transform) continue;
-              const iy = it.transform[5];
-              const ix = it.transform[4];
-              const dy = cand.pdfY - iy;
-              const dx = Math.abs(ix - cand.pdfX);
-              if (dy > 0 && dy <= 160 && dx <= 70) {
-                const s = (it.str || '').trim();
-                if (
-                  s.length >= 8 &&
-                  !s.includes('/') &&
-                  !codeRegex.test(s) &&
-                  !parsePrice(s)
-                ) {
-                  descLines.push(s);
-                  break;
-                }
-              }
-            }
-          }
-
-          const cleanDesc =
-            descLines.join(' ').replace(/\s+/g, ' ').trim() ||
-            `${brandToUse} ${cand.code} ${pageCategory}`;
-
-          const bestImg = clusterImg;
-
-        // Auto-crop photo in PDF coordinates
-        let photoDataUrl = '';
+      // Helper to crop thumbnail from canvas
+      const cropThumb = (cropPdfX: number, cropPdfY: number, cropPdfW: number, cropPdfH: number): string => {
         try {
-          let cropPdfX: number;
-          let cropPdfY: number;
-          let cropPdfW: number;
-          let cropPdfH: number;
-
-          if (bestImg) {
-            // Exact image bounding box with minimal safe padding
-            cropPdfX = bestImg.x - 2;
-            cropPdfY = bestImg.y - 2;
-            cropPdfW = bestImg.w + 4;
-            cropPdfH = bestImg.h + 4;
-          } else {
-            // Tight fallback above code: strictly within row bounds, avoiding headers and QR codes
-            cropPdfX = cand.pdfX - 10;
-            cropPdfY = cand.pdfY + 12;
-            cropPdfW = 104;
-            cropPdfH = 88;
-          }
-
+          if (cropPdfW <= 0 || cropPdfH <= 0) return '';
           const [imgLeft, imgBottom] = viewport.convertToViewportPoint(cropPdfX, cropPdfY);
           const [imgRight, imgTop] = viewport.convertToViewportPoint(
             cropPdfX + cropPdfW,
@@ -546,27 +299,416 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               const dx = Math.round((160 - dw) / 2);
               const dy = Math.round((160 - dh) / 2);
               tCtx.drawImage(sourceCanvas, cx, cy, cw, ch, dx, dy, dw, dh);
-              photoDataUrl = thumb.toDataURL('image/jpeg', 0.82);
+              const out = thumb.toDataURL('image/jpeg', 0.82);
+              thumb.width = 0;
+              thumb.height = 0;
+              return out;
             }
-            thumb.width = 0;
-            thumb.height = 0;
           }
         } catch (cropErr) {
-          console.warn('Failed auto-cropping photo for', cand.code, cropErr);
+          console.warn('Failed auto-cropping photo', cropErr);
         }
+        return '';
+      };
+
+      // 1. Detect Table Column Headers
+      const detectedCols: Array<{ type: 'CODE' | 'DESC' | 'MRP' | 'IMAGE'; x: number; y: number; s: string }> = [];
+      let headerY = 0;
+
+      for (const it of items) {
+        const s = (it.str || '').trim().toUpperCase();
+        if (!it.transform) continue;
+        const x = it.transform[4];
+        const y = it.transform[5];
+        if (y < 450) continue; // Headers are in the upper portion
+
+        if (/^(CODE|ITEM\s*CODE|CAT(?:ALOGUE)?\s*NO\.?|PRODUCT\s*CODE|MODEL\s*NO\.?|ARTICLE\s*NO\.?|ITEM\s*NO\.?|PART\s*NO\.?)$/i.test(s)) {
+          detectedCols.push({ type: 'CODE', x, y, s });
+          headerY = Math.max(headerY, y);
+        } else if (/^(DESCRIPTION|PRODUCT\s*DESCRIPTION|DETAILS|SPECIFICATION[S]?|PRODUCT\s*NAME|ITEM\s*DESCRIPTION|PARTICULARS|MODEL\s*DESCRIPTION)$/i.test(s)) {
+          detectedCols.push({ type: 'DESC', x, y, s });
+          headerY = Math.max(headerY, y);
+        } else if (/^(MRP|PRICE|LIST\s*PRICE|RATE|AMOUNT|MRP\s*\(.*\)|PRICE\s*\(.*\))$/i.test(s) || s.startsWith('MRP')) {
+          detectedCols.push({ type: 'MRP', x, y, s });
+          headerY = Math.max(headerY, y);
+        } else if (/^(MODEL|IMAGE[S]?|PHOTO[S]?|PICTURE[S]?|PRODUCT[S]?|PREVIEW)$/i.test(s)) {
+          detectedCols.push({ type: 'IMAGE', x, y, s });
+          headerY = Math.max(headerY, y);
+        }
+      }
+
+      const colTypes: Array<'CODE' | 'DESC' | 'MRP' | 'IMAGE'> = ['CODE', 'DESC', 'MRP', 'IMAGE'];
+      const cols: typeof detectedCols = [];
+      for (const t of colTypes) {
+        const matching = detectedCols.filter(c => c.type === t && Math.abs(c.y - headerY) < 35);
+        if (matching.length > 0) {
+          matching.sort((a, b) => b.y - a.y);
+          cols.push(matching[0]);
+        }
+      }
+
+      const hasTable = cols.some(c => c.type === 'CODE') && (cols.some(c => c.type === 'DESC') || cols.some(c => c.type === 'MRP'));
+
+      const results: StagedItem[] = [];
+
+      if (hasTable) {
+        // ============================================
+        // ENGINE A: TABLE LAYOUT ENGINE (Universal Price Books)
+        // ============================================
+        cols.sort((a, b) => a.x - b.x);
+        const colRanges: Record<string, { minX: number; maxX: number; center: number }> = {};
+        for (let i = 0; i < cols.length; i++) {
+          const cur = cols[i];
+          const prev = i > 0 ? cols[i - 1] : null;
+          const next = i + 1 < cols.length ? cols[i + 1] : null;
+          const minX = prev ? (prev.x + cur.x) / 2 : 0;
+          const maxX = next ? (cur.x + next.x) / 2 : 9999;
+          colRanges[cur.type] = { minX, maxX, center: cur.x };
+        }
+
+        const codeRange = colRanges['CODE'];
+        const descRange = colRanges['DESC'] || { minX: 100, maxX: 400, center: 250 };
+        const mrpRange = colRanges['MRP'] || { minX: 450, maxX: 9999, center: 520 };
+        const imgRange = colRanges['IMAGE'] || { minX: 0, maxX: Math.min(codeRange.minX, descRange.minX), center: 60 };
+
+        // Candidates strictly from CODE column
+        const tableCodeCandidates: Array<{ index: number; code: string; x: number; y: number }> = [];
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          const str = (it.str || '').trim();
+          if (!str || !it.transform) continue;
+          const x = it.transform[4];
+          const y = it.transform[5];
+
+          if (y < headerY - 10 && x >= codeRange.minX && x < codeRange.maxX) {
+            if (/^[A-Z0-9][A-Z0-9\-_]{2,30}$/i.test(str)) {
+              if (!/^(PAGE|FINISH|COLOR|WHITE|TOTAL|NOTE|INR|RS|MRP|SL|NO)$/i.test(str)) {
+                tableCodeCandidates.push({ index: i, code: str, x, y });
+              }
+            }
+          }
+        }
+
+        // Sort descending Y
+        tableCodeCandidates.sort((a, b) => b.y - a.y);
+
+        for (let cIdx = 0; cIdx < tableCodeCandidates.length; cIdx++) {
+          const cand = tableCodeCandidates[cIdx];
+          const prevY = cIdx > 0 ? tableCodeCandidates[cIdx - 1].y : headerY;
+          const nextY = cIdx + 1 < tableCodeCandidates.length ? tableCodeCandidates[cIdx + 1].y : 20;
+
+          const rowTop = (prevY + cand.y) / 2;
+          const rowBottom = (cand.y + nextY) / 2;
+
+          // Extract description from DESC column within row slice
+          const rowDescItems: Array<{ str: string; x: number; y: number }> = [];
+          for (const it of items) {
+            const s = (it.str || '').trim();
+            if (!s || !it.transform) continue;
+            const ix = it.transform[4];
+            const iy = it.transform[5];
+
+            if (iy < rowTop && iy >= rowBottom && ix >= descRange.minX && ix < descRange.maxX) {
+              if (s !== '®' && s !== '™' && s !== '•') {
+                if (
+                  !s.toLowerCase().startsWith('must order') &&
+                  !s.toLowerCase().startsWith('floor flange') &&
+                  !s.toLowerCase().startsWith('external pre-filter') &&
+                  !s.toLowerCase().startsWith('plastic outlet')
+                ) {
+                  rowDescItems.push({ str: s, x: ix, y: iy });
+                }
+              }
+            }
+          }
+
+          rowDescItems.sort((a, b) => (Math.abs(b.y - a.y) > 3 ? b.y - a.y : a.x - b.x));
+          const rowDesc = rowDescItems.map(d => d.str).join(' ').replace(/\s+/g, ' ').trim();
+
+          // Extract MRP from MRP column within row slice
+          let mrp = 0;
+          for (const it of items) {
+            const s = (it.str || '').trim();
+            if (!s || !it.transform) continue;
+            const ix = it.transform[4];
+            const iy = it.transform[5];
+            if (iy < rowTop && iy >= rowBottom && ix >= mrpRange.minX && ix < mrpRange.maxX) {
+              const p = parsePrice(s);
+              if (p && p >= 100) {
+                mrp = p;
+                break;
+              }
+            }
+          }
+
+          // Match image from IMAGE column within row vertical slice
+          const rowCenterY = (rowTop + rowBottom) / 2;
+          let bestImg: PageImg | null = null;
+          let minDy = Infinity;
+          for (const img of pageImages) {
+            if (img.centerX >= imgRange.minX - 35 && img.centerX <= imgRange.maxX + 45) {
+              const dy = Math.abs(img.centerY - rowCenterY);
+              if (dy < Math.max(65, (rowTop - rowBottom)) && dy < minDy) {
+                minDy = dy;
+                bestImg = img;
+              }
+            }
+          }
+
+          let photoDataUrl = '';
+          if (bestImg) {
+            photoDataUrl = cropThumb(bestImg.x - 2, bestImg.y - 2, bestImg.w + 4, bestImg.h + 4);
+          }
 
           results.push({
             id: Math.random().toString(36).substring(2, 9),
             item_code: cand.code,
             brand: brandToUse,
             category: pageCategory,
-            item_description: cleanDesc,
+            item_description: rowDesc || `${brandToUse} ${cand.code} ${pageCategory}`,
             mrp_price: mrp,
             item_image: photoDataUrl,
             page_number: pageNum,
             hasRealPhoto: Boolean(bestImg && photoDataUrl && photoDataUrl.length > 500),
-            isTableEntry: isTablePage,
+            isTableEntry: true,
           });
+        }
+      } else {
+        // ============================================
+        // ENGINE B: CARD / GRID LAYOUT ENGINE (Cera Aurum, Kerovit Klassic, etc.)
+        // ============================================
+        const codeRegex = /\b([A-Z]{1,6}[-_]?[0-9]{2,8}[A-Z0-9\-_]*)\b/i;
+        const cardCandidates: Array<{ index: number; code: string; modelTitle?: string; pdfX: number; pdfY: number }> = [];
+
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          const str = (it.str || '').trim();
+          if (!str || !it.transform) continue;
+
+          // Skip non-product accessory notes and parenthesized strings
+          if (
+            str.toLowerCase().startsWith('with ') ||
+            str.toLowerCase().includes('(comp') ||
+            str.toLowerCase().includes('compatible with') ||
+            str.toLowerCase().includes('suitable for') ||
+            str.toLowerCase().startsWith('page') ||
+            (str.startsWith('(') && str.endsWith(')'))
+          ) {
+            continue;
+          }
+
+          const m = str.match(codeRegex);
+          if (m) {
+            const codePart = m[1].toUpperCase();
+            if (
+              codePart === 'FAUCET' ||
+              codePart === 'SANITARYWARE' ||
+              codePart === 'ROUGH-IN' ||
+              codePart.startsWith('SIZE') ||
+              codePart.length < 4
+            ) {
+              continue;
+            }
+
+            const cleanCode = str.includes('/')
+              ? str.split('/').map((s: string) => s.trim()).filter(Boolean).join(' / ')
+              : codePart;
+
+            let modelTitle = '';
+            if (str.includes(' - ')) {
+              const parts = str.split(' - ');
+              if (parts[0] && parts[0].trim().length >= 3 && !parts[0].match(codeRegex)) {
+                modelTitle = parts[0].trim();
+              }
+            }
+
+            if (!cardCandidates.some((c) => c.code === cleanCode)) {
+              cardCandidates.push({
+                index: i,
+                code: cleanCode,
+                modelTitle,
+                pdfX: it.transform[4],
+                pdfY: it.transform[5],
+              });
+            }
+          }
+        }
+
+        // CRITICAL FIX: Sort candidates by descending Y (top to bottom)
+        cardCandidates.sort((a, b) => b.pdfY - a.pdfY);
+
+        interface ClusterInfo {
+          cluster: typeof cardCandidates;
+          matchedImg: PageImg | null;
+        }
+        const clusters: ClusterInfo[] = [];
+        let curCluster: typeof cardCandidates = [];
+
+        for (let i = 0; i < cardCandidates.length; i++) {
+          const cand = cardCandidates[i];
+          if (curCluster.length === 0) {
+            curCluster.push(cand);
+          } else {
+            const last = curCluster[curCluster.length - 1];
+            const dy = Math.abs(last.pdfY - cand.pdfY);
+            const dx = Math.abs(last.pdfX - cand.pdfX);
+            if (dy <= 18 && dx <= 35) {
+              curCluster.push(cand);
+            } else {
+              clusters.push({ cluster: curCluster, matchedImg: null });
+              curCluster = [cand];
+            }
+          }
+        }
+        if (curCluster.length > 0) clusters.push({ cluster: curCluster, matchedImg: null });
+
+        // Match the best image for each cluster
+        for (const cl of clusters) {
+          const minY = Math.min(...cl.cluster.map((c) => c.pdfY));
+          const maxY = Math.max(...cl.cluster.map((c) => c.pdfY));
+          const avgX = cl.cluster.reduce((sum, c) => sum + c.pdfX, 0) / cl.cluster.length;
+          const centerY = (minY + maxY) / 2;
+
+          let bestImg: PageImg | null = null;
+          let bestDist = Infinity;
+          for (const img of pageImages) {
+            const isLeft =
+              img.x < avgX &&
+              img.x >= avgX - 450 &&
+              centerY >= img.y - 45 &&
+              centerY <= img.y + img.h + 45;
+
+            const isAbove =
+              img.y >= maxY - 20 &&
+              img.y <= maxY + 220 &&
+              Math.abs(img.centerX - avgX) <= 120;
+
+            if (isLeft || isAbove) {
+              const dist = Math.hypot(img.centerX - avgX, img.centerY - centerY);
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestImg = img;
+              }
+            }
+          }
+          cl.matchedImg = bestImg;
+        }
+
+        for (const cl of clusters) {
+          const clusterImg = cl.matchedImg;
+
+          for (const cand of cl.cluster) {
+            let descLines: string[] = cand.modelTitle ? [cand.modelTitle] : [];
+            let mrp = 0;
+
+            // Row price matching
+            for (let j = 0; j < items.length; j++) {
+              const it = items[j];
+              if (!it.str || !it.transform) continue;
+              const iy = it.transform[5];
+              const ix = it.transform[4];
+              if (Math.abs(iy - cand.pdfY) <= 8 && ix >= cand.pdfX - 20) {
+                const p = parsePrice(it.str);
+                if (p && p >= 100) {
+                  mrp = p;
+                  break;
+                }
+              }
+            }
+
+            // Card price below
+            if (!mrp) {
+              for (let j = 0; j < items.length; j++) {
+                const it = items[j];
+                if (!it.str || !it.transform) continue;
+                const iy = it.transform[5];
+                const ix = it.transform[4];
+                const dy = cand.pdfY - iy;
+                const dx = Math.abs(ix - cand.pdfX);
+                if (dy > 0 && dy <= 85 && dx <= 140) {
+                  const p = parsePrice(it.str);
+                  if (p && p >= 100) {
+                    mrp = p;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Sibling description text
+            for (let j = 0; j < items.length; j++) {
+              if (j === cand.index) continue;
+              const it = items[j];
+              const str = (it.str || '').trim();
+              if (!str || !it.transform) continue;
+
+              const ix = it.transform[4];
+              const iy = it.transform[5];
+              const dx = ix - cand.pdfX;
+              const dy = cand.pdfY - iy;
+
+              if (dx >= -40 && dx <= 160 && dy > 0 && dy < 75) {
+                if (
+                  str !== '`' &&
+                  str !== '₹' &&
+                  !str.toLowerCase().startsWith('per piece') &&
+                  !str.match(codeRegex) &&
+                  !parsePrice(str)
+                ) {
+                  descLines.push(str);
+                }
+              }
+            }
+
+            // Fallback block title
+            if (descLines.length === 0) {
+              for (let j = 0; j < items.length; j++) {
+                if (j === cand.index) continue;
+                const it = items[j];
+                if (!it.str || !it.transform) continue;
+                const iy = it.transform[5];
+                const ix = it.transform[4];
+                const dy = cand.pdfY - iy;
+                const dx = Math.abs(ix - cand.pdfX);
+                if (dy > 0 && dy <= 160 && dx <= 70) {
+                  const s = (it.str || '').trim();
+                  if (
+                    s.length >= 8 &&
+                    !s.includes('/') &&
+                    !codeRegex.test(s) &&
+                    !parsePrice(s)
+                  ) {
+                    descLines.push(s);
+                    break;
+                  }
+                }
+              }
+            }
+
+            const cleanDesc =
+              descLines.join(' ').replace(/\s+/g, ' ').trim() ||
+              `${brandToUse} ${cand.code} ${pageCategory}`;
+
+            let photoDataUrl = '';
+            if (clusterImg) {
+              photoDataUrl = cropThumb(clusterImg.x - 2, clusterImg.y - 2, clusterImg.w + 4, clusterImg.h + 4);
+            } else {
+              photoDataUrl = cropThumb(cand.pdfX - 10, cand.pdfY + 12, 104, 88);
+            }
+
+            results.push({
+              id: Math.random().toString(36).substring(2, 9),
+              item_code: cand.code,
+              brand: brandToUse,
+              category: pageCategory,
+              item_description: cleanDesc,
+              mrp_price: mrp,
+              item_image: photoDataUrl,
+              page_number: pageNum,
+              hasRealPhoto: Boolean(clusterImg && photoDataUrl && photoDataUrl.length > 500),
+              isTableEntry: false,
+            });
+          }
         }
       }
 
@@ -629,24 +771,56 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       setNumPages(loadedPdf.numPages);
       scannedPagesRef.current.clear();
 
-      // Find first page that contains product codes to render visually on canvas
+      // Find first page that contains product codes to render visually on canvas, and detect brand from content if needed
       let initialPage = 1;
       const codeRegex = /\b([A-Z]{1,6}[-_]?[0-9]{2,8}[A-Z0-9\-_]*)\b/i;
+      let brandFoundInContent = false;
+
       for (let p = 1; p <= Math.min(25, loadedPdf.numPages); p++) {
         try {
           const pg = await loadedPdf.getPage(p);
           const tc = await pg.getTextContent();
+          const pageTxt = tc.items.map((it: any) => (it.str || '').toLowerCase()).join(' ');
+
+          if (!brandFoundInContent && (!lowerName.includes('cera') && detectedBrand === 'Cera')) {
+            if (pageTxt.includes('kohler')) {
+              detectedBrand = 'Kohler';
+              brandFoundInContent = true;
+            } else if (pageTxt.includes('kerovit') || pageTxt.includes('klassic')) {
+              detectedBrand = 'KEROVIT';
+              brandFoundInContent = true;
+            } else if (pageTxt.includes('jaquar')) {
+              detectedBrand = 'Jaquar';
+              brandFoundInContent = true;
+            } else if (pageTxt.includes('hindware')) {
+              detectedBrand = 'Hindware';
+              brandFoundInContent = true;
+            } else if (pageTxt.includes('parryware')) {
+              detectedBrand = 'Parryware';
+              brandFoundInContent = true;
+            } else if (pageTxt.includes('somany')) {
+              detectedBrand = 'Somany';
+              brandFoundInContent = true;
+            } else if (pageTxt.includes('toto')) {
+              detectedBrand = 'TOTO';
+              brandFoundInContent = true;
+            } else if (pageTxt.includes('grohe')) {
+              detectedBrand = 'Grohe';
+              brandFoundInContent = true;
+            }
+          }
+
           const hasCode = tc.items.some((it: any) => {
             const s = (it.str || '').trim();
             return s.length >= 4 && codeRegex.test(s) && !s.toLowerCase().includes('page');
           });
-          if (hasCode) {
+          if (hasCode && initialPage === 1) {
             initialPage = p;
-            break;
           }
         } catch (_) {}
       }
 
+      setDefaultBrand(detectedBrand);
       setCurrentPage(initialPage);
 
       // Render initial page on canvas

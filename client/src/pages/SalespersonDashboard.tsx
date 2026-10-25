@@ -314,11 +314,11 @@ export const SalespersonDashboard: React.FC<Props> = ({
   };
 
   const selectedUser = salespersons.find((s) => s.id === selectedSalespersonId);
-  const canAddSalesperson = ['admin', 'manager'].includes(user?.role || '');
-  const isAdmin = user?.role === 'admin';
+  const canAddSalesperson = ['admin', 'manager', 'accounts', 'accountant'].includes(user?.role || '');
+  const isAdminOrAccountant = ['admin', 'accounts', 'accountant'].includes(user?.role || '');
 
   const handleDeleteSelectedSalesperson = async () => {
-    if (!isAdmin || !selectedUser) return;
+    if (!isAdminOrAccountant || !selectedUser) return;
     if (selectedUser.id === user?.id) {
       alert('You cannot delete your own account.');
       return;
@@ -341,7 +341,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
   };
 
   const handleRemoveAllSalespersons = async () => {
-    if (!isAdmin) return;
+    if (!isAdminOrAccountant) return;
     const count = salespersons.filter((s) => s.role === 'salesperson' && s.id !== user?.id).length;
     if (count === 0) {
       alert('No other salesperson accounts found to remove.');
@@ -397,7 +397,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
             </button>
           )}
 
-          {isAdmin && selectedUser && selectedUser.role === 'salesperson' && selectedUser.id !== user?.id && (
+          {isAdminOrAccountant && selectedUser && selectedUser.role === 'salesperson' && selectedUser.id !== user?.id && (
             <button
               onClick={handleDeleteSelectedSalesperson}
               className="btn btn-secondary btn-sm text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
@@ -408,7 +408,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
             </button>
           )}
 
-          {isAdmin && salespersons.some((s) => s.role === 'salesperson' && s.id !== user?.id) && (
+          {isAdminOrAccountant && salespersons.some((s) => s.role === 'salesperson' && s.id !== user?.id) && (
             <button
               onClick={handleRemoveAllSalespersons}
               className="btn btn-secondary btn-sm text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"

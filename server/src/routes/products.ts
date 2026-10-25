@@ -230,7 +230,7 @@ productsRouter.put('/coverages/:id', requireRole(['admin', 'manager']), async (r
 });
 
 // Delete all tile brands and coverages (Admin & Accounts only)
-productsRouter.delete('/all', requireRole(['admin', 'accounts']), async (req: Request, res: Response) => {
+productsRouter.delete('/all', requireRole(['admin', 'accounts', 'accountant']), async (req: Request, res: Response) => {
   try {
     await query('DELETE FROM brand_size_coverages');
     await query('DELETE FROM tile_brands');

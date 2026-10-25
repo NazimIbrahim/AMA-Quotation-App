@@ -914,7 +914,7 @@ quotationsRouter.post('/:id/status', async (req: Request, res: Response) => {
 });
 
 // 6. Delete All Quotations (Admin & Accounts only)
-quotationsRouter.delete('/all', requireRole(['admin', 'accounts']), async (req: Request, res: Response) => {
+quotationsRouter.delete('/all', requireRole(['admin', 'accounts', 'accountant']), async (req: Request, res: Response) => {
   try {
     await query('DELETE FROM quotation_items');
     await query('DELETE FROM quotation_areas');

@@ -217,7 +217,7 @@ export const QuotationList: React.FC<Props> = ({
   };
 
   const canApprove = ['admin', 'manager'].includes(user?.role || '');
-  const isAdminOrAccountant = ['admin', 'accounts', 'accountant', 'manager'].includes(user?.role || '');
+  const isAdminOrAccountant = ['admin', 'accounts', 'accountant'].includes(user?.role || '');
 
   const handleRemoveAllQuotations = async () => {
     if (!isAdminOrAccountant) return;
@@ -303,7 +303,7 @@ export const QuotationList: React.FC<Props> = ({
             </div>
           </div>
 
-          {isAdminOrAccountant && summary.totalQuotations > 0 && (
+          {isAdminOrAccountant && (
             <button
               type="button"
               onClick={handleRemoveAllQuotations}

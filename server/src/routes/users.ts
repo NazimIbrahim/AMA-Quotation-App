@@ -256,8 +256,8 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
   }
 });
 
-// Delete all salespersons (Admin only, keeps logged-in admin)
-usersRouter.delete('/all-salespersons', requireRole(['admin']), async (req: Request, res: Response) => {
+// Delete all salespersons (Admin & Accounts only, keeps logged-in user)
+usersRouter.delete('/all-salespersons', requireRole(['admin', 'accounts', 'accountant']), async (req: Request, res: Response) => {
   try {
     await query(`DELETE FROM users WHERE role = 'salesperson' AND id != $1`, [req.user!.id]);
     res.json({ message: 'All salesperson accounts deleted successfully' });
@@ -266,8 +266,8 @@ usersRouter.delete('/all-salespersons', requireRole(['admin']), async (req: Requ
   }
 });
 
-// Delete single user / salesperson (Admin only)
-usersRouter.delete('/:id', requireRole(['admin']), async (req: Request, res: Response) => {
+// Delete single user / salesperson (Admin & Accounts only)
+usersRouter.delete('/:id', requireRole(['admin', 'accounts', 'accountant']), async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
     if (id === req.user!.id) {

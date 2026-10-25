@@ -55,8 +55,8 @@ export const SanitaryCatalogManagement: React.FC = () => {
   const [savingItem, setSavingItem] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
-  const isAdminOrAccountant = ['admin', 'accounts', 'accountant', 'manager'].includes(user?.role || '');
+  const isAdminOrManager = ['admin', 'manager', 'accounts', 'accountant'].includes(user?.role || '');
+  const isAdminOrAccountant = ['admin', 'accounts', 'accountant'].includes(user?.role || '');
 
   const standardCategories = [
     'Water Closet',
@@ -295,7 +295,7 @@ export const SanitaryCatalogManagement: React.FC = () => {
                 <span>Add Item</span>
               </button>
 
-              {isAdminOrAccountant && totalCount > 0 && (
+              {isAdminOrAccountant && (
                 <button
                   type="button"
                   onClick={handleClearAllCatalog}
