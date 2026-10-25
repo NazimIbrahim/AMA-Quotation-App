@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-// Vite ?url import bundles worker offline without requiring external internet CDN
 import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import {
   X,
@@ -25,7 +24,11 @@ import { useServer } from '../context/ServerContext';
 import { SanitaryCatalogItem } from '../types';
 
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+  } catch (e) {
+    console.warn('Could not set PDF workerSrc:', e);
+  }
 }
 
 interface Props {
@@ -79,6 +82,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
   // Visual Crop / Capture State
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const renderTaskRef = useRef<any>(null);
   const pdfInputRef = useRef<HTMLInputElement | null>(null);
   const excelInputRef = useRef<HTMLInputElement | null>(null);
   const [cropMode, setCropMode] = useState<boolean>(false);
@@ -123,37 +127,72 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       setPdfDoc(loadedPdf);
       setNumPages(loadedPdf.numPages);
       setCurrentPage(1);
+
+      // Render first page with tiny delay to guarantee canvas DOM readiness
+      setTimeout(() => {
+        renderPage(1, loadedPdf);
+      }, 50);
     } catch (err: any) {
       setError('Failed to load PDF document: ' + err.message);
     }
   };
 
   // 2. Render Page to Canvas
-  const renderPage = async (pageNum: number) => {
-    if (!pdfDoc) return;
+  const renderPage = async (pageNum: number, docOverride?: pdfjsLib.PDFDocumentProxy) => {
+    const doc = docOverride || pdfDoc;
+    if (!doc) return;
+
+    // Cancel any previous in-progress page render
+    if (renderTaskRef.current) {
+      try {
+        renderTaskRef.current.cancel();
+      } catch (_) {}
+      renderTaskRef.current = null;
+    }
+
     setRenderingPage(true);
     setCropRect(null);
 
     try {
-      const page = await pdfDoc.getPage(pageNum);
+      const page = await doc.getPage(pageNum);
       const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!canvas) {
+        setRenderingPage(false);
+        return;
+      }
 
-      const viewport = page.getViewport({ scale: 1.5 });
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      // Calculate scale to fit container width nicely (~540px)
+      const unscaledViewport = page.getViewport({ scale: 1.0 });
+      const desiredWidth = 540;
+      const scale = Math.max(0.8, Math.min(2.0, desiredWidth / unscaledViewport.width));
+      const viewport = page.getViewport({ scale });
+
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
 
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) {
+        setRenderingPage(false);
+        return;
+      }
+
+      // Fill pure white background behind the page
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const renderContext = {
         canvasContext: ctx,
         viewport,
       };
 
-      await page.render(renderContext).promise;
+      const task = page.render(renderContext);
+      renderTaskRef.current = task;
+      await task.promise;
+      renderTaskRef.current = null;
     } catch (err: any) {
-      console.error('Page render error:', err);
+      if (err?.name !== 'RenderingCancelledException') {
+        console.error('Page render error:', err);
+      }
     } finally {
       setRenderingPage(false);
     }
@@ -161,7 +200,10 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (pdfDoc && currentPage) {
-      renderPage(currentPage);
+      const timer = setTimeout(() => {
+        renderPage(currentPage);
+      }, 40);
+      return () => clearTimeout(timer);
     }
   }, [pdfDoc, currentPage]);
 
@@ -175,14 +217,12 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       const page = await pdfDoc.getPage(currentPage);
       const textContent = await page.getTextContent();
       const strings = textContent.items
-        .map((it: any) => it.str?.trim())
+        .map((it: any) => (it as any).str?.trim())
         .filter((s: string) => Boolean(s));
 
       console.log('Extracted text strings from page:', strings);
 
       // Heuristic parsing for sanitary items:
-      // Item codes: alphanumeric combinations with letters, digits, dashes or slashes
-      // MRP: currency numbers (e.g. 14,500, ₹12490, 8900.00)
       const foundItems: StagedItem[] = [];
 
       // Regex patterns
@@ -197,7 +237,9 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         if (codeMatch && codeMatch[1].length >= 3 && !codeMatch[1].toLowerCase().includes('page')) {
           const code = codeMatch[1].toUpperCase();
 
-          // Search neighboring strings for price and description
+          // Avoid duplicates in the current page scan
+          if (foundItems.some((fi) => fi.item_code === code)) continue;
+
           let mrp = 0;
           let desc = '';
           const windowSize = 8;
@@ -219,7 +261,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               }
             }
 
-            // Look for description (longer text string with words)
+            // Look for description
             if (!desc && neighbor.length >= 8 && /[a-zA-Z]{3,}/.test(neighbor) && !neighbor.match(codeRegex)) {
               desc = neighbor;
             }
@@ -239,62 +281,46 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           let pageSnapshot = '';
           if (canvasRef.current) {
             try {
-              // Create scaled thumbnail of the page
               const thumbCanvas = document.createElement('canvas');
               thumbCanvas.width = 160;
               thumbCanvas.height = 160;
               const tCtx = thumbCanvas.getContext('2d');
               if (tCtx) {
+                tCtx.fillStyle = '#FFFFFF';
+                tCtx.fillRect(0, 0, 160, 160);
                 tCtx.drawImage(canvasRef.current, 0, 0, thumbCanvas.width, thumbCanvas.height);
                 pageSnapshot = thumbCanvas.toDataURL('image/jpeg', 0.75);
               }
-            } catch (e) {
-              console.warn('Canvas snapshot error:', e);
-            }
+            } catch (_) {}
           }
 
-          // Check if not already added
-          if (!stagedItems.some((it) => it.item_code.toUpperCase() === code) && !foundItems.some((it) => it.item_code === code)) {
-            foundItems.push({
-              id: Math.random().toString(36).substring(2, 9),
-              item_code: code,
-              brand: defaultBrand || 'Sanitary',
-              category: cat,
-              item_description: desc || `${defaultBrand} Sanitary Item ${code}`,
-              mrp_price: mrp || 0,
-              item_image: pageSnapshot,
-              page_number: currentPage,
-            });
-          }
+          foundItems.push({
+            id: Math.random().toString(36).substring(2, 9),
+            item_code: code,
+            brand: defaultBrand || 'Sanitary',
+            category: cat,
+            item_description: desc || `${defaultBrand} Sanitary Item ${code}`,
+            mrp_price: mrp,
+            item_image: pageSnapshot,
+            page_number: currentPage,
+          });
         }
       }
 
       if (foundItems.length > 0) {
-        setStagedItems((prev) => [...prev, ...foundItems]);
+        setStagedItems((prev) => [...foundItems, ...prev]);
+        setImportSuccess(`Auto-scanned page ${currentPage}: found ${foundItems.length} sanitary item(s)!`);
       } else {
-        // If automatic regex didn't find codes, auto-generate a staged entry for current page so user can type the code easily
-        setStagedItems((prev) => [
-          ...prev,
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            item_code: `SN-${defaultBrand.substring(0, 3).toUpperCase()}-P${currentPage}`,
-            brand: defaultBrand || 'Sanitary',
-            category: 'Water Closet',
-            item_description: strings.slice(0, 4).join(' ') || `${defaultBrand} Sanitary Ware Item`,
-            mrp_price: 0,
-            item_image: canvasRef.current?.toDataURL('image/jpeg', 0.7) || '',
-            page_number: currentPage,
-          },
-        ]);
+        setError(`No recognized product codes found on page ${currentPage}. You can draw a box with "Crop Photo" or use Quick Add.`);
       }
     } catch (err: any) {
-      setError('Scan error: ' + err.message);
+      setError('Page text extraction failed: ' + err.message);
     } finally {
       setIsScanningPage(false);
     }
   };
 
-  // 4. Capture Custom Crop Region from Canvas
+  // 4. Visual Canvas Cropping Handlers
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!cropMode) return;
     const canvas = canvasRef.current;
@@ -350,6 +376,8 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
       const ctx = cropCanvas.getContext('2d');
       if (ctx) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
         ctx.drawImage(
           canvas,
           cropRect.x,
@@ -370,8 +398,10 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             copy[copy.length - 1].item_image = dataUrl;
             return copy;
           });
+          setImportSuccess('Cropped photo linked to item ' + stagedItems[stagedItems.length - 1].item_code);
         } else {
           setManualImage(dataUrl);
+          setImportSuccess('Photo cropped! Enter Item Code & Description in the form to add it.');
         }
       }
     } catch (err) {
@@ -396,7 +426,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       category: manualCategory,
       item_description: manualDesc.trim() || `${defaultBrand} ${manualCode.trim()}`,
       mrp_price: parseFloat(manualMrp) || 0,
-      item_image: manualImage || canvasRef.current?.toDataURL('image/jpeg', 0.7) || '',
+      item_image: manualImage || (canvasRef.current ? canvasRef.current.toDataURL('image/jpeg', 0.7) : ''),
       page_number: currentPage,
     };
 
@@ -406,6 +436,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     setManualMrp('');
     setManualImage('');
     setError(null);
+    setImportSuccess(`Added ${newItem.item_code} to staged list.`);
   };
 
   // 6. Delete Staged Item
@@ -433,7 +464,6 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     reader.onload = async (evt) => {
       try {
         const text = evt.target?.result as string;
-        // Simple universal CSV/TSV parser
         const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
         if (lines.length <= 1) {
           setError('Spreadsheet appears to be empty.');
@@ -449,35 +479,38 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         const mrpIdx = headers.findIndex((h) => h.includes('mrp') || h.includes('price') || h.includes('rate'));
         const brandIdx = headers.findIndex((h) => h.includes('brand'));
         const catIdx = headers.findIndex((h) => h.includes('cat') || h.includes('type'));
-        const imgIdx = headers.findIndex((h) => h.includes('img') || h.includes('image') || h.includes('photo'));
 
-        const parsedItems: StagedItem[] = [];
+        if (codeIdx === -1) {
+          setError('Could not identify "Item Code" column in the header row.');
+          setExcelParsing(false);
+          return;
+        }
 
+        const parsed: StagedItem[] = [];
         for (let i = 1; i < lines.length; i++) {
-          const row = lines[i].split(/,|\t/).map((c) => c.trim().replace(/^"|"$/g, ''));
-          const code = codeIdx >= 0 && row[codeIdx] ? row[codeIdx] : `ITEM-${i}`;
+          const rawRow = lines[i].split(/,|\t/).map((cell) => cell.trim().replace(/^"|"$/g, ''));
+          const code = rawRow[codeIdx] || '';
           if (!code) continue;
 
-          const desc = descIdx >= 0 && row[descIdx] ? row[descIdx] : code;
-          const rawMrp = mrpIdx >= 0 && row[mrpIdx] ? row[mrpIdx].replace(/[^\d.]/g, '') : '0';
-          const b = brandIdx >= 0 && row[brandIdx] ? row[brandIdx] : defaultBrand;
-          const c = catIdx >= 0 && row[catIdx] ? row[catIdx] : 'General';
-          const img = imgIdx >= 0 && row[imgIdx] ? row[imgIdx] : '';
+          const desc = descIdx !== -1 ? rawRow[descIdx] : '';
+          const mrpRaw = mrpIdx !== -1 ? rawRow[mrpIdx].replace(/[^0-9.]/g, '') : '0';
+          const brand = brandIdx !== -1 ? rawRow[brandIdx] : defaultBrand || 'Sanitary';
+          const cat = catIdx !== -1 ? rawRow[catIdx] : 'General';
 
-          parsedItems.push({
+          parsed.push({
             id: Math.random().toString(36).substring(2, 9),
             item_code: code.toUpperCase(),
-            brand: b || 'Sanitary',
-            category: c || 'General',
-            item_description: desc,
-            mrp_price: parseFloat(rawMrp) || 0,
-            item_image: img || '',
-            page_number: i,
+            brand: brand || defaultBrand,
+            category: cat || 'General',
+            item_description: desc || `${brand} ${code}`,
+            mrp_price: parseFloat(mrpRaw) || 0,
+            item_image: '',
+            page_number: 1,
           });
         }
 
-        setStagedItems((prev) => [...prev, ...parsedItems]);
-        setImportSuccess(`Successfully parsed ${parsedItems.length} items from ${file.name}!`);
+        setStagedItems((prev) => [...parsed, ...prev]);
+        setImportSuccess(`Imported ${parsed.length} items from ${file.name}!`);
       } catch (err: any) {
         setError('Failed to parse spreadsheet: ' + err.message);
       } finally {
@@ -487,10 +520,10 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     reader.readAsText(file);
   };
 
-  // 9. Save All Staged Items to Database
+  // 9. Batch Save to Database
   const handleSaveToCatalog = async () => {
     if (stagedItems.length === 0) {
-      setError('No items to import. Please scan pages or add items.');
+      setError('No staged items to save.');
       return;
     }
 
@@ -533,35 +566,45 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-6xl h-[92vh] flex flex-col bg-[#0D1B2A]/95 text-[#E0E1DD] border border-white/20 rounded-2xl shadow-2xl overflow-hidden glass-panel">
+    <div
+      className="modal-overlay"
+      style={{ backgroundColor: 'rgba(13, 27, 42, 0.75)', zIndex: 100 }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl border border-slate-300 shadow-2xl flex flex-col overflow-hidden w-[96vw] max-w-6xl h-[92vh]"
+        style={{ backgroundColor: '#FFFFFF', color: '#0D1B2A' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Top Header */}
-        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between shrink-0 bg-[#09131F]/80">
+        <div className="px-6 py-3.5 bg-[#0D1B2A] text-white flex items-center justify-between shrink-0 border-b border-slate-700">
           <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300">
+            <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300">
               <FileText size={18} />
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-wide flex items-center space-x-2">
                 <span>Sanitary Catalogue Upload & Reference Extractor</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 font-mono">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-400 text-slate-900 font-bold font-mono">
                   Auto-Fetch Engine
                 </span>
               </h2>
-              <p className="text-xs text-[#778DA9]">
+              <p className="text-xs text-[#CBD5E1]">
                 Upload PDF manufacturer price lists or spreadsheets to auto-populate Description, Image & MRP when entering Item Codes
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2.5">
             {/* Import Mode Tabs */}
-            <div className="flex items-center bg-white/5 border border-white/10 rounded-lg p-0.5 text-xs font-semibold">
+            <div className="flex items-center bg-white/10 border border-white/20 rounded-lg p-0.5 text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setActiveTab('pdf')}
                 className={`px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-all ${
-                  activeTab === 'pdf' ? 'bg-teal-600 text-white shadow-xs' : 'text-[#778DA9] hover:text-white'
+                  activeTab === 'pdf'
+                    ? 'bg-teal-500 text-slate-900 font-bold shadow-xs'
+                    : 'text-[#E0E1DD] hover:text-white'
                 }`}
               >
                 <FileText size={13} />
@@ -571,7 +614,9 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                 type="button"
                 onClick={() => setActiveTab('excel')}
                 className={`px-3 py-1.5 rounded-md flex items-center space-x-1.5 transition-all ${
-                  activeTab === 'excel' ? 'bg-teal-600 text-white shadow-xs' : 'text-[#778DA9] hover:text-white'
+                  activeTab === 'excel'
+                    ? 'bg-teal-500 text-slate-900 font-bold shadow-xs'
+                    : 'text-[#E0E1DD] hover:text-white'
                 }`}
               >
                 <FileSpreadsheet size={13} />
@@ -581,41 +626,45 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-[#778DA9] hover:text-white hover:bg-white/10 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+              title="Close modal"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
           </div>
         </div>
 
         {/* Status / Alerts */}
         {error && (
-          <div className="mx-6 mt-3 p-3 rounded-xl bg-rose-500/20 border border-rose-400/30 text-rose-200 text-xs flex items-center space-x-2 shrink-0">
-            <AlertCircle size={15} className="shrink-0" />
+          <div className="mx-6 mt-3 p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-semibold flex items-center space-x-2 shrink-0">
+            <AlertCircle size={16} className="shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}
         {importSuccess && (
-          <div className="mx-6 mt-3 p-3 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs flex items-center space-x-2 shrink-0">
-            <Check size={15} className="shrink-0" />
+          <div className="mx-6 mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-semibold flex items-center space-x-2 shrink-0">
+            <Check size={16} className="shrink-0 text-emerald-600" />
             <span>{importSuccess}</span>
           </div>
         )}
 
         {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden p-4 gap-4">
+        <div className="flex-1 flex overflow-hidden p-4 gap-4 bg-[#F4F5F7]">
           {/* Left Column: PDF Viewer / Visual Extractor Canvas */}
           {activeTab === 'pdf' ? (
-            <div className="w-1/2 flex flex-col bg-black/40 border border-white/10 rounded-xl overflow-hidden">
+            <div
+              className="w-1/2 flex flex-col bg-white border border-slate-300 rounded-xl overflow-hidden shadow-xs"
+              style={{ width: '50%' }}
+            >
               {/* PDF Controls Header */}
-              <div className="p-3 border-b border-white/10 bg-[#09131F]/90 flex items-center justify-between text-xs shrink-0">
+              <div className="p-3 border-b border-slate-200 bg-slate-100 flex items-center justify-between text-xs shrink-0">
                 <div className="flex items-center space-x-2">
                   <button
                     type="button"
                     onClick={() => pdfInputRef.current?.click()}
-                    className="btn btn-xs bg-teal-600 hover:bg-teal-500 text-white flex items-center space-x-1 font-semibold"
+                    className="btn btn-sm bg-[#1B263B] hover:bg-[#0D1B2A] text-white font-bold inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg shadow-xs"
                   >
-                    <Upload size={12} />
+                    <Upload size={13} />
                     <span>{pdfFile ? 'Change PDF' : 'Select PDF File'}</span>
                   </button>
                   <input
@@ -627,32 +676,37 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                   />
 
                   {pdfFile && (
-                    <span className="text-[11px] text-[#E0E1DD] font-mono truncate max-w-[140px]" title={pdfFile.name}>
+                    <span
+                      className="text-xs font-semibold text-slate-800 font-mono truncate max-w-[150px]"
+                      title={pdfFile.name}
+                    >
                       {pdfFile.name}
                     </span>
                   )}
                 </div>
 
                 {numPages > 0 && (
-                  <div className="flex items-center space-x-1.5">
+                  <div className="flex items-center space-x-1.5 bg-white px-2 py-1 rounded-lg border border-slate-300 shadow-2xs">
                     <button
                       type="button"
                       disabled={currentPage <= 1 || renderingPage}
                       onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      className="p-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40"
+                      className="p-1 rounded hover:bg-slate-100 disabled:opacity-40 text-slate-700"
+                      title="Previous page"
                     >
-                      <ChevronLeft size={14} />
+                      <ChevronLeft size={15} />
                     </button>
-                    <span className="text-[11px] font-mono font-semibold px-1">
+                    <span className="text-xs font-mono font-bold text-slate-900 px-1">
                       {currentPage} / {numPages}
                     </span>
                     <button
                       type="button"
                       disabled={currentPage >= numPages || renderingPage}
                       onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
-                      className="p-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40"
+                      className="p-1 rounded hover:bg-slate-100 disabled:opacity-40 text-slate-700"
+                      title="Next page"
                     >
-                      <ChevronRight size={14} />
+                      <ChevronRight size={15} />
                     </button>
                   </div>
                 )}
@@ -660,12 +714,12 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
               {/* Action Toolbar above Canvas */}
               {pdfDoc && (
-                <div className="px-3 py-2 bg-white/5 border-b border-white/10 flex items-center justify-between text-xs">
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
                   <div className="flex items-center space-x-2">
-                    <label className="text-[11px] text-[#778DA9]">Brand:</label>
+                    <label className="text-xs font-bold text-slate-700">Brand:</label>
                     <input
                       type="text"
-                      className="input input-xs w-24 bg-white/10 border-white/20 text-white text-xs font-semibold"
+                      className="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-slate-900 font-bold text-xs"
                       value={defaultBrand}
                       onChange={(e) => setDefaultBrand(e.target.value)}
                       placeholder="e.g. Cera"
@@ -677,65 +731,73 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                       type="button"
                       onClick={handleAutoScanPage}
                       disabled={isScanningPage}
-                      className="btn btn-xs bg-indigo-600 hover:bg-indigo-500 text-white flex items-center space-x-1 font-semibold"
+                      className="btn btn-sm bg-indigo-600 hover:bg-indigo-700 text-white inline-flex items-center space-x-1 px-3 py-1 font-bold rounded-lg shadow-xs"
                       title="Scan current page text for codes and prices"
                     >
-                      <Sparkles size={12} className={isScanningPage ? 'animate-spin' : ''} />
+                      <Sparkles size={13} className={isScanningPage ? 'animate-spin' : ''} />
                       <span>{isScanningPage ? 'Scanning...' : 'Auto-Scan Page'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setCropMode((prev) => !prev)}
-                      className={`btn btn-xs flex items-center space-x-1 font-semibold ${
+                      className={`btn btn-sm inline-flex items-center space-x-1 px-3 py-1 font-bold rounded-lg shadow-xs ${
                         cropMode
-                          ? 'bg-amber-500 text-slate-900 shadow-sm'
-                          : 'bg-white/10 hover:bg-white/20 text-white'
+                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold'
+                          : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
                       }`}
                       title="Drag to crop product photo directly from page"
                     >
-                      <Camera size={12} />
+                      <Camera size={13} />
                       <span>{cropMode ? 'Cancel Crop' : 'Crop Photo'}</span>
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Canvas Container */}
-              <div className="flex-1 overflow-auto flex items-center justify-center p-3 relative bg-slate-900/60">
+              {/* Canvas Container with slate-700 background so white PDF page stands out */}
+              <div className="flex-1 overflow-auto flex items-center justify-center p-4 relative bg-[#334155]">
                 {renderingPage && (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
-                    <RefreshCw className="animate-spin text-teal-400" size={24} />
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-xs">
+                    <div className="bg-white/95 px-4 py-2 rounded-xl flex items-center space-x-2 shadow-lg">
+                      <RefreshCw className="animate-spin text-teal-700" size={18} />
+                      <span className="text-xs font-bold text-slate-800">Rendering Page...</span>
+                    </div>
                   </div>
                 )}
 
-                {pdfDoc ? (
-                  <div className="relative border border-white/15 rounded shadow-lg overflow-hidden">
-                    <canvas
-                      ref={canvasRef}
-                      onMouseDown={handleCanvasMouseDown}
-                      onMouseMove={handleCanvasMouseMove}
-                      onMouseUp={handleCanvasMouseUp}
-                      className={`max-w-full h-auto cursor-${cropMode ? 'crosshair' : 'default'}`}
+                <div
+                  className="relative shadow-2xl rounded overflow-hidden"
+                  style={{ display: pdfDoc ? 'block' : 'none' }}
+                >
+                  <canvas
+                    ref={canvasRef}
+                    onMouseDown={handleCanvasMouseDown}
+                    onMouseMove={handleCanvasMouseMove}
+                    onMouseUp={handleCanvasMouseUp}
+                    className={`max-w-full h-auto bg-white ${
+                      cropMode ? 'cursor-crosshair' : 'cursor-default'
+                    }`}
+                  />
+                  {/* Visual Crop Selection Box */}
+                  {cropMode && cropRect && (
+                    <div
+                      className="absolute border-2 border-amber-400 bg-amber-400/30 pointer-events-none"
+                      style={{
+                        left: `${cropRect.x}px`,
+                        top: `${cropRect.y}px`,
+                        width: `${cropRect.w}px`,
+                        height: `${cropRect.h}px`,
+                      }}
                     />
-                    {/* Visual Crop Selection Box */}
-                    {cropMode && cropRect && (
-                      <div
-                        className="absolute border-2 border-amber-400 bg-amber-400/25 pointer-events-none"
-                        style={{
-                          left: `${cropRect.x}px`,
-                          top: `${cropRect.y}px`,
-                          width: `${cropRect.w}px`,
-                          height: `${cropRect.h}px`,
-                        }}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-center p-8 text-[#778DA9]">
-                    <Upload size={36} className="mx-auto mb-2 opacity-40 text-teal-400" />
-                    <p className="text-xs font-semibold text-white">No PDF Catalogue Loaded</p>
-                    <p className="text-[11px] mt-1 max-w-xs">
+                  )}
+                </div>
+
+                {!pdfDoc && (
+                  <div className="text-center p-8 bg-white/10 rounded-2xl border border-white/20 text-slate-200">
+                    <Upload size={40} className="mx-auto mb-2 text-teal-300 opacity-80" />
+                    <p className="text-sm font-bold text-white">No PDF Catalogue Loaded</p>
+                    <p className="text-xs text-slate-300 mt-1 max-w-xs">
                       Click "Select PDF File" above to load manufacturer catalogue (Cera, Jaquar, Kohler, Hindware, etc.)
                     </p>
                   </div>
@@ -744,18 +806,21 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             </div>
           ) : (
             /* Excel / CSV Import Section */
-            <div className="w-1/2 flex flex-col bg-black/40 border border-white/10 rounded-xl p-5 overflow-y-auto space-y-4">
-              <div className="text-center p-6 border-2 border-dashed border-white/20 rounded-xl hover:border-teal-400/60 transition-colors">
-                <FileSpreadsheet size={36} className="mx-auto mb-2 text-teal-400 opacity-80" />
-                <h3 className="text-sm font-bold text-white">Import Catalogue from CSV / Spreadsheet</h3>
-                <p className="text-xs text-[#778DA9] mt-1 max-w-sm mx-auto">
+            <div
+              className="w-1/2 flex flex-col bg-white border border-slate-300 rounded-xl p-5 overflow-y-auto space-y-4 shadow-xs"
+              style={{ width: '50%' }}
+            >
+              <div className="text-center p-6 border-2 border-dashed border-slate-300 rounded-xl hover:border-teal-500 transition-colors bg-slate-50">
+                <FileSpreadsheet size={40} className="mx-auto mb-2 text-teal-700 opacity-80" />
+                <h3 className="text-sm font-bold text-slate-900">Import Catalogue from CSV / Spreadsheet</h3>
+                <p className="text-xs text-slate-600 mt-1 max-w-sm mx-auto">
                   Upload an Excel (.csv or .tsv) price list with columns: <code>Item Code</code>, <code>Description</code>, <code>MRP</code>, <code>Brand</code>, <code>Category</code>
                 </p>
                 <div className="mt-4">
                   <button
                     type="button"
                     onClick={() => excelInputRef.current?.click()}
-                    className="btn btn-sm bg-teal-600 hover:bg-teal-500 text-white font-semibold inline-flex items-center space-x-1.5"
+                    className="btn btn-sm bg-[#1B263B] hover:bg-[#0D1B2A] text-white font-bold inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg shadow-xs"
                   >
                     <Upload size={14} />
                     <span>Select Spreadsheet (.csv / .tsv)</span>
@@ -771,19 +836,19 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               </div>
 
               {excelFile && (
-                <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-xs flex items-center justify-between">
+                <div className="p-3 bg-slate-100 border border-slate-300 rounded-lg text-xs flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <FileSpreadsheet size={16} className="text-emerald-400" />
-                    <span className="font-semibold text-white">{excelFile.name}</span>
+                    <FileSpreadsheet size={16} className="text-emerald-700" />
+                    <span className="font-bold text-slate-900">{excelFile.name}</span>
                   </div>
-                  <span className="text-[#778DA9] font-mono">{(excelFile.size / 1024).toFixed(1)} KB</span>
+                  <span className="text-slate-600 font-mono">{(excelFile.size / 1024).toFixed(1)} KB</span>
                 </div>
               )}
 
               {/* Sample Structure Guide */}
-              <div className="p-3 bg-white/5 border border-white/10 rounded-xl text-xs space-y-1.5 text-[#778DA9]">
-                <span className="font-semibold text-white block">Expected CSV Format:</span>
-                <code className="block p-2 rounded bg-black/50 text-[11px] text-teal-300 font-mono">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5 text-slate-700">
+                <span className="font-bold text-slate-900 block">Expected CSV Format:</span>
+                <code className="block p-2 rounded bg-slate-200 text-[11px] text-slate-900 font-mono">
                   Item Code, Description, MRP, Brand, Category<br />
                   SN-WC-101, Wall Hung Rimless Water Closet, 14500, Cera, Water Closet<br />
                   SN-WB-301, Table Top Oval Ceramic Basin, 6800, Cera, Wash Basin
@@ -793,13 +858,16 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           )}
 
           {/* Right Column: Staged Line Items List & Quick Add Form */}
-          <div className="w-1/2 flex flex-col bg-black/40 border border-white/10 rounded-xl overflow-hidden">
+          <div
+            className="w-1/2 flex flex-col bg-white border border-slate-300 rounded-xl overflow-hidden shadow-xs"
+            style={{ width: '50%' }}
+          >
             {/* Header */}
-            <div className="p-3 border-b border-white/10 bg-[#09131F]/90 flex items-center justify-between shrink-0">
+            <div className="p-3 border-b border-slate-200 bg-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2">
-                <Layers size={15} className="text-teal-400" />
-                <span className="text-xs font-bold text-white tracking-wide">
-                  Staged Reference Items ({stagedItems.length})
+                <Layers size={16} className="text-teal-700" />
+                <span className="text-xs font-bold text-[#0D1B2A] uppercase tracking-wider">
+                  Extracted / Staged Items ({stagedItems.length})
                 </span>
               </div>
 
@@ -807,7 +875,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setStagedItems([])}
-                  className="text-[11px] text-rose-400 hover:text-rose-300 transition-colors"
+                  className="text-xs font-bold text-rose-600 hover:text-rose-800 transition-colors"
                 >
                   Clear All
                 </button>
@@ -815,75 +883,77 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             </div>
 
             {/* Quick Add Form */}
-            <div className="p-3 bg-white/5 border-b border-white/10 shrink-0 space-y-2">
-              <div className="text-[11px] font-semibold text-[#778DA9] uppercase tracking-wider flex items-center justify-between">
+            <div className="p-3 bg-slate-50 border-b border-slate-200 shrink-0 space-y-2">
+              <div className="text-[11px] font-bold text-[#1B263B] uppercase tracking-wider flex items-center justify-between">
                 <span>Quick Add Item</span>
                 {manualImage && (
-                  <span className="text-[10px] text-emerald-400 font-medium">✓ Photo Cropped</span>
+                  <span className="text-[10px] text-emerald-700 font-bold">✓ Photo Cropped</span>
                 )}
               </div>
               <div className="grid grid-cols-12 gap-2 text-xs">
                 <input
                   type="text"
                   placeholder="Item Code *"
-                  className="col-span-3 input input-xs bg-white/10 border-white/20 text-white font-mono uppercase font-bold"
+                  className="col-span-3 px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-mono uppercase font-bold text-xs focus:outline-none focus:border-teal-600"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
                 />
                 <input
                   type="text"
                   placeholder="Description *"
-                  className="col-span-4 input input-xs bg-white/10 border-white/20 text-white"
+                  className="col-span-4 px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-medium text-xs focus:outline-none focus:border-teal-600"
                   value={manualDesc}
                   onChange={(e) => setManualDesc(e.target.value)}
                 />
                 <input
                   type="number"
                   placeholder="MRP (₹)"
-                  className="col-span-2 input input-xs bg-white/10 border-white/20 text-white font-mono"
+                  className="col-span-2 px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-mono font-bold text-xs text-right focus:outline-none focus:border-teal-600"
                   value={manualMrp}
                   onChange={(e) => setManualMrp(e.target.value)}
                 />
                 <select
-                  className="col-span-2 select select-xs bg-[#0D1B2A] border-white/20 text-white text-[10px]"
+                  className="col-span-2 px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-medium text-[11px] focus:outline-none focus:border-teal-600"
                   value={manualCategory}
                   onChange={(e) => setManualCategory(e.target.value)}
                 >
                   {categories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
                 <button
                   type="button"
                   onClick={handleAddManualItem}
-                  className="col-span-1 btn btn-xs bg-teal-600 hover:bg-teal-500 text-white font-bold p-0 flex items-center justify-center"
+                  className="col-span-1 btn btn-sm bg-[#1B263B] hover:bg-[#0D1B2A] text-white font-bold p-0 flex items-center justify-center rounded-lg shadow-xs"
                   title="Add to Staged Items"
                 >
-                  <Plus size={14} />
+                  <Plus size={16} />
                 </button>
               </div>
             </div>
 
             {/* Staged Items List Table */}
-            <div className="flex-1 overflow-y-auto divide-y divide-white/10">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
               {stagedItems.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-center p-8 text-[#778DA9]">
+                <div className="h-full flex items-center justify-center text-center p-8 text-slate-400">
                   <div>
-                    <Sparkles size={28} className="mx-auto mb-2 opacity-30 text-teal-300" />
-                    <p className="text-xs font-semibold text-white">No items staged yet</p>
-                    <p className="text-[11px] mt-1 max-w-xs">
+                    <Sparkles size={32} className="mx-auto mb-2 text-teal-600 opacity-60" />
+                    <p className="text-xs font-bold text-slate-700">No items staged yet</p>
+                    <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
                       Click <strong>"Auto-Scan Page"</strong> on the left, crop a photo, or use the Quick Add form to build the catalog list.
                     </p>
                   </div>
                 </div>
               ) : (
-                stagedItems.map((it, idx) => (
+                stagedItems.map((it) => (
                   <div
                     key={it.id}
-                    className="p-2.5 flex items-center justify-between hover:bg-white/5 transition-colors gap-2 text-xs"
+                    className="p-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors gap-2 text-xs"
                   >
                     {/* Thumbnail */}
-                    <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/15 overflow-hidden shrink-0 flex items-center justify-center">
+                    <div className="w-11 h-11 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
                       {it.item_image ? (
                         <img
                           src={it.item_image}
@@ -891,24 +961,26 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <Camera size={14} className="text-[#778DA9] opacity-40" />
+                        <Camera size={16} className="text-slate-400" />
                       )}
                     </div>
 
                     {/* Details */}
-                    <div className="flex-1 min-w-0 space-y-0.5">
+                    <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center space-x-1.5">
                         <input
                           type="text"
                           value={it.item_code}
-                          onChange={(e) => handleUpdateStaged(it.id, 'item_code', e.target.value.toUpperCase())}
-                          className="input input-xs w-28 bg-white/10 border-white/20 text-white font-mono font-bold uppercase text-[11px]"
+                          onChange={(e) =>
+                            handleUpdateStaged(it.id, 'item_code', e.target.value.toUpperCase())
+                          }
+                          className="w-28 px-1.5 py-0.5 rounded border border-slate-300 bg-white font-mono font-bold uppercase text-xs text-slate-900"
                         />
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-300 font-mono border border-teal-400/20">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-900 font-bold border border-teal-200">
                           {it.category}
                         </span>
                         {it.page_number && (
-                          <span className="text-[10px] text-[#778DA9] font-mono">
+                          <span className="text-[10px] text-slate-500 font-mono">
                             p.{it.page_number}
                           </span>
                         )}
@@ -917,7 +989,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                         type="text"
                         value={it.item_description}
                         onChange={(e) => handleUpdateStaged(it.id, 'item_description', e.target.value)}
-                        className="input input-xs w-full bg-white/5 border-transparent hover:border-white/20 text-white text-[11px]"
+                        className="w-full px-1.5 py-0.5 rounded border border-slate-200 hover:border-slate-300 bg-white text-slate-800 text-xs font-medium"
                         placeholder="Item Description"
                       />
                     </div>
@@ -925,21 +997,23 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                     {/* MRP & Delete */}
                     <div className="flex items-center space-x-2 shrink-0">
                       <div className="text-right">
-                        <span className="text-[9px] text-[#778DA9] block">MRP (₹)</span>
+                        <span className="text-[9px] font-bold text-slate-500 block">MRP (₹)</span>
                         <input
                           type="number"
                           value={it.mrp_price || ''}
-                          onChange={(e) => handleUpdateStaged(it.id, 'mrp_price', parseFloat(e.target.value) || 0)}
-                          className="input input-xs w-20 bg-white/10 border-white/20 text-right text-emerald-300 font-mono font-bold text-xs"
+                          onChange={(e) =>
+                            handleUpdateStaged(it.id, 'mrp_price', parseFloat(e.target.value) || 0)
+                          }
+                          className="w-20 px-1.5 py-0.5 rounded border border-slate-300 bg-white text-right text-emerald-800 font-mono font-bold text-xs"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={() => handleDeleteStaged(it.id)}
-                        className="p-1 rounded text-[#778DA9] hover:text-rose-400 hover:bg-white/10 transition-colors"
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                         title="Remove row"
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </div>
@@ -948,21 +1022,21 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             </div>
 
             {/* Bottom Footer for Right Column */}
-            <div className="p-3 bg-[#09131F]/90 border-t border-white/10 flex items-center justify-between shrink-0">
-              <span className="text-xs text-[#778DA9]">
-                Ready to save: <strong className="text-white">{stagedItems.length}</strong> products
+            <div className="p-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-slate-700">
+                Ready to save: <strong className="text-teal-900 font-mono">{stagedItems.length}</strong> products
               </span>
 
               <button
                 type="button"
                 disabled={stagedItems.length === 0 || isImporting}
                 onClick={handleSaveToCatalog}
-                className="btn btn-sm bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold flex items-center space-x-1.5 shadow-md shadow-teal-900/40 disabled:opacity-50"
+                className="btn btn-sm bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white font-bold flex items-center space-x-1.5 px-4 py-2 rounded-xl shadow-xs"
               >
                 {isImporting ? (
-                  <RefreshCw size={13} className="animate-spin" />
+                  <RefreshCw size={14} className="animate-spin" />
                 ) : (
-                  <Check size={13} />
+                  <Check size={14} />
                 )}
                 <span>{isImporting ? 'Importing...' : `Save ${stagedItems.length} Items to Catalog`}</span>
               </button>
@@ -971,13 +1045,13 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         </div>
 
         {/* Modal Bottom Footer */}
-        <div className="px-6 py-3 border-t border-white/10 bg-[#09131F]/90 flex items-center justify-between shrink-0">
-          <p className="text-[11px] text-[#778DA9]">
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+          <p className="text-xs text-slate-600">
             💡 Once imported, any salesperson typing these Item Codes in Sanitary Quotations will have Description, Image & MRP auto-filled instantly.
           </p>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg text-xs font-semibold text-[#778DA9] hover:text-white hover:bg-white/10 transition-colors"
+            className="btn btn-secondary btn-sm px-4 py-1.5 rounded-lg text-xs font-bold text-slate-800 hover:bg-slate-200 transition-colors"
           >
             Close
           </button>

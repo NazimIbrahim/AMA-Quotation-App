@@ -505,9 +505,20 @@ export const SanitaryCatalogManagement: React.FC = () => {
 
       {/* Create / Edit Item Modal */}
       {(newItemModal || editItemModal) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-md bg-[#0D1B2A]/95 text-[#E0E1DD] border border-white/20 rounded-2xl shadow-2xl overflow-hidden glass-panel">
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+        <div
+          className="modal-overlay"
+          style={{ backgroundColor: 'rgba(13, 27, 42, 0.75)', zIndex: 100 }}
+          onClick={() => {
+            setNewItemModal(false);
+            setEditItemModal(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl border border-slate-300 shadow-2xl flex flex-col overflow-hidden w-full max-w-md"
+            style={{ backgroundColor: '#FFFFFF', color: '#0D1B2A' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-3.5 bg-[#0D1B2A] text-white flex items-center justify-between border-b border-slate-700">
               <h2 className="text-sm font-bold text-white tracking-wide">
                 {editItemModal ? 'Edit Sanitary Catalog Item' : 'Add New Reference Item'}
               </h2>
@@ -516,36 +527,36 @@ export const SanitaryCatalogManagement: React.FC = () => {
                   setNewItemModal(false);
                   setEditItemModal(null);
                 }}
-                className="p-1 rounded text-[#778DA9] hover:text-white"
+                className="p-1 rounded text-slate-400 hover:text-white"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-5 space-y-3.5 text-xs">
+            <div className="p-5 space-y-3.5 text-xs bg-white">
               {formError && (
-                <div className="p-2.5 rounded-lg bg-rose-500/20 border border-rose-400/30 text-rose-200 text-xs flex items-center space-x-2">
-                  <AlertCircle size={14} className="shrink-0" />
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 text-xs font-semibold flex items-center space-x-2">
+                  <AlertCircle size={14} className="shrink-0 text-rose-600" />
                   <span>{formError}</span>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-[#778DA9] block mb-1">Item Code *</label>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Item Code *</label>
                   <input
                     type="text"
-                    className="input input-sm w-full bg-white/10 border-white/20 text-white font-mono uppercase font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-mono uppercase font-bold text-xs focus:outline-none focus:border-teal-600"
                     placeholder="e.g. SN-WC-101"
                     value={formCode}
                     onChange={(e) => setFormCode(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-[#778DA9] block mb-1">Brand</label>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Brand</label>
                   <input
                     type="text"
-                    className="input input-sm w-full bg-white/10 border-white/20 text-white font-semibold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-semibold text-xs focus:outline-none focus:border-teal-600"
                     placeholder="e.g. Cera"
                     value={formBrand}
                     onChange={(e) => setFormBrand(e.target.value)}
@@ -555,9 +566,9 @@ export const SanitaryCatalogManagement: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-[#778DA9] block mb-1">Category</label>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Category</label>
                   <select
-                    className="select select-sm w-full bg-[#0D1B2A] border-white/20 text-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-medium text-xs focus:outline-none focus:border-teal-600"
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
                   >
@@ -567,10 +578,10 @@ export const SanitaryCatalogManagement: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-[#778DA9] block mb-1">MRP Price (₹)</label>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">MRP Price (₹)</label>
                   <input
                     type="number"
-                    className="input input-sm w-full bg-white/10 border-white/20 text-white font-mono text-emerald-300 font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-mono font-bold text-emerald-800 text-xs text-right focus:outline-none focus:border-teal-600"
                     placeholder="0.00"
                     value={formMrp}
                     onChange={(e) => setFormMrp(e.target.value)}
@@ -579,9 +590,9 @@ export const SanitaryCatalogManagement: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-[#778DA9] block mb-1">Item Description *</label>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">Item Description *</label>
                 <textarea
-                  className="textarea textarea-sm w-full bg-white/10 border-white/20 text-white text-xs"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs font-medium focus:outline-none focus:border-teal-600"
                   rows={2}
                   placeholder="e.g. Wall Hung Rimless Water Closet with Soft Close Seat Cover"
                   value={formDesc}
@@ -591,13 +602,13 @@ export const SanitaryCatalogManagement: React.FC = () => {
 
               {/* Photo Upload */}
               <div>
-                <label className="text-[11px] font-semibold text-[#778DA9] block mb-1">Product Photo</label>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">Product Photo</label>
                 <div className="flex items-center space-x-3">
-                  <div className="w-14 h-14 rounded-xl bg-black/40 border border-white/15 overflow-hidden flex items-center justify-center shrink-0">
+                  <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
                     {formImage ? (
                       <img src={formImage} alt="Preview" className="w-full h-full object-cover" />
                     ) : (
-                      <ImageIcon size={20} className="text-[#778DA9] opacity-40" />
+                      <ImageIcon size={20} className="text-slate-400" />
                     )}
                   </div>
                   <div className="flex-1 space-y-1">
@@ -605,13 +616,13 @@ export const SanitaryCatalogManagement: React.FC = () => {
                       type="file"
                       accept="image/*"
                       onChange={handleFileChange}
-                      className="text-xs text-[#778DA9] file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-teal-600 file:text-white hover:file:bg-teal-500 cursor-pointer"
+                      className="text-xs text-slate-600 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#1B263B] file:text-white hover:file:bg-[#0D1B2A] cursor-pointer"
                     />
                     {formImage && (
                       <button
                         type="button"
                         onClick={() => setFormImage('')}
-                        className="text-[10px] text-rose-400 hover:underline block"
+                        className="text-[11px] font-bold text-rose-600 hover:underline block"
                       >
                         Remove photo
                       </button>
@@ -621,14 +632,14 @@ export const SanitaryCatalogManagement: React.FC = () => {
               </div>
             </div>
 
-            <div className="px-5 py-3 border-t border-white/10 bg-[#09131F]/90 flex items-center justify-end space-x-2">
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end space-x-2">
               <button
                 type="button"
                 onClick={() => {
                   setNewItemModal(false);
                   setEditItemModal(null);
                 }}
-                className="btn btn-secondary btn-xs text-[#778DA9]"
+                className="btn btn-secondary btn-sm px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700"
               >
                 Cancel
               </button>
@@ -636,7 +647,7 @@ export const SanitaryCatalogManagement: React.FC = () => {
                 type="button"
                 disabled={savingItem}
                 onClick={handleSaveItem}
-                className="btn btn-sm bg-teal-600 hover:bg-teal-500 text-white font-bold"
+                className="btn btn-sm bg-[#1B263B] hover:bg-[#0D1B2A] text-white font-bold px-4 py-1.5 rounded-lg shadow-xs"
               >
                 {savingItem ? 'Saving...' : editItemModal ? 'Update Item' : 'Add Item'}
               </button>
