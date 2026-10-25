@@ -49,6 +49,8 @@ interface StagedItem {
   mrp_price: number;
   item_image?: string;
   page_number?: number;
+  hasRealPhoto?: boolean;
+  isTableEntry?: boolean;
 }
 
 export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
@@ -149,9 +151,46 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         pageCategory = 'Water Closet';
       }
 
+      // Skip pure certification / index / appendix table pages
+      const first40Text = items.slice(0, 40).map((it) => (it.str || '').toLowerCase()).join(' ');
+      if (
+        first40Text.includes('green pro certification') ||
+        first40Text.includes('list of kerovit products certified') ||
+        first40Text.includes('technical data sheet') ||
+        first40Text.includes('index of products') ||
+        (first40Text.includes('certification') && items.length > 250)
+      ) {
+        return [];
+      }
+
       // Regex patterns: matches 2-8 digits, e.g. KS110, KO117, KS277, KB1011011, FSW-007, KGP50001W-SR
       const codeRegex = /\b([A-Z]{1,6}[-_]?[0-9]{2,8}[A-Z0-9\-_]*)\b/i;
-      const priceRegex = /(?:`|₹|Rs\.?|INR|Per\s*Piece|MRP)?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|\b[1-9][0-9]{2,5}\b)/i;
+
+      // Price parser helper: handles currency prefixes, comma numbers, excludes dimensions
+      const parsePrice = (str: string): number | null => {
+        if (!str) return null;
+        const trimmed = str.trim();
+        if (/\b\d+\s*(?:mm|cm|m\b|inch|inches|dia|"|'|litres?)\b/i.test(trimmed)) return null;
+        if (/\b\d+\s*x\s*\d+/i.test(trimmed)) return null;
+
+        // Currency prefixed: e.g. '₹ 23,000' or 'Per Piece ` 2,100' or 'Rs. 5,675' or 'MRP: 11,000'
+        const m1 = trimmed.match(
+          /(?:`|₹|Rs\.?|INR|MRP|Per\s*Piece)\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|\b[1-9][0-9]{2,5}\b)/i
+        );
+        if (m1) {
+          const v = parseFloat(m1[1].replace(/,/g, ''));
+          if (v >= 100 && v <= 500000) return v;
+        }
+
+        // Comma formatted number alone (e.g. '23,000' or '5,675')
+        const m2 = trimmed.match(/\b([1-9][0-9]{0,2}(?:,[0-9]{3})+(?:\.[0-9]{2})?)\b/);
+        if (m2) {
+          const v = parseFloat(m2[1].replace(/,/g, ''));
+          if (v >= 100 && v <= 500000) return v;
+        }
+
+        return null;
+      };
 
       const candidates: Array<{ index: number; code: string; modelTitle?: string; pdfX: number; pdfY: number }> = [];
 
@@ -172,16 +211,21 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
         const m = str.match(codeRegex);
         if (m) {
-          const code = m[1].toUpperCase();
+          const codePart = m[1].toUpperCase();
           if (
-            code === 'FAUCET' ||
-            code === 'SANITARYWARE' ||
-            code === 'ROUGH-IN' ||
-            code.startsWith('SIZE') ||
-            code.length < 4
+            codePart === 'FAUCET' ||
+            codePart === 'SANITARYWARE' ||
+            codePart === 'ROUGH-IN' ||
+            codePart.startsWith('SIZE') ||
+            codePart.length < 4
           ) {
             continue;
           }
+
+          // Check if line is a slash variant line (e.g. "KB2211035 / KB2311035-CP")
+          const cleanCode = str.includes('/')
+            ? str.split('/').map((s: string) => s.trim()).filter(Boolean).join(' / ')
+            : codePart;
 
           // Parse prefix as model title (e.g. "KADIN - KS277" -> "KADIN", "TARA - KO117" -> "TARA")
           let modelTitle = '';
@@ -192,10 +236,10 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
             }
           }
 
-          if (!candidates.some((c) => c.code === code)) {
+          if (!candidates.some((c) => c.code === cleanCode)) {
             candidates.push({
               index: i,
-              code,
+              code: cleanCode,
               modelTitle,
               pdfX: it.transform[4],
               pdfY: it.transform[5],
@@ -205,6 +249,8 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       }
 
       if (candidates.length === 0) return [];
+
+      const isTablePage = candidates.length > 20 && items.length > 250;
 
       // Extract actual PDF product images from operator list to guarantee accurate photo cropping
       interface PageImg {
@@ -246,10 +292,12 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           ) {
             const w = Math.hypot(currentCTM[0], currentCTM[1]);
             const h = Math.hypot(currentCTM[2], currentCTM[3]);
-            // Exclude QR codes and small icons (<36 pt) and full page backgrounds (>480 x >680)
+            // Exclude QR codes (small squares <=35x35) and full page backgrounds (>480 x >680)
+            const isQrCode = w <= 35 && h <= 35 && Math.abs(w - h) <= 2;
+            const isLarge = Math.max(w, h) >= 36 && Math.min(w, h) >= 15;
             if (
-              w >= 36 &&
-              h >= 36 &&
+              isLarge &&
+              !isQrCode &&
               (w < 480 || h < 680) &&
               !isNaN(w) &&
               !isNaN(h) &&
@@ -298,6 +346,41 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         let descLines: string[] = cand.modelTitle ? [cand.modelTitle] : [];
         let mrp = 0;
 
+        // 1. Exact row price matching (within 8pt vertically, horizontally aligned across row)
+        for (let j = 0; j < items.length; j++) {
+          const it = items[j];
+          if (!it.str || !it.transform) continue;
+          const iy = it.transform[5];
+          const ix = it.transform[4];
+          if (Math.abs(iy - cand.pdfY) <= 8 && ix >= cand.pdfX - 20) {
+            const p = parsePrice(it.str);
+            if (p && p >= 100) {
+              mrp = p;
+              break;
+            }
+          }
+        }
+
+        // 2. Fallback: Card price below code (within 85pt vertically, 140pt horizontally)
+        if (!mrp) {
+          for (let j = 0; j < items.length; j++) {
+            const it = items[j];
+            if (!it.str || !it.transform) continue;
+            const iy = it.transform[5];
+            const ix = it.transform[4];
+            const dy = cand.pdfY - iy;
+            const dx = Math.abs(ix - cand.pdfX);
+            if (dy > 0 && dy <= 85 && dx <= 140) {
+              const p = parsePrice(it.str);
+              if (p && p >= 100) {
+                mrp = p;
+                break;
+              }
+            }
+          }
+        }
+
+        // 3. Sibling text placed directly below or around the code for description
         for (let j = 0; j < items.length; j++) {
           if (j === cand.index) continue;
           const it = items[j];
@@ -309,27 +392,40 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           const dx = ix - cand.pdfX;
           const dy = cand.pdfY - iy;
 
-          // Sibling text placed directly below or around the code
-          if (dx >= -30 && dx <= 140 && dy > 0 && dy < 75) {
-            const isDimension =
-              /\b\d+\s*(?:mm|cm|inch|inches)\b/i.test(str) ||
-              /\b\d+\s*x\s*\d+/i.test(str);
-            const pMatch = str.match(priceRegex);
-            if (pMatch && pMatch[1] && !isDimension && !mrp) {
-              const val = parseFloat(pMatch[1].replace(/,/g, ''));
-              if (val >= 100 && val <= 500000) {
-                mrp = val;
-                continue;
-              }
-            }
-
+          if (dx >= -40 && dx <= 160 && dy > 0 && dy < 75) {
             if (
               str !== '`' &&
-              !str.toLowerCase().startsWith('per piece') &&
               str !== '₹' &&
-              !str.match(codeRegex)
+              !str.toLowerCase().startsWith('per piece') &&
+              !str.match(codeRegex) &&
+              !parsePrice(str)
             ) {
               descLines.push(str);
+            }
+          }
+        }
+
+        // 4. If no direct sibling description (e.g. multi-variant diverter block), find common block title below group
+        if (descLines.length === 0) {
+          for (let j = 0; j < items.length; j++) {
+            if (j === cand.index) continue;
+            const it = items[j];
+            if (!it.str || !it.transform) continue;
+            const iy = it.transform[5];
+            const ix = it.transform[4];
+            const dy = cand.pdfY - iy;
+            const dx = Math.abs(ix - cand.pdfX);
+            if (dy > 0 && dy <= 160 && dx <= 70) {
+              const s = (it.str || '').trim();
+              if (
+                s.length >= 8 &&
+                !s.includes('/') &&
+                !codeRegex.test(s) &&
+                !parsePrice(s)
+              ) {
+                descLines.push(s);
+                break;
+              }
             }
           }
         }
@@ -342,18 +438,20 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         let bestImg: PageImg | null = null;
         let bestDist = Infinity;
         for (const img of pageImages) {
-          // Photo directly above code
-          const isAbove =
-            img.y >= cand.pdfY - 15 &&
-            img.y <= cand.pdfY + 160 &&
-            Math.abs(img.centerX - (cand.pdfX + 35)) <= 90;
-          // Photo directly to the left of code
+          // Photo directly to the left of code/variant block
           const isLeft =
             img.x < cand.pdfX &&
-            img.x >= cand.pdfX - 160 &&
-            Math.abs(img.centerY - cand.pdfY) <= 75;
+            img.x >= cand.pdfX - 220 &&
+            cand.pdfY >= img.y - 50 &&
+            cand.pdfY <= img.y + img.h + 55;
 
-          if (isAbove || isLeft) {
+          // Photo directly above code (card layout)
+          const isAbove =
+            img.y >= cand.pdfY - 20 &&
+            img.y <= cand.pdfY + 180 &&
+            Math.abs(img.centerX - (cand.pdfX + 50)) <= 85;
+
+          if (isLeft || isAbove) {
             const dist = Math.hypot(img.centerX - cand.pdfX, img.centerY - cand.pdfY);
             if (dist < bestDist) {
               bestDist = dist;
@@ -427,6 +525,8 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           mrp_price: mrp,
           item_image: photoDataUrl,
           page_number: pageNum,
+          hasRealPhoto: Boolean(bestImg && photoDataUrl && photoDataUrl.length > 500),
+          isTableEntry: isTablePage,
         });
       }
 
@@ -609,12 +709,27 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
                   (it) => it.item_code.trim().toUpperCase() === codeKey
                 );
                 if (existingIdx >= 0) {
-                  // REPLACE existing item with the newly detected item
-                  next[existingIdx] = {
-                    ...next[existingIdx],
-                    ...item,
-                    item_image: item.item_image || next[existingIdx].item_image,
-                  };
+                  const existing = next[existingIdx];
+                  const existingHasPhoto = Boolean(existing.hasRealPhoto || (existing.item_image && existing.item_image.length > 500 && !existing.isTableEntry));
+                  const incomingHasPhoto = Boolean(item.hasRealPhoto || (item.item_image && item.item_image.length > 500 && !item.isTableEntry));
+
+                  if (existingHasPhoto && !incomingHasPhoto) {
+                    // DO NOT overwrite real product card with table or photo-less item
+                    if ((!existing.mrp_price || existing.mrp_price === 0) && item.mrp_price > 0) {
+                      existing.mrp_price = item.mrp_price;
+                    }
+                  } else {
+                    next[existingIdx] = {
+                      ...existing,
+                      ...item,
+                      item_image: incomingHasPhoto ? item.item_image : existing.item_image,
+                      item_description: (item.item_description && item.item_description.length > 5 && !item.isTableEntry)
+                        ? item.item_description
+                        : existing.item_description,
+                      mrp_price: item.mrp_price > 0 ? item.mrp_price : existing.mrp_price,
+                      hasRealPhoto: existingHasPhoto || incomingHasPhoto,
+                    };
+                  }
                 } else {
                   next.unshift(item);
                 }
@@ -656,12 +771,26 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               (it) => it.item_code.trim().toUpperCase() === codeKey
             );
             if (existingIdx >= 0) {
-              // REPLACE existing item
-              next[existingIdx] = {
-                ...next[existingIdx],
-                ...item,
-                item_image: item.item_image || next[existingIdx].item_image,
-              };
+              const existing = next[existingIdx];
+              const existingHasPhoto = Boolean(existing.hasRealPhoto || (existing.item_image && existing.item_image.length > 500 && !existing.isTableEntry));
+              const incomingHasPhoto = Boolean(item.hasRealPhoto || (item.item_image && item.item_image.length > 500 && !item.isTableEntry));
+
+              if (existingHasPhoto && !incomingHasPhoto) {
+                if ((!existing.mrp_price || existing.mrp_price === 0) && item.mrp_price > 0) {
+                  existing.mrp_price = item.mrp_price;
+                }
+              } else {
+                next[existingIdx] = {
+                  ...existing,
+                  ...item,
+                  item_image: incomingHasPhoto ? item.item_image : existing.item_image,
+                  item_description: (item.item_description && item.item_description.length > 5 && !item.isTableEntry)
+                    ? item.item_description
+                    : existing.item_description,
+                  mrp_price: item.mrp_price > 0 ? item.mrp_price : existing.mrp_price,
+                  hasRealPhoto: existingHasPhoto || incomingHasPhoto,
+                };
+              }
             } else {
               next.unshift(item);
             }
@@ -723,12 +852,26 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
               (it) => it.item_code.trim().toUpperCase() === codeKey
             );
             if (existingIdx >= 0) {
-              // REPLACE existing item with newer data
-              allExtracted[existingIdx] = {
-                ...allExtracted[existingIdx],
-                ...item,
-                item_image: item.item_image || allExtracted[existingIdx].item_image,
-              };
+              const existing = allExtracted[existingIdx];
+              const existingHasPhoto = Boolean(existing.hasRealPhoto || (existing.item_image && existing.item_image.length > 500 && !existing.isTableEntry));
+              const incomingHasPhoto = Boolean(item.hasRealPhoto || (item.item_image && item.item_image.length > 500 && !item.isTableEntry));
+
+              if (existingHasPhoto && !incomingHasPhoto) {
+                if ((!existing.mrp_price || existing.mrp_price === 0) && item.mrp_price > 0) {
+                  existing.mrp_price = item.mrp_price;
+                }
+              } else {
+                allExtracted[existingIdx] = {
+                  ...existing,
+                  ...item,
+                  item_image: incomingHasPhoto ? item.item_image : existing.item_image,
+                  item_description: (item.item_description && item.item_description.length > 5 && !item.isTableEntry)
+                    ? item.item_description
+                    : existing.item_description,
+                  mrp_price: item.mrp_price > 0 ? item.mrp_price : existing.mrp_price,
+                  hasRealPhoto: existingHasPhoto || incomingHasPhoto,
+                };
+              }
             } else {
               allExtracted.push(item);
             }

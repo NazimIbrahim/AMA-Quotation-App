@@ -18,9 +18,11 @@ sanitaryCatalogRouter.get('/lookup', async (req: Request, res: Response) => {
 
     // Exact or Prefix Code Lookup
     if (rawCode) {
+      // 1. Exact match (prioritizing items with real photos)
       const exactRows = await query(
         `SELECT * FROM sanitary_catalog_items 
          WHERE LOWER(item_code) = LOWER($1) AND is_active = true 
+         ORDER BY CASE WHEN item_image IS NOT NULL AND length(item_image) > 500 THEN 0 ELSE 1 END, id DESC
          LIMIT 1`,
         [rawCode]
       );
@@ -28,17 +30,31 @@ sanitaryCatalogRouter.get('/lookup', async (req: Request, res: Response) => {
       if (exactRows.length > 0) {
         matchedItem = exactRows[0];
       } else {
-        // Try relaxed match (e.g. ignoring dashes or whitespace)
+        // 2. Try relaxed match (e.g. ignoring dashes or whitespace)
         const clean = rawCode.replace(/[\s\-_]/g, '').toLowerCase();
         const relaxedRows = await query(
           `SELECT * FROM sanitary_catalog_items 
            WHERE LOWER(REPLACE(REPLACE(REPLACE(item_code, '-', ''), '_', ''), ' ', '')) = $1 
              AND is_active = true 
+           ORDER BY CASE WHEN item_image IS NOT NULL AND length(item_image) > 500 THEN 0 ELSE 1 END, id DESC
            LIMIT 1`,
           [clean]
         );
         if (relaxedRows.length > 0) {
           matchedItem = relaxedRows[0];
+        } else {
+          // 3. Try slash variant or suffix match (e.g. user typed '510001' or 'KB2311035' and code is 'KA510001' or 'KB2211035 / KB2311035-CP')
+          const variantRows = await query(
+            `SELECT * FROM sanitary_catalog_items 
+             WHERE (item_code ILIKE $1 OR item_code ILIKE $2)
+               AND is_active = true 
+             ORDER BY CASE WHEN item_image IS NOT NULL AND length(item_image) > 500 THEN 0 ELSE 1 END, id DESC
+             LIMIT 1`,
+            [`%${rawCode}%`, `%${rawCode}`]
+          );
+          if (variantRows.length > 0) {
+            matchedItem = variantRows[0];
+          }
         }
       }
     }
@@ -56,6 +72,7 @@ sanitaryCatalogRouter.get('/lookup', async (req: Request, res: Response) => {
              OR brand ILIKE $1
            )
          ORDER BY 
+           CASE WHEN item_image IS NOT NULL AND length(item_image) > 500 THEN 0 ELSE 1 END,
            CASE WHEN LOWER(item_code) = LOWER($2) THEN 0
                 WHEN item_code ILIKE $3 THEN 1 
                 ELSE 2 END,
@@ -169,11 +186,23 @@ sanitaryCatalogRouter.post('/', requireRole(['admin', 'manager']), async (req: R
        ON CONFLICT (item_code) DO UPDATE SET
         brand = EXCLUDED.brand,
         category = EXCLUDED.category,
-        item_description = EXCLUDED.item_description,
-        mrp_price = EXCLUDED.mrp_price,
-        item_image = CASE WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 50 THEN EXCLUDED.item_image ELSE sanitary_catalog_items.item_image END,
+        item_description = CASE 
+          WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.item_description
+          ELSE EXCLUDED.item_description
+        END,
+        mrp_price = CASE 
+          WHEN EXCLUDED.mrp_price > 0 THEN EXCLUDED.mrp_price 
+          ELSE sanitary_catalog_items.mrp_price 
+        END,
+        item_image = CASE 
+          WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 500 THEN EXCLUDED.item_image 
+          ELSE sanitary_catalog_items.item_image 
+        END,
         catalog_name = COALESCE(EXCLUDED.catalog_name, sanitary_catalog_items.catalog_name),
-        page_number = COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number),
+        page_number = CASE 
+          WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.page_number
+          ELSE COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number)
+        END,
         updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
@@ -215,11 +244,23 @@ sanitaryCatalogRouter.post('/batch', requireRole(['admin', 'manager']), async (r
          ON CONFLICT (item_code) DO UPDATE SET
           brand = EXCLUDED.brand,
           category = EXCLUDED.category,
-          item_description = EXCLUDED.item_description,
-          mrp_price = EXCLUDED.mrp_price,
-          item_image = CASE WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 50 THEN EXCLUDED.item_image ELSE sanitary_catalog_items.item_image END,
+          item_description = CASE 
+            WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.item_description
+            ELSE EXCLUDED.item_description
+          END,
+          mrp_price = CASE 
+            WHEN EXCLUDED.mrp_price > 0 THEN EXCLUDED.mrp_price 
+            ELSE sanitary_catalog_items.mrp_price 
+          END,
+          item_image = CASE 
+            WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 500 THEN EXCLUDED.item_image 
+            ELSE sanitary_catalog_items.item_image 
+          END,
           catalog_name = COALESCE(EXCLUDED.catalog_name, sanitary_catalog_items.catalog_name),
-          page_number = COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number),
+          page_number = CASE 
+            WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.page_number
+            ELSE COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number)
+          END,
           updated_at = CURRENT_TIMESTAMP`,
         [
           item.item_code.trim(),
