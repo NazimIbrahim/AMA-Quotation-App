@@ -27,6 +27,7 @@ export interface QuotationPdfData {
     round_off: number;
     net_total: number;
     special_notes?: string;
+    quotation_type?: string;
   };
   areas: Array<{
     id: number;
@@ -43,7 +44,13 @@ export interface QuotationPdfData {
       rate_per_sqft: number;
       quantity_boxes: number;
       rate_per_box: number;
+      base_rate_per_box?: number;
+      base_rate_per_sqft?: number;
       total_amount: number;
+      item_code?: string;
+      item_image?: string;
+      mrp_price?: number;
+      discount_percent?: number;
     }>;
   }>;
   company: {
@@ -188,136 +195,228 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
 
   // Table setup
   const isEncrypted = Boolean(data.encrypted);
+  const isSanitary = quotation.quotation_type === 'sanitary';
   const allItems = areas.flatMap((a) => a.items || []);
   const encryptedMap = isEncrypted
     ? buildEncryptedProductMap(quotation.quotation_number || quotation.quotation_date || 'AMA', allItems)
     : new Map<string, string>();
 
   let currentY = 180;
-  // Encrypted mode: Brand column omitted, Description gets 158 width
-  // Standard mode: Brand column included (10 columns)
-  const colX = isEncrypted
-    ? [30, 52, 210, 260, 310, 355, 410, 455, 505]
-    : [30, 50, 165, 235, 280, 322, 362, 410, 455, 505];
-  const colW = isEncrypted
-    ? [22, 158, 50, 50, 45, 55, 45, 50, 60]
-    : [20, 115, 70, 45, 42, 40, 48, 45, 50, 60];
 
-  function drawTableHeader(y: number) {
-    doc.rect(30, y, 535, 20).fillAndStroke(primaryColor, primaryColor);
-    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#FFFFFF');
+  if (isSanitary) {
+    function drawSanitaryTableHeader(y: number) {
+      doc.rect(30, y, 535, 20).fillAndStroke(primaryColor, primaryColor);
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#FFFFFF');
+      doc.text('Sl.', 30, y + 6, { width: 22, align: 'center' });
+      doc.text('Image', 54, y + 6, { width: 38, align: 'center' });
+      doc.text('Item Code', 94, y + 6, { width: 66 });
+      doc.text('Item Description', 162, y + 6, { width: 158 });
+      doc.text('Qty (Nos)', 322, y + 6, { width: 40, align: 'right' });
+      doc.text('MRP (₹)', 364, y + 6, { width: 52, align: 'right' });
+      doc.text('Disc %', 418, y + 6, { width: 34, align: 'right' });
+      doc.text('Price/Nos', 454, y + 6, { width: 54, align: 'right' });
+      doc.text('Total (₹)', 510, y + 6, { width: 55, align: 'right' });
+    }
 
-    if (isEncrypted) {
-      doc.text('Sl.', colX[0], y + 6, { width: colW[0], align: 'center' });
-      doc.text('Description', colX[1], y + 6, { width: colW[1] });
-      doc.text('Size', colX[2], y + 6, { width: colW[2], align: 'center' });
-      doc.text('Cov/Box', colX[3], y + 6, { width: colW[3], align: 'right' });
-      doc.text('Sqft', colX[4], y + 6, { width: colW[4], align: 'right' });
-      doc.text('Rate/Sqft', colX[5], y + 6, { width: colW[5], align: 'right' });
-      doc.text('Boxes/Qty', colX[6], y + 6, { width: colW[6], align: 'right' });
-      doc.text('Rate/Unit', colX[7], y + 6, { width: colW[7], align: 'right' });
-      doc.text('Total', colX[8], y + 6, { width: colW[8], align: 'right' });
+    drawSanitaryTableHeader(currentY);
+    currentY += 20;
+
+    if (allItems.length === 0) {
+      doc.rect(30, currentY, 535, 25).stroke(tableBorder);
+      doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666');
+      doc.text('No sanitary items recorded in this quotation.', 45, currentY + 8);
+      currentY += 28;
     } else {
-      doc.text('Sl.', colX[0], y + 6, { width: colW[0], align: 'center' });
-      doc.text('Description', colX[1], y + 6, { width: colW[1] });
-      doc.text('Brand', colX[2], y + 6, { width: colW[2] });
-      doc.text('Size', colX[3], y + 6, { width: colW[3], align: 'center' });
-      doc.text('Cov/Box', colX[4], y + 6, { width: colW[4], align: 'right' });
-      doc.text('Sqft', colX[5], y + 6, { width: colW[5], align: 'right' });
-      doc.text('Rate/Sqft', colX[6], y + 6, { width: colW[6], align: 'right' });
-      doc.text('Boxes/Qty', colX[7], y + 6, { width: colW[7], align: 'right' });
-      doc.text('Rate/Unit', colX[8], y + 6, { width: colW[8], align: 'right' });
-      doc.text('Total', colX[9], y + 6, { width: colW[9], align: 'right' });
+      for (const item of allItems) {
+        if (currentY > 700) {
+          doc.addPage();
+          currentY = 40;
+          drawSanitaryTableHeader(currentY);
+          currentY += 20;
+        }
+
+        doc.rect(30, currentY, 535, 28).stroke(tableBorder);
+        doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
+
+        // Sl.
+        doc.text(String(item.sl_no), 30, currentY + 9, { width: 22, align: 'center' });
+
+        // Item Image
+        if (item.item_image && item.item_image.startsWith('data:image')) {
+          try {
+            const base64Data = item.item_image.replace(/^data:image\/\w+;base64,/, '');
+            const imgBuffer = Buffer.from(base64Data, 'base64');
+            doc.image(imgBuffer, 56, currentY + 3, { fit: [34, 22], align: 'center', valign: 'center' });
+          } catch (e) {
+            doc.fontSize(7).fillColor('#999999').text('-', 54, currentY + 9, { width: 38, align: 'center' });
+          }
+        } else {
+          doc.fontSize(7).fillColor('#999999').text('-', 54, currentY + 9, { width: 38, align: 'center' });
+        }
+
+        // Item Code
+        const codeText = isEncrypted
+          ? (encryptedMap.get(item.item_code || item.size || 'CODE') || 'AMA-SAN')
+          : (item.item_code || item.size || '-');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(primaryColor);
+        doc.text(codeText, 94, currentY + 9, { width: 66, ellipsis: true });
+
+        // Item Description
+        const descText = isEncrypted
+          ? (encryptedMap.get((item.description || '').trim()) || `${item.description}-AMA`)
+          : item.description;
+        doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
+        doc.text(descText, 162, currentY + 9, { width: 158, ellipsis: true });
+
+        // Qty (Nos)
+        const qtyVal = Number(item.quantity_boxes || 1).toFixed(0);
+        doc.text(`${qtyVal} Nos`, 322, currentY + 9, { width: 40, align: 'right' });
+
+        // MRP
+        const mrpVal = Number(item.mrp_price || item.base_rate_per_box || item.rate_per_box || 0);
+        doc.text(formatCurrency(mrpVal), 364, currentY + 9, { width: 52, align: 'right' });
+
+        // Disc %
+        const discVal = Number(item.discount_percent || 0);
+        doc.text(discVal > 0 ? `${discVal.toFixed(1)}%` : '-', 418, currentY + 9, { width: 34, align: 'right' });
+
+        // Discounted Price
+        const priceVal = Number(item.rate_per_box || 0);
+        doc.text(formatCurrency(priceVal), 454, currentY + 9, { width: 54, align: 'right' });
+
+        // Total
+        doc.font('Helvetica-Bold');
+        doc.text(formatCurrency(item.total_amount), 510, currentY + 9, { width: 55, align: 'right' });
+
+        currentY += 28;
+      }
     }
-  }
+  } else {
+    // Encrypted mode: Brand column omitted, Description gets 158 width
+    // Standard mode: Brand column included (10 columns)
+    const colX = isEncrypted
+      ? [30, 52, 210, 260, 310, 355, 410, 455, 505]
+      : [30, 50, 165, 235, 280, 322, 362, 410, 455, 505];
+    const colW = isEncrypted
+      ? [22, 158, 50, 50, 45, 55, 45, 50, 60]
+      : [20, 115, 70, 45, 42, 40, 48, 45, 50, 60];
 
-  drawTableHeader(currentY);
-  currentY += 20;
+    function drawTableHeader(y: number) {
+      doc.rect(30, y, 535, 20).fillAndStroke(primaryColor, primaryColor);
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#FFFFFF');
 
-  const totalItemCount = areas.reduce((acc, a) => acc + (a.items?.length || 0), 0);
-  if (totalItemCount === 0) {
-    doc.rect(30, currentY, 535, 25).stroke(tableBorder);
-    doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666');
-    doc.text('No itemized materials or tiles recorded in this quotation.', 45, currentY + 8);
-    currentY += 28;
-  }
-
-  // Render Areas and Items
-  for (const area of areas) {
-    if (!area.items || area.items.length === 0) continue;
-
-    // Check page break
-    if (currentY > 700) {
-      doc.addPage();
-      currentY = 40;
-      drawTableHeader(currentY);
-      currentY += 20;
+      if (isEncrypted) {
+        doc.text('Sl.', colX[0], y + 6, { width: colW[0], align: 'center' });
+        doc.text('Description', colX[1], y + 6, { width: colW[1] });
+        doc.text('Size', colX[2], y + 6, { width: colW[2], align: 'center' });
+        doc.text('Cov/Box', colX[3], y + 6, { width: colW[3], align: 'right' });
+        doc.text('Sqft', colX[4], y + 6, { width: colW[4], align: 'right' });
+        doc.text('Rate/Sqft', colX[5], y + 6, { width: colW[5], align: 'right' });
+        doc.text('Boxes/Qty', colX[6], y + 6, { width: colW[6], align: 'right' });
+        doc.text('Rate/Unit', colX[7], y + 6, { width: colW[7], align: 'right' });
+        doc.text('Total', colX[8], y + 6, { width: colW[8], align: 'right' });
+      } else {
+        doc.text('Sl.', colX[0], y + 6, { width: colW[0], align: 'center' });
+        doc.text('Description', colX[1], y + 6, { width: colW[1] });
+        doc.text('Brand', colX[2], y + 6, { width: colW[2] });
+        doc.text('Size', colX[3], y + 6, { width: colW[3], align: 'center' });
+        doc.text('Cov/Box', colX[4], y + 6, { width: colW[4], align: 'right' });
+        doc.text('Sqft', colX[5], y + 6, { width: colW[5], align: 'right' });
+        doc.text('Rate/Sqft', colX[6], y + 6, { width: colW[6], align: 'right' });
+        doc.text('Boxes/Qty', colX[7], y + 6, { width: colW[7], align: 'right' });
+        doc.text('Rate/Unit', colX[8], y + 6, { width: colW[8], align: 'right' });
+        doc.text('Total', colX[9], y + 6, { width: colW[9], align: 'right' });
+      }
     }
 
-    // Area Header Bar
-    doc.rect(30, currentY, 535, 16).fillAndStroke('#E8EEF5', tableBorder);
-    doc.fontSize(8).font('Helvetica-Bold').fillColor(primaryColor);
-    doc.text(`AREA: ${area.area_name.toUpperCase()}`, 38, currentY + 4);
-    currentY += 16;
+    drawTableHeader(currentY);
+    currentY += 20;
 
-    for (const item of area.items) {
-      if (currentY > 730) {
+    const totalItemCount = areas.reduce((acc, a) => acc + (a.items?.length || 0), 0);
+    if (totalItemCount === 0) {
+      doc.rect(30, currentY, 535, 25).stroke(tableBorder);
+      doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666');
+      doc.text('No itemized materials or tiles recorded in this quotation.', 45, currentY + 8);
+      currentY += 28;
+    }
+
+    // Render Areas and Items
+    for (const area of areas) {
+      if (!area.items || area.items.length === 0) continue;
+
+      // Check page break
+      if (currentY > 700) {
         doc.addPage();
         currentY = 40;
         drawTableHeader(currentY);
         currentY += 20;
       }
 
-      const pType = (item.product_type || 'box').toLowerCase();
-      let covText = Number(item.coverage_area).toFixed(1);
-      let sqftText = Number(item.quantity_sqft).toFixed(0);
-      let rateSqftText = formatCurrency(item.rate_per_sqft);
-      let qtyUnitText = Number(item.quantity_boxes).toFixed(0);
-      let rateUnitText = formatCurrency(item.rate_per_box);
-
-      if (pType === 'sqft') {
-        covText = '-';
-        qtyUnitText = '-';
-        rateUnitText = '-';
-      } else if (['bags', 'pieces', 'nos'].includes(pType)) {
-        covText = '-';
-        sqftText = '-';
-        rateSqftText = '-';
-        const suffix = pType === 'bags' ? 'Bags' : pType === 'pieces' ? 'Pcs' : 'Nos';
-        qtyUnitText = `${Number(item.quantity_boxes).toFixed(0)} ${suffix}`;
-      }
-
-      const descText = isEncrypted
-        ? (encryptedMap.get((item.description || '').trim()) || `${item.description}-AMA`)
-        : item.description;
-
-      doc.rect(30, currentY, 535, 16).stroke(tableBorder);
-      doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
-
-      if (isEncrypted) {
-        doc.text(String(item.sl_no), colX[0], currentY + 4, { width: colW[0], align: 'center' });
-        doc.text(descText, colX[1], currentY + 4, { width: colW[1], ellipsis: true });
-        doc.text(item.size, colX[2], currentY + 4, { width: colW[2], align: 'center' });
-        doc.text(covText, colX[3], currentY + 4, { width: colW[3], align: 'right' });
-        doc.text(sqftText, colX[4], currentY + 4, { width: colW[4], align: 'right' });
-        doc.text(rateSqftText, colX[5], currentY + 4, { width: colW[5], align: 'right' });
-        doc.text(qtyUnitText, colX[6], currentY + 4, { width: colW[6], align: 'right' });
-        doc.text(rateUnitText, colX[7], currentY + 4, { width: colW[7], align: 'right' });
-        doc.text(formatCurrency(item.total_amount), colX[8], currentY + 4, { width: colW[8], align: 'right' });
-      } else {
-        doc.text(String(item.sl_no), colX[0], currentY + 4, { width: colW[0], align: 'center' });
-        doc.text(descText, colX[1], currentY + 4, { width: colW[1], ellipsis: true });
-        doc.text(item.brand || '-', colX[2], currentY + 4, { width: colW[2], ellipsis: true });
-        doc.text(item.size, colX[3], currentY + 4, { width: colW[3], align: 'center' });
-        doc.text(covText, colX[4], currentY + 4, { width: colW[4], align: 'right' });
-        doc.text(sqftText, colX[5], currentY + 4, { width: colW[5], align: 'right' });
-        doc.text(rateSqftText, colX[6], currentY + 4, { width: colW[6], align: 'right' });
-        doc.text(qtyUnitText, colX[7], currentY + 4, { width: colW[7], align: 'right' });
-        doc.text(rateUnitText, colX[8], currentY + 4, { width: colW[8], align: 'right' });
-        doc.text(formatCurrency(item.total_amount), colX[9], currentY + 4, { width: colW[9], align: 'right' });
-      }
-
+      // Area Header Bar
+      doc.rect(30, currentY, 535, 16).fillAndStroke('#E8EEF5', tableBorder);
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(primaryColor);
+      doc.text(`AREA: ${area.area_name.toUpperCase()}`, 38, currentY + 4);
       currentY += 16;
+
+      for (const item of area.items) {
+        if (currentY > 730) {
+          doc.addPage();
+          currentY = 40;
+          drawTableHeader(currentY);
+          currentY += 20;
+        }
+
+        const pType = (item.product_type || 'box').toLowerCase();
+        let covText = Number(item.coverage_area).toFixed(1);
+        let sqftText = Number(item.quantity_sqft).toFixed(0);
+        let rateSqftText = formatCurrency(item.rate_per_sqft);
+        let qtyUnitText = Number(item.quantity_boxes).toFixed(0);
+        let rateUnitText = formatCurrency(item.rate_per_box);
+
+        if (pType === 'sqft') {
+          covText = '-';
+          qtyUnitText = '-';
+          rateUnitText = '-';
+        } else if (['bags', 'pieces', 'nos'].includes(pType)) {
+          covText = '-';
+          sqftText = '-';
+          rateSqftText = '-';
+          const suffix = pType === 'bags' ? 'Bags' : pType === 'pieces' ? 'Pcs' : 'Nos';
+          qtyUnitText = `${Number(item.quantity_boxes).toFixed(0)} ${suffix}`;
+        }
+
+        const descText = isEncrypted
+          ? (encryptedMap.get((item.description || '').trim()) || `${item.description}-AMA`)
+          : item.description;
+
+        doc.rect(30, currentY, 535, 16).stroke(tableBorder);
+        doc.fontSize(7.5).font('Helvetica').fillColor(textColor);
+
+        if (isEncrypted) {
+          doc.text(String(item.sl_no), colX[0], currentY + 4, { width: colW[0], align: 'center' });
+          doc.text(descText, colX[1], currentY + 4, { width: colW[1], ellipsis: true });
+          doc.text(item.size, colX[2], currentY + 4, { width: colW[2], align: 'center' });
+          doc.text(covText, colX[3], currentY + 4, { width: colW[3], align: 'right' });
+          doc.text(sqftText, colX[4], currentY + 4, { width: colW[4], align: 'right' });
+          doc.text(rateSqftText, colX[5], currentY + 4, { width: colW[5], align: 'right' });
+          doc.text(qtyUnitText, colX[6], currentY + 4, { width: colW[6], align: 'right' });
+          doc.text(rateUnitText, colX[7], currentY + 4, { width: colW[7], align: 'right' });
+          doc.text(formatCurrency(item.total_amount), colX[8], currentY + 4, { width: colW[8], align: 'right' });
+        } else {
+          doc.text(String(item.sl_no), colX[0], currentY + 4, { width: colW[0], align: 'center' });
+          doc.text(descText, colX[1], currentY + 4, { width: colW[1], ellipsis: true });
+          doc.text(item.brand || '-', colX[2], currentY + 4, { width: colW[2], ellipsis: true });
+          doc.text(item.size, colX[3], currentY + 4, { width: colW[3], align: 'center' });
+          doc.text(covText, colX[4], currentY + 4, { width: colW[4], align: 'right' });
+          doc.text(sqftText, colX[5], currentY + 4, { width: colW[5], align: 'right' });
+          doc.text(rateSqftText, colX[6], currentY + 4, { width: colW[6], align: 'right' });
+          doc.text(qtyUnitText, colX[7], currentY + 4, { width: colW[7], align: 'right' });
+          doc.text(rateUnitText, colX[8], currentY + 4, { width: colW[8], align: 'right' });
+          doc.text(formatCurrency(item.total_amount), colX[9], currentY + 4, { width: colW[9], align: 'right' });
+        }
+
+        currentY += 16;
+      }
     }
   }
 

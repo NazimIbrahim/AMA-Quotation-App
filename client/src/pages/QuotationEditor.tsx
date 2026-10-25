@@ -845,6 +845,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         delivery_address: deliveryAddress,
         site_location: siteLocation,
         project_name: projectName,
+        quotation_type: 'tiles',
         quotation_date: quotationDate,
         status: status,
         tax_type: taxType,

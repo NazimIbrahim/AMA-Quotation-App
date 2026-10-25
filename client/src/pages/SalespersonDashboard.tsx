@@ -32,7 +32,7 @@ import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
 interface Props {
   onSelectQuotation: (id: number) => void;
-  onEditQuotation: (id: number) => void;
+  onEditQuotation: (id: number, type?: 'tiles' | 'sanitary') => void;
   onCreateQuotation: () => void;
 }
 
@@ -741,7 +741,18 @@ export const SalespersonDashboard: React.FC<Props> = ({
                     className="hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     <td className="py-2.5 px-3 font-mono font-semibold text-[#0D1B2A] whitespace-nowrap align-middle">
-                      {q.quotation_number}
+                      <div className="flex items-center space-x-1.5">
+                        <span>{q.quotation_number}</span>
+                        {q.quotation_type === 'sanitary' ? (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-100 text-teal-800 border border-teal-300 font-sans">
+                            🚿 Sanitary
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-300 font-sans">
+                            🧱 Tile
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap align-middle">
                       {new Date(q.quotation_date).toLocaleDateString('en-GB')}
@@ -827,7 +838,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
                         {/* Edit Quotation */}
                         <button
                           type="button"
-                          onClick={() => onEditQuotation(q.id)}
+                          onClick={() => onEditQuotation(q.id, q.quotation_type || 'tiles')}
                           title="Edit Quotation"
                           className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/60 transition-colors"
                         >

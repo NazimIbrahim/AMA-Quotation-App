@@ -26,8 +26,8 @@ import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
 interface Props {
   onSelectQuotation: (id: number) => void;
-  onEditQuotation: (id: number) => void;
-  onCreateQuotation: () => void;
+  onEditQuotation: (id: number, type?: 'tiles' | 'sanitary') => void;
+  onCreateQuotation: (type?: 'tiles' | 'sanitary') => void;
 }
 
 export const QuotationList: React.FC<Props> = ({
@@ -51,6 +51,7 @@ export const QuotationList: React.FC<Props> = ({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [quotationTypeFilter, setQuotationTypeFilter] = useState<'all' | 'tiles' | 'sanitary'>('all');
   const [selectedSalesPersonId, setSelectedSalesPersonId] = useState<number | null>(null);
   const [salesTeam, setSalesTeam] = useState<User[]>([]);
   const [page, setPage] = useState(1);
@@ -99,6 +100,7 @@ export const QuotationList: React.FC<Props> = ({
       });
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (status) params.append('status', status);
+      if (quotationTypeFilter !== 'all') params.append('quotation_type', quotationTypeFilter);
       if (selectedSalesPersonId) params.append('sales_person_id', String(selectedSalesPersonId));
 
       const res = await fetchApi<any>(`/api/quotations?${params.toString()}`);
@@ -114,7 +116,7 @@ export const QuotationList: React.FC<Props> = ({
 
   useEffect(() => {
     loadQuotations();
-  }, [page, debouncedSearch, status, selectedSalesPersonId]);
+  }, [page, debouncedSearch, status, selectedSalesPersonId, quotationTypeFilter]);
 
   // Real-time synchronization
   useEffect(() => {
@@ -169,6 +171,7 @@ export const QuotationList: React.FC<Props> = ({
       const params = new URLSearchParams({ format });
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (status) params.append('status', status);
+      if (quotationTypeFilter !== 'all') params.append('quotation_type', quotationTypeFilter);
       if (selectedSalesPersonId) params.append('sales_person_id', String(selectedSalesPersonId));
 
       const downloadUrl = `${serverUrl}/api/reports/quotations/export?${params.toString()}`;
@@ -267,7 +270,7 @@ export const QuotationList: React.FC<Props> = ({
             </div>
           </div>
 
-          <button onClick={onCreateQuotation} className="btn btn-primary btn-sm">
+          <button onClick={() => onCreateQuotation()} className="btn btn-primary btn-sm">
             <Plus size={14} />
             <span>New Quotation</span>
           </button>
@@ -343,27 +346,77 @@ export const QuotationList: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Status Chips */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5">
-          {statusChips.map((chip) => {
-            const isSelected = status === chip.id;
-            return (
-              <button
-                key={chip.id}
-                onClick={() => {
-                  setStatus(chip.id);
-                  setPage(1);
-                }}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {chip.label}
-              </button>
-            );
-          })}
+        {/* Type & Status Filter Controls */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
+          {/* Category / Type Tabs */}
+          <div className="flex items-center space-x-1.5 shrink-0">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Type:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setQuotationTypeFilter('all');
+                setPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                quotationTypeFilter === 'all'
+                  ? 'bg-[#1B263B] text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              All Types
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuotationTypeFilter('tiles');
+                setPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-all cursor-pointer ${
+                quotationTypeFilter === 'tiles'
+                  ? 'bg-blue-700 text-white shadow-xs'
+                  : 'bg-blue-50 text-blue-800 border border-blue-200/60 hover:bg-blue-100'
+              }`}
+            >
+              <span>🧱 Tile Quotations</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuotationTypeFilter('sanitary');
+                setPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-all cursor-pointer ${
+                quotationTypeFilter === 'sanitary'
+                  ? 'bg-teal-700 text-white shadow-xs'
+                  : 'bg-teal-50 text-teal-800 border border-teal-200/60 hover:bg-teal-100'
+              }`}
+            >
+              <span>🚿 Sanitary Quotations</span>
+            </button>
+          </div>
+
+          {/* Status Chips */}
+          <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5">
+            {statusChips.map((chip) => {
+              const isSelected = status === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  onClick={() => {
+                    setStatus(chip.id);
+                    setPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
+                    isSelected
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -406,7 +459,18 @@ export const QuotationList: React.FC<Props> = ({
                     className="hover:bg-white/80 transition-colors cursor-pointer border-b border-[#E0E1DD]/40"
                   >
                     <td className="py-3 px-3.5 font-mono font-bold text-[#0D1B2A] whitespace-nowrap align-middle">
-                      {q.quotation_number}
+                      <div className="flex items-center space-x-1.5">
+                        <span>{q.quotation_number}</span>
+                        {q.quotation_type === 'sanitary' ? (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-100 text-teal-800 border border-teal-300 font-sans tracking-wide">
+                            🚿 Sanitary
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-300 font-sans tracking-wide">
+                            🧱 Tile
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-3 text-slate-600 whitespace-nowrap align-middle font-mono text-xs">
                       {new Date(q.quotation_date).toLocaleDateString('en-GB')}
@@ -486,7 +550,7 @@ export const QuotationList: React.FC<Props> = ({
                         {/* Edit Quotation */}
                         <button
                           type="button"
-                          onClick={() => onEditQuotation(q.id)}
+                          onClick={() => onEditQuotation(q.id, q.quotation_type || 'tiles')}
                           title="Edit Quotation"
                           className="p-1.5 rounded-md text-[#415A77] hover:text-[#0D1B2A] hover:bg-white/80 border border-transparent hover:border-slate-200 transition-colors"
                         >

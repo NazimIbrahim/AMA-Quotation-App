@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Receipt,
   ShieldAlert,
+  X,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { buildEncryptedProductMap } from '../utils/encryptedCode';
@@ -22,7 +23,7 @@ import { isCeraBrand } from '../utils/discountCalculator';
 interface Props {
   quotationId: number;
   onBack: () => void;
-  onEdit: (id: number) => void;
+  onEdit: (id: number, type?: 'tiles' | 'sanitary') => void;
   onRecordPayment: (quotationId: number) => void;
 }
 
@@ -50,6 +51,7 @@ export const QuotationDetail: React.FC<Props> = ({
     quotationId?: number;
     initialEncrypted?: boolean;
   } | null>(null);
+  const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
 
   const loadDetail = async () => {
     try {
@@ -156,7 +158,14 @@ export const QuotationDetail: React.FC<Props> = ({
               <h1 className="text-lg font-bold font-mono text-slate-900 tracking-tight">
                 {quotation.quotation_number}
               </h1>
-              <span className={`badge badge-${quotation.status}`}>{quotation.status}</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                quotation.quotation_type === 'sanitary'
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'bg-blue-100 text-blue-900 border border-blue-300'
+              }`}>
+                {quotation.quotation_type === 'sanitary' ? '🚿 Sanitary' : '🧱 Tile'}
+              </span>
+              <span className={`badge badge-${quotation.status}`}>{quotation.status ? quotation.status.replace('_', ' ') : ''}</span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               Issued on {new Date(quotation.quotation_date).toLocaleDateString('en-GB')} by{' '}
@@ -167,7 +176,7 @@ export const QuotationDetail: React.FC<Props> = ({
 
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => onEdit(quotation.id)}
+            onClick={() => onEdit(quotation.id, quotation.quotation_type || 'tiles')}
             className="btn btn-secondary btn-sm"
           >
             <Edit size={13} />
@@ -315,144 +324,228 @@ export const QuotationDetail: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Room-wise Items */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-          Itemized Areas & Tile Specifications
-        </h2>
-
-        {areas.map((area) => (
-          <div key={area.id} className="card overflow-hidden">
-            <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-bold text-xs text-slate-900 uppercase tracking-wide">
-              AREA: {area.area_name}
+      {/* Items Section (Sanitary vs Tiles) */}
+      {quotation.quotation_type === 'sanitary' ? (
+        <div className="card overflow-hidden">
+          <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 font-bold text-xs text-slate-900 uppercase tracking-wide flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span>Sanitary Ware Line Items</span>
             </div>
+            <span className="text-[11px] font-normal text-slate-500">
+              Total: {allQuotationItems.length} items ({allQuotationItems.reduce((acc, it) => acc + (it.quantity_boxes || 1), 0)} Nos)
+            </span>
+          </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50 text-[11px]">
-                    <th className="py-2 px-3 text-center w-8">Sl</th>
-                    <th className="py-2 px-3">Description</th>
-                    <th className="py-2 px-3">Brand</th>
-                    <th className="py-2 px-3">Size</th>
-                    <th className="py-2 px-2.5">Type</th>
-                    <th className="py-2 px-3 text-right">Cov/Box</th>
-                    <th className="py-2 px-3 text-right">Sqft</th>
-                    <th className="py-2 px-3 text-right">Rate/Sqft</th>
-                    <th className="py-2 px-3 text-right">Boxes/Qty</th>
-                    <th className="py-2 px-3 text-right">Rate/Unit</th>
-                    <th className="py-2 px-3 text-right">Total (₹)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {area.items && area.items.length > 0 ? (
-                    area.items.map((item) => {
-                      const pType = (item.product_type || 'box').toLowerCase();
-                      const badgeStyles: Record<string, { label: string; cls: string }> = {
-                        box: { label: 'Box', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-                        pieces: { label: 'Pcs', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
-                        sqft: { label: 'Sq.Ft', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-                        bags: { label: 'Bags', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-                        nos: { label: 'Nos', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
-                      };
-                      const badge = badgeStyles[pType] || badgeStyles['box'];
-
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="py-2 px-3 text-center text-slate-400 font-mono">
-                            {item.sl_no}
-                          </td>
-                          <td className="py-2 px-3 text-slate-900">
-                            <div className="font-semibold">{item.description}</div>
-                            <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center space-x-1">
-                              <span>Ref:</span>
-                              <span className="bg-amber-50 text-amber-800 font-semibold px-1 rounded border border-amber-200/60" title="Masked product code on Encrypted Export">
-                                {encryptedProductMap.get((item.description || '').trim()) || `${item.description}-AMA`}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-2 px-3 text-slate-600">{item.brand}</td>
-                          <td className="py-2 px-3 text-slate-600 font-mono">{item.size}</td>
-                          <td className="py-2 px-2.5">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${badge.cls}`}>
-                              {badge.label}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
-                            {pType === 'box' ? Number(item.coverage_area).toFixed(1) : '-'}
-                          </td>
-                          <td className="py-2 px-3 text-right font-medium tabular-nums">
-                            {pType === 'box' || pType === 'sqft' ? item.quantity_sqft : '-'}
-                          </td>
-                          <td className="py-2 px-3 text-right tabular-nums">
-                            {pType === 'box' || pType === 'sqft' ? (
-                              <div>
-                                <div>₹ {formatCurrency(item.rate_per_sqft)}</div>
-                                {Number(item.discount_percent || 0) > 0 ? (
-                                  <div className="text-[10px] text-emerald-700 font-medium">
-                                    (-{item.discount_percent}%) <span className="line-through text-slate-400">₹{formatCurrency(item.base_rate_per_sqft || item.rate_per_sqft)}</span>
-                                  </div>
-                                ) : isCeraBrand(item.brand) && Number(quotation.discount_amount || 0) > 0 ? (
-                                  <div className="text-[10px] text-amber-700 font-medium">CERA (0%)</div>
-                                ) : null}
-                              </div>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-right text-slate-700 font-semibold tabular-nums">
-                            {pType === 'sqft'
-                              ? '-'
-                              : `${item.quantity_boxes} ${
-                                  pType === 'bags'
-                                    ? 'Bags'
-                                    : pType === 'pieces'
-                                    ? 'Pcs'
-                                    : pType === 'nos'
-                                    ? 'Nos'
-                                    : 'Boxes'
-                                }`}
-                          </td>
-                          <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
-                            {pType === 'sqft' ? (
-                              '-'
-                            ) : (
-                              <div>
-                                <div>₹ {formatCurrency(item.rate_per_box)}</div>
-                                {Number(item.discount_percent || 0) > 0 ? (
-                                  <div className="text-[10px] text-emerald-700 font-medium">
-                                    (-{item.discount_percent}%) <span className="line-through text-slate-400">₹{formatCurrency(item.base_rate_per_box || item.rate_per_box)}</span>
-                                  </div>
-                                ) : isCeraBrand(item.brand) && Number(quotation.discount_amount || 0) > 0 ? (
-                                  <div className="text-[10px] text-amber-700 font-medium">CERA (0%)</div>
-                                ) : null}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums">
-                            <div>₹ {formatCurrency(item.total_amount)}</div>
-                            {Number(item.discount_percent || 0) > 0 && Number(item.discount_amount || 0) > 0 && (
-                              <div className="text-[10px] text-slate-400 line-through font-normal">
-                                ₹ {formatCurrency(Number(item.total_amount) + Number(item.discount_amount))}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={11} className="py-4 text-center text-slate-400">
-                        No line items recorded in this area.
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50 text-[11px]">
+                  <th className="py-2.5 px-3 text-center w-10">Sl</th>
+                  <th className="py-2.5 px-3 w-16 text-center">Image</th>
+                  <th className="py-2.5 px-3 w-32">Item Code</th>
+                  <th className="py-2.5 px-3 min-w-[200px]">Item Description</th>
+                  <th className="py-2.5 px-3 text-right w-24">Qty (Nos)</th>
+                  <th className="py-2.5 px-3 text-right w-28">MRP (₹)</th>
+                  <th className="py-2.5 px-3 text-right w-24">Discount %</th>
+                  <th className="py-2.5 px-3 text-right w-28">Discounted Price</th>
+                  <th className="py-2.5 px-3 text-right w-32 font-bold">Total (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {allQuotationItems.length > 0 ? (
+                  allQuotationItems.map((item, idx) => (
+                    <tr key={item.id || idx} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono">
+                        {item.sl_no || idx + 1}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        {item.item_image ? (
+                          <img
+                            src={item.item_image}
+                            alt={item.item_code}
+                            onClick={() => setEnlargedImage(item.item_image || null)}
+                            className="w-10 h-10 object-cover rounded-lg border border-slate-200 shadow-2xs mx-auto cursor-pointer hover:opacity-90"
+                            title="Click to view full image"
+                          />
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                        {item.item_code || item.size || '-'}
+                      </td>
+                      <td className="py-2.5 px-3 font-medium text-slate-800">
+                        {item.description}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                        {item.quantity_boxes || 1} Nos
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-slate-600 font-mono tabular-nums">
+                        ₹ {formatCurrency(item.mrp_price || item.base_rate_per_box || item.rate_per_box || 0)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono text-amber-800 font-semibold tabular-nums">
+                        {Number(item.discount_percent || 0) > 0 ? `${item.discount_percent}%` : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 tabular-nums">
+                        ₹ {formatCurrency(item.rate_per_box)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-950 tabular-nums">
+                        ₹ {formatCurrency(item.total_amount)}
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={9} className="py-6 text-center text-slate-400">
+                      No sanitary items recorded in this quotation.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        /* Room-wise Items */
+        <div className="space-y-3">
+          <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            Itemized Areas & Tile Specifications
+          </h2>
+
+          {areas.map((area) => (
+            <div key={area.id} className="card overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-bold text-xs text-slate-900 uppercase tracking-wide">
+                AREA: {area.area_name}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50 text-[11px]">
+                      <th className="py-2 px-3 text-center w-8">Sl</th>
+                      <th className="py-2 px-3">Description</th>
+                      <th className="py-2 px-3">Brand</th>
+                      <th className="py-2 px-3">Size</th>
+                      <th className="py-2 px-2.5">Type</th>
+                      <th className="py-2 px-3 text-right">Cov/Box</th>
+                      <th className="py-2 px-3 text-right">Sqft</th>
+                      <th className="py-2 px-3 text-right">Rate/Sqft</th>
+                      <th className="py-2 px-3 text-right">Boxes/Qty</th>
+                      <th className="py-2 px-3 text-right">Rate/Unit</th>
+                      <th className="py-2 px-3 text-right">Total (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {area.items && area.items.length > 0 ? (
+                      area.items.map((item) => {
+                        const pType = (item.product_type || 'box').toLowerCase();
+                        const badgeStyles: Record<string, { label: string; cls: string }> = {
+                          box: { label: 'Box', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                          pieces: { label: 'Pcs', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+                          sqft: { label: 'Sq.Ft', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                          bags: { label: 'Bags', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                          nos: { label: 'Nos', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
+                        };
+                        const badge = badgeStyles[pType] || badgeStyles['box'];
+
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="py-2 px-3 text-center text-slate-400 font-mono">
+                              {item.sl_no}
+                            </td>
+                            <td className="py-2 px-3 text-slate-900">
+                              <div className="font-semibold">{item.description}</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center space-x-1">
+                                <span>Ref:</span>
+                                <span className="bg-amber-50 text-amber-800 font-semibold px-1 rounded border border-amber-200/60" title="Masked product code on Encrypted Export">
+                                  {encryptedProductMap.get((item.description || '').trim()) || `${item.description}-AMA`}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 text-slate-600">{item.brand}</td>
+                            <td className="py-2 px-3 text-slate-600 font-mono">{item.size}</td>
+                            <td className="py-2 px-2.5">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${badge.cls}`}>
+                                {badge.label}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
+                              {pType === 'box' ? Number(item.coverage_area).toFixed(1) : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-medium tabular-nums">
+                              {pType === 'box' || pType === 'sqft' ? item.quantity_sqft : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums">
+                              {pType === 'box' || pType === 'sqft' ? (
+                                <div>
+                                  <div>₹ {formatCurrency(item.rate_per_sqft)}</div>
+                                  {Number(item.discount_percent || 0) > 0 ? (
+                                    <div className="text-[10px] text-emerald-700 font-medium">
+                                      (-{item.discount_percent}%) <span className="line-through text-slate-400">₹{formatCurrency(item.base_rate_per_sqft || item.rate_per_sqft)}</span>
+                                    </div>
+                                  ) : isCeraBrand(item.brand) && Number(quotation.discount_amount || 0) > 0 ? (
+                                    <div className="text-[10px] text-amber-700 font-medium">CERA (0%)</div>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-700 font-semibold tabular-nums">
+                              {pType === 'sqft'
+                                ? '-'
+                                : `${item.quantity_boxes} ${
+                                    pType === 'bags'
+                                      ? 'Bags'
+                                      : pType === 'pieces'
+                                      ? 'Pcs'
+                                      : pType === 'nos'
+                                      ? 'Nos'
+                                      : 'Boxes'
+                                  }`}
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-600 tabular-nums">
+                              {pType === 'sqft' ? (
+                                '-'
+                              ) : (
+                                <div>
+                                  <div>₹ {formatCurrency(item.rate_per_box)}</div>
+                                  {Number(item.discount_percent || 0) > 0 ? (
+                                    <div className="text-[10px] text-emerald-700 font-medium">
+                                      (-{item.discount_percent}%) <span className="line-through text-slate-400">₹{formatCurrency(item.base_rate_per_box || item.rate_per_box)}</span>
+                                    </div>
+                                  ) : isCeraBrand(item.brand) && Number(quotation.discount_amount || 0) > 0 ? (
+                                    <div className="text-[10px] text-amber-700 font-medium">CERA (0%)</div>
+                                  ) : null}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums">
+                              <div>₹ {formatCurrency(item.total_amount)}</div>
+                              {Number(item.discount_percent || 0) > 0 && Number(item.discount_amount || 0) > 0 && (
+                                <div className="text-[10px] text-slate-400 line-through font-normal">
+                                  ₹ {formatCurrency(Number(item.total_amount) + Number(item.discount_amount))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={11} className="py-4 text-center text-slate-400">
+                          No line items recorded in this area.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Payment History */}
       <div className="card p-4">
@@ -538,6 +631,32 @@ export const QuotationDetail: React.FC<Props> = ({
           quotationId={previewPdf.quotationId}
           initialEncrypted={previewPdf.initialEncrypted}
         />
+      )}
+
+      {/* Enlarged Image Lightbox Modal */}
+      {enlargedImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setEnlargedImage(null)}
+        >
+          <div
+            className="relative bg-white rounded-2xl p-2 max-w-lg max-h-[80vh] overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={enlargedImage}
+              alt="Sanitary Product"
+              className="max-w-full max-h-[75vh] object-contain rounded-xl"
+            />
+            <button
+              type="button"
+              onClick={() => setEnlargedImage(null)}
+              className="absolute top-4 right-4 bg-black/60 hover:bg-black text-white p-1.5 rounded-full transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

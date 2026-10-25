@@ -79,6 +79,7 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
 
     const search = (req.query.search as string || '').trim();
     const status = (req.query.status as string || '').trim();
+    const quotationType = (req.query.quotation_type as string || '').trim().toLowerCase();
     const salesPersonId = req.query.sales_person_id ? parseInt(req.query.sales_person_id as string, 10) : null;
     const startDate = req.query.start_date as string;
     const endDate = req.query.end_date as string;
@@ -86,6 +87,11 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
     const whereClauses: string[] = ['1=1'];
     const params: any[] = [];
     let idx = 1;
+
+    if (quotationType === 'tiles' || quotationType === 'sanitary') {
+      whereClauses.push(`q.quotation_type = $${idx++}`);
+      params.push(quotationType);
+    }
 
     // Role-based scoping: Salespersons see quotations where they are primary or assisted
     if (req.user!.role === 'salesperson') {
@@ -178,6 +184,7 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
         q.assisted_sales_share_percent,
         q.assisted_sales_share_amount,
         q.project_name,
+        q.quotation_type,
         q.status,
         q.gross_total,
         q.discount_amount,
@@ -295,14 +302,15 @@ quotationsRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Helper: Calculate Totals on Server with CERA-excluded direct item rate discount
-function calculateTotals(items: any[], discountPercent: number, discountAmount: number, taxType: string) {
-  return calculateQuotationDiscountAndTotals(items, discountAmount, discountPercent, taxType);
+function calculateTotals(items: any[], discountPercent: number, discountAmount: number, taxType: string, quotationType?: string) {
+  return calculateQuotationDiscountAndTotals(items, discountAmount, discountPercent, taxType, quotationType);
 }
 
 // 3. Create Quotation (Transactional)
 quotationsRouter.post('/', async (req: Request, res: Response) => {
   try {
     const {
+      quotation_type = 'tiles',
       quotation_date,
       customer_id,
       customer_name,
@@ -331,6 +339,8 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    const qType = quotation_type === 'sanitary' ? 'sanitary' : 'tiles';
+
     const allItems: any[] = [];
     areas.forEach((a: any) => {
       if (Array.isArray(a.items)) {
@@ -342,7 +352,8 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
       allItems,
       parseFloat(discount_percent) || 0,
       parseFloat(discount_amount) || 0,
-      tax_type
+      tax_type,
+      qType
     );
 
     const initialStatus = reqStatus && ['draft', 'in_review', 'approved', 'closed'].includes(String(reqStatus).toLowerCase())
@@ -388,7 +399,7 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
           sales_person_name, assisted_sales_person_id, assisted_sales_person_name,
           split_share_type, primary_sales_share_percent, primary_sales_share_amount,
           assisted_sales_share_percent, assisted_sales_share_amount,
-          project_name, status, approved_by_id, approved_at, gross_total, discount_percent,
+          project_name, quotation_type, status, approved_by_id, approved_at, gross_total, discount_percent,
           discount_amount, taxable_amount, tax_type, cgst_rate, cgst_amount,
           sgst_rate, sgst_amount, igst_rate, igst_amount, round_off, net_total,
           special_notes, version
@@ -398,10 +409,10 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
           $10, $11, $12,
           $13, $14, $15,
           $16, $17,
-          $18, $19, $20, $21, $22, $23,
-          $24, $25, $26, $27, $28,
-          $29, $30, $31, $32, $33, $34,
-          $35, 1
+          $18, $19, $20, $21, $22, $23, $24,
+          $25, $26, $27, $28, $29,
+          $30, $31, $32, $33, $34, $35,
+          $36, 1
         ) RETURNING *`,
         [
           qNumber,
@@ -422,6 +433,7 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
           assistedPct,
           assistedAmt,
           project_name?.trim() || '',
+          qType,
           initialStatus,
           isApprovedOrClosed ? req.user!.id : null,
           isApprovedOrClosed ? new Date() : null,
@@ -450,21 +462,31 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
         const areaRes = await client.query(
           `INSERT INTO quotation_areas (quotation_id, area_name, display_order)
            VALUES ($1, $2, $3) RETURNING id`,
-          [newQ.id, area.area_name || `Area ${i + 1}`, i + 1]
+          [newQ.id, area.area_name || (qType === 'sanitary' ? 'Sanitary Ware' : `Area ${i + 1}`), i + 1]
         );
         const areaId = areaRes.rows[0].id;
 
         if (Array.isArray(area.items)) {
           for (const item of area.items) {
-            const pType = String(item.product_type || 'box').toLowerCase();
+            let pType = String(item.product_type || (qType === 'sanitary' ? 'nos' : 'box')).toLowerCase();
             const cov = parseFloat(item.coverage_area) || 0;
             let sqft = parseFloat(item.quantity_sqft) || 0;
             let rSqft = parseFloat(item.rate_per_sqft) || 0;
-            let boxes = parseFloat(item.quantity_boxes) || 0;
-            let rBox = parseFloat(item.rate_per_box) || 0;
+            let boxes = parseFloat(item.quantity !== undefined ? item.quantity : item.quantity_boxes) || 0;
+            let rBox = parseFloat(item.discounted_price !== undefined ? item.discounted_price : item.rate_per_box) || 0;
             let total = 0;
 
-            if (pType === 'sqft') {
+            if (qType === 'sanitary') {
+              pType = 'nos';
+              const mrp = parseFloat(item.mrp_price !== undefined ? item.mrp_price : item.base_rate_per_box) || 0;
+              const discPct = parseFloat(item.discount_percent) || 0;
+              if (rBox <= 0 && mrp > 0) {
+                rBox = parseFloat((mrp * (1 - discPct / 100)).toFixed(2));
+              }
+              total = parseFloat((boxes * rBox).toFixed(2));
+              sqft = 0;
+              rSqft = 0;
+            } else if (pType === 'sqft') {
               total = parseFloat((sqft * rSqft).toFixed(2));
               boxes = 0;
               rBox = 0;
@@ -480,23 +502,27 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
             }
 
             const baseSqft = parseFloat(item.base_rate_per_sqft) || rSqft;
-            const baseBox = parseFloat(item.base_rate_per_box) || rBox;
+            const baseBox = parseFloat(item.mrp_price !== undefined ? item.mrp_price : item.base_rate_per_box) || rBox;
             const discPct = parseFloat(item.discount_percent) || 0;
-            const discAmt = parseFloat(item.discount_amount) || 0;
+            const discAmt = parseFloat(item.discount_amount) || parseFloat((boxes * baseBox - total).toFixed(2));
+            const itemCode = item.item_code || (qType === 'sanitary' ? (item.size || null) : null);
+            const itemImage = item.item_image || null;
+            const mrpPrice = parseFloat(item.mrp_price) || (pType === 'nos' ? baseBox : 0);
 
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
                 product_type, coverage_area, quantity_sqft, base_rate_per_sqft, rate_per_sqft,
-                quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount,
+                item_code, item_image, mrp_price
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
               [
                 newQ.id,
                 areaId,
                 itemSlNo++,
-                item.description || 'Vitrified Tile',
-                item.size || 'Standard',
-                item.brand || 'AMA Collection',
+                item.item_description || item.description || (qType === 'sanitary' ? 'Sanitary Item' : 'Vitrified Tile'),
+                item.size || (qType === 'sanitary' ? (itemCode || 'Nos') : 'Standard'),
+                item.brand || (qType === 'sanitary' ? 'Sanitary' : 'AMA Collection'),
                 pType,
                 cov,
                 sqft,
@@ -508,6 +534,9 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
                 discPct,
                 discAmt,
                 total,
+                itemCode,
+                itemImage,
+                mrpPrice,
               ]
             );
           }
@@ -541,6 +570,7 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string, 10);
     const {
       version,
+      quotation_type,
       quotation_date,
       customer_id,
       customer_name,
@@ -569,23 +599,9 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const allItems: any[] = [];
-    areas.forEach((a: any) => {
-      if (Array.isArray(a.items)) {
-        a.items.forEach((it: any) => allItems.push(it));
-      }
-    });
-
-    const totals = calculateTotals(
-      allItems,
-      parseFloat(discount_percent) || 0,
-      parseFloat(discount_amount) || 0,
-      tax_type
-    );
-
     const updated = await withTransaction(async (client) => {
       // Optimistic concurrency check
-      const current = await client.query('SELECT version, status FROM quotations WHERE id = $1', [id]);
+      const current = await client.query('SELECT version, status, quotation_type FROM quotations WHERE id = $1', [id]);
       if (current.rows.length === 0) {
         throw new Error('Quotation not found');
       }
@@ -597,6 +613,23 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
         conflictErr.statusCode = 409;
         throw conflictErr;
       }
+
+      const qType = (quotation_type || current.rows[0].quotation_type || 'tiles') === 'sanitary' ? 'sanitary' : 'tiles';
+
+      const allItems: any[] = [];
+      areas.forEach((a: any) => {
+        if (Array.isArray(a.items)) {
+          a.items.forEach((it: any) => allItems.push(it));
+        }
+      });
+
+      const totals = calculateTotals(
+        allItems,
+        parseFloat(discount_percent) || 0,
+        parseFloat(discount_amount) || 0,
+        tax_type,
+        qType
+      );
 
       // Compute Sales Split Shares
       let finalAssistedId: number | null = null;
@@ -643,33 +676,34 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
              delivery_address = $6,
              site_location = $7,
              project_name = $8,
-             assisted_sales_person_id = $9,
-             assisted_sales_person_name = $10,
-             split_share_type = $11,
-             primary_sales_share_percent = $12,
-             primary_sales_share_amount = $13,
-             assisted_sales_share_percent = $14,
-             assisted_sales_share_amount = $15,
-             status = $16,
-             approved_by_id = CASE WHEN $17 THEN COALESCE(approved_by_id, $18) ELSE approved_by_id END,
-             approved_at = CASE WHEN $17 THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
-             gross_total = $19,
-             discount_percent = $20,
-             discount_amount = $21,
-             taxable_amount = $22,
-             tax_type = $23,
-             cgst_rate = $24,
-             cgst_amount = $25,
-             sgst_rate = $26,
-             sgst_amount = $27,
-             igst_rate = $28,
-             igst_amount = $29,
-             round_off = $30,
-             net_total = $31,
-             special_notes = $32,
-             version = $33,
+             quotation_type = $9,
+             assisted_sales_person_id = $10,
+             assisted_sales_person_name = $11,
+             split_share_type = $12,
+             primary_sales_share_percent = $13,
+             primary_sales_share_amount = $14,
+             assisted_sales_share_percent = $15,
+             assisted_sales_share_amount = $16,
+             status = $17,
+             approved_by_id = CASE WHEN $18 THEN COALESCE(approved_by_id, $19) ELSE approved_by_id END,
+             approved_at = CASE WHEN $18 THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
+             gross_total = $20,
+             discount_percent = $21,
+             discount_amount = $22,
+             taxable_amount = $23,
+             tax_type = $24,
+             cgst_rate = $25,
+             cgst_amount = $26,
+             sgst_rate = $27,
+             sgst_amount = $28,
+             igst_rate = $29,
+             igst_amount = $30,
+             round_off = $31,
+             net_total = $32,
+             special_notes = $33,
+             version = $34,
              updated_at = NOW()
-         WHERE id = $34 AND version = $35
+         WHERE id = $35 AND version = $36
          RETURNING *`,
         [
           quotation_date,
@@ -680,6 +714,7 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
           delivery_address || '',
           site_location || '',
           project_name || '',
+          qType,
           finalAssistedId,
           finalAssistedName,
           finalSplitType,
@@ -719,21 +754,31 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
         const areaRes = await client.query(
           `INSERT INTO quotation_areas (quotation_id, area_name, display_order)
            VALUES ($1, $2, $3) RETURNING id`,
-          [id, area.area_name || `Area ${i + 1}`, i + 1]
+          [id, area.area_name || (qType === 'sanitary' ? 'Sanitary Ware' : `Area ${i + 1}`), i + 1]
         );
         const areaId = areaRes.rows[0].id;
 
         if (Array.isArray(area.items)) {
           for (const item of area.items) {
-            const pType = String(item.product_type || 'box').toLowerCase();
+            let pType = String(item.product_type || (qType === 'sanitary' ? 'nos' : 'box')).toLowerCase();
             const cov = parseFloat(item.coverage_area) || 0;
             let sqft = parseFloat(item.quantity_sqft) || 0;
             let rSqft = parseFloat(item.rate_per_sqft) || 0;
-            let boxes = parseFloat(item.quantity_boxes) || 0;
-            let rBox = parseFloat(item.rate_per_box) || 0;
+            let boxes = parseFloat(item.quantity !== undefined ? item.quantity : item.quantity_boxes) || 0;
+            let rBox = parseFloat(item.discounted_price !== undefined ? item.discounted_price : item.rate_per_box) || 0;
             let total = 0;
 
-            if (pType === 'sqft') {
+            if (qType === 'sanitary') {
+              pType = 'nos';
+              const mrp = parseFloat(item.mrp_price !== undefined ? item.mrp_price : item.base_rate_per_box) || 0;
+              const discPct = parseFloat(item.discount_percent) || 0;
+              if (rBox <= 0 && mrp > 0) {
+                rBox = parseFloat((mrp * (1 - discPct / 100)).toFixed(2));
+              }
+              total = parseFloat((boxes * rBox).toFixed(2));
+              sqft = 0;
+              rSqft = 0;
+            } else if (pType === 'sqft') {
               total = parseFloat((sqft * rSqft).toFixed(2));
               boxes = 0;
               rBox = 0;
@@ -749,23 +794,27 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
             }
 
             const baseSqft = parseFloat(item.base_rate_per_sqft) || rSqft;
-            const baseBox = parseFloat(item.base_rate_per_box) || rBox;
+            const baseBox = parseFloat(item.mrp_price !== undefined ? item.mrp_price : item.base_rate_per_box) || rBox;
             const discPct = parseFloat(item.discount_percent) || 0;
-            const discAmt = parseFloat(item.discount_amount) || 0;
+            const discAmt = parseFloat(item.discount_amount) || parseFloat((boxes * baseBox - total).toFixed(2));
+            const itemCode = item.item_code || (qType === 'sanitary' ? (item.size || null) : null);
+            const itemImage = item.item_image || null;
+            const mrpPrice = parseFloat(item.mrp_price) || (pType === 'nos' ? baseBox : 0);
 
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
                 product_type, coverage_area, quantity_sqft, base_rate_per_sqft, rate_per_sqft,
-                quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount,
+                item_code, item_image, mrp_price
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
               [
                 id,
                 areaId,
                 itemSlNo++,
-                item.description || 'Tile Item',
-                item.size || '',
-                item.brand || '',
+                item.item_description || item.description || (qType === 'sanitary' ? 'Sanitary Item' : 'Tile Item'),
+                item.size || (qType === 'sanitary' ? (itemCode || 'Nos') : ''),
+                item.brand || (qType === 'sanitary' ? 'Sanitary' : ''),
                 pType,
                 cov,
                 sqft,
@@ -777,6 +826,9 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
                 discPct,
                 discAmt,
                 total,
+                itemCode,
+                itemImage,
+                mrpPrice,
               ]
             );
           }

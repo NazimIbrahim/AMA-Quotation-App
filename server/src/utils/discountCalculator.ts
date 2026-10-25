@@ -40,8 +40,82 @@ export function calculateQuotationDiscountAndTotals(
   items: any[],
   discountAmountInput: number,
   discountPercentInput: number,
-  taxType: string = 'cgst_sgst'
+  taxType: string = 'cgst_sgst',
+  quotationType?: string
 ): DiscountCalculationResult {
+  if (quotationType === 'sanitary') {
+    let totalBaseQuote = 0;
+    let discountedGrossTotal = 0;
+
+    for (const it of items) {
+      const qty = parseFloat(it.quantity !== undefined ? it.quantity : it.quantity_boxes) || 0;
+      const mrp = parseFloat(it.mrp_price !== undefined ? it.mrp_price : it.base_rate_per_box) || 0;
+      let discPct = parseFloat(it.discount_percent) || 0;
+      let discPrice = parseFloat(it.discounted_price !== undefined ? it.discounted_price : it.rate_per_box);
+      
+      if (isNaN(discPrice) || discPrice <= 0) {
+        discPrice = mrp > 0 ? parseFloat((mrp * (1 - discPct / 100)).toFixed(2)) : 0;
+      } else if (mrp > 0 && discPct === 0 && discPrice < mrp) {
+        discPct = parseFloat((((mrp - discPrice) / mrp) * 100).toFixed(2));
+      }
+
+      const itemTotal = parseFloat((qty * discPrice).toFixed(2));
+      const itemBase = parseFloat((qty * mrp).toFixed(2));
+
+      it.mrp_price = mrp;
+      it.base_rate_per_box = mrp;
+      it.rate_per_box = discPrice;
+      it.discount_percent = discPct;
+      it.discount_amount = parseFloat((itemBase - itemTotal).toFixed(2));
+      it.quantity_boxes = qty;
+      it.total_amount = itemTotal;
+      it._itemBaseTotal = itemBase;
+
+      totalBaseQuote += itemBase;
+      discountedGrossTotal += itemTotal;
+    }
+
+    totalBaseQuote = parseFloat(totalBaseQuote.toFixed(2));
+    discountedGrossTotal = parseFloat(discountedGrossTotal.toFixed(2));
+    const discountAmount = parseFloat((totalBaseQuote - discountedGrossTotal).toFixed(2));
+    const discountPercent = totalBaseQuote > 0 ? parseFloat(((discountAmount / totalBaseQuote) * 100).toFixed(2)) : 0;
+
+    const taxableAmount = discountedGrossTotal;
+    let cgstRate = 0, cgstAmount = 0, sgstRate = 0, sgstAmount = 0, igstRate = 0, igstAmount = 0;
+
+    if (taxType === 'cgst_sgst') {
+      cgstRate = 9.0;
+      sgstRate = 9.0;
+      cgstAmount = parseFloat(((taxableAmount * cgstRate) / 100).toFixed(2));
+      sgstAmount = parseFloat(((taxableAmount * sgstRate) / 100).toFixed(2));
+    } else if (taxType === 'igst') {
+      igstRate = 18.0;
+      igstAmount = parseFloat(((taxableAmount * igstRate) / 100).toFixed(2));
+    }
+
+    const unroundedNet = taxableAmount + cgstAmount + sgstAmount + igstAmount;
+    const netTotal = Math.round(unroundedNet);
+    const roundOff = parseFloat((netTotal - unroundedNet).toFixed(2));
+
+    return {
+      ceraBaseTotal: 0,
+      nonCeraBaseTotal: totalBaseQuote,
+      totalBaseQuote,
+      discountAmount,
+      discountPercent,
+      grossTotal: totalBaseQuote,
+      taxableAmount,
+      cgstRate,
+      cgstAmount,
+      sgstRate,
+      sgstAmount,
+      igstRate,
+      igstAmount,
+      roundOff,
+      netTotal,
+    };
+  }
+
   let ceraBaseTotal = 0;
   let nonCeraBaseTotal = 0;
 

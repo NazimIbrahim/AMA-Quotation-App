@@ -47,6 +47,21 @@ export interface BrandSizeCoverage {
   is_active: boolean;
 }
 
+export type QuotationType = 'tiles' | 'sanitary';
+
+export interface SanitaryItem {
+  id?: number;
+  sl_no: number;
+  item_code: string;
+  item_description: string;
+  item_image?: string;
+  quantity: number; // in nos
+  mrp_price: number; // MRP price per nos
+  discount_percent: number; // discount percentage
+  discounted_price: number; // discounted price per nos
+  total_price: number; // quantity * discounted_price
+}
+
 export interface QuotationItem {
   id?: number;
   area_id?: number;
@@ -65,6 +80,9 @@ export interface QuotationItem {
   discount_percent?: number;
   discount_amount?: number;
   total_amount: number;
+  item_code?: string;
+  item_image?: string;
+  mrp_price?: number;
   _itemBaseTotal?: number;
 }
 
@@ -96,6 +114,7 @@ export interface Quotation {
   assisted_sales_share_percent?: number;
   assisted_sales_share_amount?: number;
   project_name?: string;
+  quotation_type?: QuotationType;
   status: 'draft' | 'in_review' | 'approved' | 'rejected' | 'closed';
   manager_approval_note?: string;
   approved_by_id?: number;

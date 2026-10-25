@@ -4,12 +4,14 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { ServerSetupModal } from './components/ServerSetupModal';
+import { QuotationTypeModal } from './components/QuotationTypeModal';
 
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { QuotationList } from './pages/QuotationList';
 import { QuotationDetail } from './pages/QuotationDetail';
 import { QuotationEditor } from './pages/QuotationEditor';
+import { SanitaryQuotationEditor } from './pages/SanitaryQuotationEditor';
 import { CustomerManagement } from './pages/CustomerManagement';
 import { ProductManagement } from './pages/ProductManagement';
 import { PaymentManagement } from './pages/PaymentManagement';
@@ -22,11 +24,13 @@ import { BackupRestorePage } from './pages/BackupRestorePage';
 
 const AppContent: React.FC = () => {
   const { user, isLoading } = useAuth();
-  const { openServerWizard, setOpenServerWizard } = useServer();
+  const { openServerWizard, setOpenServerWizard, fetchApi } = useServer();
 
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [selectedQuotationId, setSelectedQuotationId] = useState<number | null>(null);
   const [isEditingQuotation, setIsEditingQuotation] = useState<boolean>(false);
+  const [quotationType, setQuotationType] = useState<'tiles' | 'sanitary'>('tiles');
+  const [showTypeModal, setShowTypeModal] = useState<boolean>(false);
 
   if (isLoading) {
     return (
@@ -54,16 +58,35 @@ const AppContent: React.FC = () => {
     setActiveTab('quotations');
   };
 
-  const handleEditQuotation = (id: number) => {
+  const handleEditQuotation = async (id: number, type?: 'tiles' | 'sanitary') => {
     setSelectedQuotationId(id);
     setIsEditingQuotation(true);
-    setActiveTab('quotations');
+    if (type) {
+      setQuotationType(type);
+      setActiveTab(type === 'sanitary' ? 'quotation-create-sanitary' : 'quotation-create-tiles');
+    } else {
+      try {
+        const res = await fetchApi(`/api/quotations/${id}`);
+        const foundType = res?.quotation?.quotation_type === 'sanitary' ? 'sanitary' : 'tiles';
+        setQuotationType(foundType);
+        setActiveTab(foundType === 'sanitary' ? 'quotation-create-sanitary' : 'quotation-create-tiles');
+      } catch {
+        setQuotationType('tiles');
+        setActiveTab('quotation-create-tiles');
+      }
+    }
   };
 
-  const handleCreateQuotation = () => {
+  const handleCreateQuotation = (type?: 'tiles' | 'sanitary') => {
+    if (!type) {
+      setShowTypeModal(true);
+      return;
+    }
     setSelectedQuotationId(null);
+    setQuotationType(type);
     setIsEditingQuotation(true);
-    setActiveTab('quotation-create');
+    setActiveTab(type === 'sanitary' ? 'quotation-create-sanitary' : 'quotation-create-tiles');
+    setShowTypeModal(false);
   };
 
   const handleBackToList = () => {
@@ -72,9 +95,52 @@ const AppContent: React.FC = () => {
     setActiveTab('quotations');
   };
 
+  const handleNavTabChange = (tab: NavTab) => {
+    if (tab === 'quotation-create-tiles') {
+      setSelectedQuotationId(null);
+      setQuotationType('tiles');
+      setIsEditingQuotation(true);
+      setActiveTab('quotation-create-tiles');
+    } else if (tab === 'quotation-create-sanitary') {
+      setSelectedQuotationId(null);
+      setQuotationType('sanitary');
+      setIsEditingQuotation(true);
+      setActiveTab('quotation-create-sanitary');
+    } else {
+      setIsEditingQuotation(false);
+      if (tab !== 'quotations') {
+        setSelectedQuotationId(null);
+      }
+      setActiveTab(tab);
+    }
+  };
+
   const renderMainContent = () => {
     // If a quotation is being edited or created
-    if (isEditingQuotation || activeTab === 'quotation-create') {
+    const isSanitary =
+      activeTab === 'quotation-create-sanitary' ||
+      (isEditingQuotation && quotationType === 'sanitary');
+
+    const isTileCreate =
+      activeTab === 'quotation-create-tiles' ||
+      activeTab === 'quotation-create' ||
+      (isEditingQuotation && quotationType === 'tiles');
+
+    if (isSanitary) {
+      return (
+        <SanitaryQuotationEditor
+          quotationId={selectedQuotationId}
+          onBack={handleBackToList}
+          onSaved={(newId) => {
+            setSelectedQuotationId(newId);
+            setIsEditingQuotation(false);
+            setActiveTab('quotations');
+          }}
+        />
+      );
+    }
+
+    if (isTileCreate || isEditingQuotation) {
       return (
         <QuotationEditor
           quotationId={selectedQuotationId}
@@ -94,7 +160,7 @@ const AppContent: React.FC = () => {
         <QuotationDetail
           quotationId={selectedQuotationId}
           onBack={() => setSelectedQuotationId(null)}
-          onEdit={(id) => handleEditQuotation(id)}
+          onEdit={(id, type) => handleEditQuotation(id, type)}
           onRecordPayment={() => {
             setActiveTab('payments');
           }}
@@ -108,23 +174,23 @@ const AppContent: React.FC = () => {
         return (
           <Dashboard
             onSelectQuotation={handleSelectQuotation}
-            onCreateQuotation={handleCreateQuotation}
+            onCreateQuotation={() => handleCreateQuotation()}
           />
         );
       case 'quotations':
         return (
           <QuotationList
             onSelectQuotation={handleSelectQuotation}
-            onEditQuotation={handleEditQuotation}
-            onCreateQuotation={handleCreateQuotation}
+            onEditQuotation={(id, type) => handleEditQuotation(id, type)}
+            onCreateQuotation={(type) => handleCreateQuotation(type)}
           />
         );
       case 'salespersons':
         return (
           <SalespersonDashboard
             onSelectQuotation={handleSelectQuotation}
-            onEditQuotation={handleEditQuotation}
-            onCreateQuotation={handleCreateQuotation}
+            onEditQuotation={(id, type) => handleEditQuotation(id, type)}
+            onCreateQuotation={() => handleCreateQuotation()}
           />
         );
       case 'customers':
@@ -147,7 +213,7 @@ const AppContent: React.FC = () => {
         return (
           <Dashboard
             onSelectQuotation={handleSelectQuotation}
-            onCreateQuotation={handleCreateQuotation}
+            onCreateQuotation={() => handleCreateQuotation()}
           />
         );
     }
@@ -158,7 +224,7 @@ const AppContent: React.FC = () => {
       <Header onOpenServerSettings={() => setOpenServerWizard(true)} />
 
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+        <Sidebar activeTab={activeTab} setActiveTab={handleNavTabChange} />
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
           <div
             key={activeTab + (selectedQuotationId ? `-${selectedQuotationId}` : '') + (isEditingQuotation ? '-edit' : '')}
@@ -170,6 +236,11 @@ const AppContent: React.FC = () => {
       </div>
 
       <ServerSetupModal isOpen={openServerWizard} onClose={() => setOpenServerWizard(false)} />
+      <QuotationTypeModal
+        isOpen={showTypeModal}
+        onClose={() => setShowTypeModal(false)}
+        onSelectType={(t) => handleCreateQuotation(t)}
+      />
     </div>
   );
 };

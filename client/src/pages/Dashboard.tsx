@@ -373,7 +373,18 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
                         className="hover:bg-slate-50 transition-colors cursor-pointer"
                       >
                         <td className="py-2.5 px-3 font-mono font-semibold text-[#0D1B2A] whitespace-nowrap align-middle">
-                          {q.quotation_number}
+                          <div className="flex items-center space-x-1.5">
+                            <span>{q.quotation_number}</span>
+                            {q.quotation_type === 'sanitary' ? (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-100 text-teal-800 border border-teal-300 font-sans">
+                                🚿 Sanitary
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-300 font-sans">
+                                🧱 Tile
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 font-medium text-[#1B263B] align-middle">
                           {q.customer_name}

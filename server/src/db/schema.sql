@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS quotations (
     assisted_sales_share_percent NUMERIC(5, 2) DEFAULT 0.00,
     assisted_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00,
     project_name VARCHAR(150),
+    quotation_type VARCHAR(30) NOT NULL DEFAULT 'tiles',
     status VARCHAR(30) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'in_review', 'approved', 'rejected', 'closed')),
     manager_approval_note TEXT,
     approved_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -139,6 +140,7 @@ CREATE INDEX IF NOT EXISTS idx_quotations_date ON quotations (quotation_date);
 CREATE INDEX IF NOT EXISTS idx_quotations_customer ON quotations (customer_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_sales_person ON quotations (sales_person_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_assisted_sales_person ON quotations (assisted_sales_person_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_type ON quotations (quotation_type);
 
 CREATE TABLE IF NOT EXISTS quotation_areas (
     id SERIAL PRIMARY KEY,
@@ -166,7 +168,10 @@ CREATE TABLE IF NOT EXISTS quotation_items (
     rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0.00,
     discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00
+    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    item_code VARCHAR(100),
+    item_image TEXT,
+    mrp_price NUMERIC(12, 2) DEFAULT 0.00
 );
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items (quotation_id);
 CREATE INDEX IF NOT EXISTS idx_quotation_items_area ON quotation_items (area_id);
