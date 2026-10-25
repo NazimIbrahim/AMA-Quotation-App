@@ -913,8 +913,33 @@ quotationsRouter.post('/:id/status', async (req: Request, res: Response) => {
   }
 });
 
-// 6. Delete Quotation (Draft or Rejected only)
-quotationsRouter.delete('/:id', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+// 6. Delete All Quotations (Admin & Accounts only)
+quotationsRouter.delete('/all', requireRole(['admin', 'accounts']), async (req: Request, res: Response) => {
+  try {
+    await query('DELETE FROM quotation_items');
+    await query('DELETE FROM quotation_areas');
+    await query('DELETE FROM payments');
+    await query('DELETE FROM quotations');
+
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'ALL_QUOTATIONS_DELETED',
+      entityType: 'quotation',
+      details: { message: 'All quotations removed from system' },
+      ipAddress: req.ip,
+    });
+
+    broadcast({ type: 'QUOTATION_UPDATED', payload: { allDeleted: true } });
+
+    res.json({ message: 'All quotations deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 7. Delete Single Quotation
+quotationsRouter.delete('/:id', requireRole(['admin', 'manager', 'accounts']), async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
 
@@ -924,11 +949,15 @@ quotationsRouter.delete('/:id', requireRole(['admin', 'manager']), async (req: R
       return;
     }
 
-    if (!['draft', 'rejected'].includes(qRows[0].status) && req.user!.role !== 'admin') {
+    const isPrivileged = ['admin', 'accounts'].includes(req.user!.role);
+    if (!['draft', 'rejected'].includes(qRows[0].status) && !isPrivileged) {
       res.status(400).json({ error: 'Only draft or rejected quotations can be deleted' });
       return;
     }
 
+    await query('DELETE FROM quotation_items WHERE quotation_id = $1', [id]);
+    await query('DELETE FROM quotation_areas WHERE quotation_id = $1', [id]);
+    await query('DELETE FROM payments WHERE quotation_id = $1', [id]);
     await query('DELETE FROM quotations WHERE id = $1', [id]);
 
     await recordAuditLog({

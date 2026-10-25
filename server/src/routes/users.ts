@@ -256,3 +256,37 @@ usersRouter.get('/:id/stats', async (req: Request, res: Response) => {
   }
 });
 
+// Delete all salespersons (Admin only, keeps logged-in admin)
+usersRouter.delete('/all-salespersons', requireRole(['admin']), async (req: Request, res: Response) => {
+  try {
+    await query(`DELETE FROM users WHERE role = 'salesperson' AND id != $1`, [req.user!.id]);
+    res.json({ message: 'All salesperson accounts deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete single user / salesperson (Admin only)
+usersRouter.delete('/:id', requireRole(['admin']), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (id === req.user!.id) {
+      res.status(400).json({ error: 'You cannot delete your own account' });
+      return;
+    }
+    const check = await query('SELECT username, role FROM users WHERE id = $1', [id]);
+    if (check.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    if (check[0].username === 'admin') {
+      res.status(400).json({ error: 'Cannot delete primary admin account' });
+      return;
+    }
+    await query('DELETE FROM users WHERE id = $1', [id]);
+    res.json({ message: `User ${check[0].username} deleted successfully` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+

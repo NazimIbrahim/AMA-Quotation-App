@@ -328,7 +328,25 @@ sanitaryCatalogRouter.put('/:id', requireRole(['admin', 'manager']), async (req:
   }
 });
 
-// 6. Delete Single Catalog Item
+// 6. Delete All Catalog Items (Admin & Accounts only)
+sanitaryCatalogRouter.delete('/all', requireRole(['admin', 'accounts']), async (req: Request, res: Response) => {
+  try {
+    await query('DELETE FROM sanitary_catalog_items');
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'SANITARY_CATALOG_CLEARED_ALL',
+      entityType: 'sanitary_catalog',
+      details: { message: 'All sanitary catalog items removed' },
+      ipAddress: req.ip,
+    });
+    res.json({ message: 'All sanitary catalog items removed successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 7. Delete Single Catalog Item
 sanitaryCatalogRouter.delete('/:id', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

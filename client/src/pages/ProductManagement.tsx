@@ -30,6 +30,7 @@ export const ProductManagement: React.FC = () => {
   const [rateSqft, setRateSqft] = useState('130.0');
 
   const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
+  const isAdminOrAccountant = ['admin', 'accounts', 'accountant', 'manager'].includes(user?.role || '');
 
   const loadData = async () => {
     setLoading(true);
@@ -187,6 +188,26 @@ export const ProductManagement: React.FC = () => {
     }
   };
 
+  const handleClearAllTileCatalog = async () => {
+    if (!isAdminOrAccountant) return;
+    if (
+      window.confirm(
+        'Are you sure you want to remove ALL tile brands and size specifications from the catalogue?\n\nThis will permanently delete all brand coverage data. This action cannot be undone.'
+      )
+    ) {
+      try {
+        setLoading(true);
+        await fetchApi('/api/products/all', { method: 'DELETE' });
+        alert('All tile catalogue data has been removed successfully.');
+        await loadData();
+      } catch (err: any) {
+        alert(err.message || 'Failed to clear tile catalogue');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const filteredCoverages = selectedBrandId
     ? coverages.filter((c) => c.brand_id === selectedBrandId)
     : coverages;
@@ -228,6 +249,16 @@ export const ProductManagement: React.FC = () => {
                 <Plus size={12} />
                 <span>+ Add Size Formula</span>
               </button>
+              {isAdminOrAccountant && brands.length > 0 && (
+                <button
+                  onClick={handleClearAllTileCatalog}
+                  className="btn btn-secondary btn-sm flex items-center space-x-1 border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100"
+                  title="Remove all tile catalogue data (Admin & Accounts only)"
+                >
+                  <Trash2 size={12} className="text-rose-600" />
+                  <span>Remove All Data</span>
+                </button>
+              )}
             </>
           )}
         </div>

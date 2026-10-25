@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   Download,
   FileSpreadsheet,
+  Trash2,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
@@ -216,6 +217,38 @@ export const QuotationList: React.FC<Props> = ({
   };
 
   const canApprove = ['admin', 'manager'].includes(user?.role || '');
+  const isAdminOrAccountant = ['admin', 'accounts', 'accountant', 'manager'].includes(user?.role || '');
+
+  const handleRemoveAllQuotations = async () => {
+    if (!isAdminOrAccountant) return;
+    if (
+      window.confirm(
+        `Are you sure you want to remove ALL ${summary.totalQuotations} quotations from the system?\n\nThis will permanently delete all quotations, area calculations, line items, and payment allocations. This action CANNOT be undone.`
+      )
+    ) {
+      try {
+        setLoading(true);
+        await fetchApi('/api/quotations/all', { method: 'DELETE' });
+        alert('All quotations have been deleted successfully.');
+        await loadQuotations();
+      } catch (err: any) {
+        alert(err.message || 'Failed to delete quotations');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleDeleteSingleQuotation = async (e: React.MouseEvent, id: number, quoteNum: string) => {
+    e.stopPropagation();
+    if (!confirm(`Are you sure you want to delete quotation ${quoteNum}?`)) return;
+    try {
+      await fetchApi(`/api/quotations/${id}`, { method: 'DELETE' });
+      await loadQuotations();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete quotation');
+    }
+  };
 
   const statusChips = [
     { id: '', label: 'All Quotations' },
@@ -269,6 +302,18 @@ export const QuotationList: React.FC<Props> = ({
               </button>
             </div>
           </div>
+
+          {isAdminOrAccountant && summary.totalQuotations > 0 && (
+            <button
+              type="button"
+              onClick={handleRemoveAllQuotations}
+              className="btn btn-secondary btn-sm flex items-center space-x-1.5 border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100"
+              title="Remove all quotations from the system (Admin & Accounts only)"
+            >
+              <Trash2 size={14} className="text-rose-600" />
+              <span>Remove All Data</span>
+            </button>
+          )}
 
           <button onClick={() => onCreateQuotation()} className="btn btn-primary btn-sm">
             <Plus size={14} />
@@ -556,6 +601,18 @@ export const QuotationList: React.FC<Props> = ({
                         >
                           <Edit size={13} />
                         </button>
+
+                        {/* Delete Single Quotation (Admin & Accounts) */}
+                        {isAdminOrAccountant && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSingleQuotation(e, q.id, q.quotation_number)}
+                            title="Delete Quotation"
+                            className="p-1.5 rounded-md text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
 
                         {/* Status Transition Quick Buttons */}
                         {q.status === 'draft' && (

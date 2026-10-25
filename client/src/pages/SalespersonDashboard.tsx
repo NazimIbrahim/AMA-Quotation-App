@@ -27,6 +27,7 @@ import {
   ShieldAlert,
   Download,
   FileSpreadsheet,
+  Trash2,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
@@ -314,6 +315,53 @@ export const SalespersonDashboard: React.FC<Props> = ({
 
   const selectedUser = salespersons.find((s) => s.id === selectedSalespersonId);
   const canAddSalesperson = ['admin', 'manager'].includes(user?.role || '');
+  const isAdmin = user?.role === 'admin';
+
+  const handleDeleteSelectedSalesperson = async () => {
+    if (!isAdmin || !selectedUser) return;
+    if (selectedUser.id === user?.id) {
+      alert('You cannot delete your own account.');
+      return;
+    }
+    if (
+      !confirm(
+        `Are you sure you want to delete salesperson "${selectedUser.full_name}" (@${selectedUser.username})?`
+      )
+    )
+      return;
+
+    try {
+      await fetchApi(`/api/users/${selectedUser.id}`, { method: 'DELETE' });
+      alert(`Salesperson ${selectedUser.full_name} deleted successfully.`);
+      setSelectedSalespersonId(null);
+      await loadSalespersons();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete salesperson');
+    }
+  };
+
+  const handleRemoveAllSalespersons = async () => {
+    if (!isAdmin) return;
+    const count = salespersons.filter((s) => s.role === 'salesperson' && s.id !== user?.id).length;
+    if (count === 0) {
+      alert('No other salesperson accounts found to remove.');
+      return;
+    }
+    if (
+      window.confirm(
+        `Are you sure you want to remove ALL ${count} salesperson accounts from the system?\n\nThis will remove their profile logins (your admin account will remain safe). This action cannot be undone.`
+      )
+    ) {
+      try {
+        await fetchApi('/api/users/all-salespersons', { method: 'DELETE' });
+        alert('All salesperson accounts removed successfully.');
+        setSelectedSalespersonId(user?.id || null);
+        await loadSalespersons();
+      } catch (err: any) {
+        alert(err.message || 'Failed to remove all salespersons');
+      }
+    }
+  };
 
   const statusChips = [
     { id: '', label: 'All Quotations' },
@@ -346,6 +394,28 @@ export const SalespersonDashboard: React.FC<Props> = ({
             >
               <UserPlus size={13} />
               <span>+ Add Sales Person</span>
+            </button>
+          )}
+
+          {isAdmin && selectedUser && selectedUser.role === 'salesperson' && selectedUser.id !== user?.id && (
+            <button
+              onClick={handleDeleteSelectedSalesperson}
+              className="btn btn-secondary btn-sm text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+              title="Delete currently selected salesperson account"
+            >
+              <Trash2 size={13} className="text-rose-600" />
+              <span>Remove {selectedUser.full_name.split(' ')[0]}</span>
+            </button>
+          )}
+
+          {isAdmin && salespersons.some((s) => s.role === 'salesperson' && s.id !== user?.id) && (
+            <button
+              onClick={handleRemoveAllSalespersons}
+              className="btn btn-secondary btn-sm text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+              title="Remove all salesperson accounts from the system"
+            >
+              <Trash2 size={13} className="text-rose-600" />
+              <span>Remove All Sales Persons</span>
             </button>
           )}
 

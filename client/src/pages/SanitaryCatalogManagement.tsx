@@ -56,6 +56,7 @@ export const SanitaryCatalogManagement: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
 
   const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
+  const isAdminOrAccountant = ['admin', 'accounts', 'accountant', 'manager'].includes(user?.role || '');
 
   const standardCategories = [
     'Water Closet',
@@ -224,6 +225,27 @@ export const SanitaryCatalogManagement: React.FC = () => {
     }
   };
 
+  // Clear Entire Catalog
+  const handleClearAllCatalog = async () => {
+    if (!isAdminOrAccountant) return;
+    if (
+      window.confirm(
+        `Are you sure you want to remove ALL ${totalCount} items from the sanitary catalog?\n\nThis will permanently delete all catalog items, photos, and MRP references. This action cannot be undone.`
+      )
+    ) {
+      try {
+        setLoading(true);
+        await fetchApi('/api/sanitary-catalog/all', { method: 'DELETE' });
+        alert('All sanitary catalog data has been removed successfully.');
+        await loadCatalog();
+      } catch (err: any) {
+        alert(err.message || 'Failed to clear catalog');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('en-IN', {
       maximumFractionDigits: 2,
@@ -272,6 +294,18 @@ export const SanitaryCatalogManagement: React.FC = () => {
                 <Plus size={14} />
                 <span>Add Item</span>
               </button>
+
+              {isAdminOrAccountant && totalCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllCatalog}
+                  className="btn btn-secondary btn-sm flex items-center space-x-1.5 border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100"
+                  title="Remove all data from sanitary catalog (Admin & Accounts only)"
+                >
+                  <Trash2 size={14} className="text-rose-600" />
+                  <span>Remove All Data</span>
+                </button>
+              )}
             </>
           )}
 
