@@ -129,65 +129,69 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
       // Detect category from page text
       let pageCategory = 'Water Closet';
-      for (let i = 0; i < Math.min(30, items.length); i++) {
-        const s = ((items[i].str || '') as string).toLowerCase();
-        if (s.includes('faucet') || s.includes('tap') || s.includes('mixer') || s.includes('spout') || s.includes('cock')) {
-          pageCategory = 'Faucet';
-          break;
-        }
-        if (s.includes('water closet') || s.includes('ewc') || s.includes('toilet') || s.includes('commode') || s.includes('rimless') || s.includes('closet')) {
-          pageCategory = 'Water Closet';
-          break;
-        }
-        if (s.includes('basin') || s.includes('sink') || s.includes('vanity')) {
-          pageCategory = 'Wash Basin';
-          break;
-        }
-        if (s.includes('shower') || s.includes('diverter') || s.includes('overhead')) {
-          pageCategory = 'Shower';
-          break;
-        }
-        if (s.includes('urinal')) {
-          pageCategory = 'Urinal';
-          break;
-        }
-        if (s.includes('accessories') || s.includes('towel') || s.includes('holder') || s.includes('soap')) {
-          pageCategory = 'Bath Accessories';
-          break;
-        }
-        if (s.includes('kitchen')) {
-          pageCategory = 'Kitchen Sink';
-          break;
-        }
+      const first35 = items.slice(0, 35).map((it) => (it.str || '').toLowerCase()).join(' ');
+      if (first35.includes('faucet') || first35.includes('mixer') || first35.includes('tap') || first35.includes('spout') || first35.includes('cock')) {
+        pageCategory = 'Faucet';
+      } else if (first35.includes('basin') || first35.includes('counter top') || first35.includes('table top') || first35.includes('vanity') || first35.includes('sink')) {
+        pageCategory = 'Wash Basin';
+      } else if (first35.includes('urinal')) {
+        pageCategory = 'Urinal';
+      } else if (first35.includes('shower') || first35.includes('diverter') || first35.includes('overhead')) {
+        pageCategory = 'Shower';
+      } else if (first35.includes('accessories') || first35.includes('towel') || first35.includes('holder') || first35.includes('soap')) {
+        pageCategory = 'Bath Accessories';
+      } else if (first35.includes('closet') || first35.includes('ewc') || first35.includes('toilet') || first35.includes('commode') || first35.includes('squatting')) {
+        pageCategory = 'Water Closet';
       }
 
-      // Regex patterns
-      const codeRegex = /\b([A-Z]{1,5}[0-9]{4,10}[A-Z0-9]*|[A-Z]{2,5}[-_][0-9]{3,8}[A-Z0-9]*)\b/i;
-      const priceRegex = /(?:`|₹|Rs\.?|INR|Per\s*Piece|MRP)?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|\b[1-9][0-9]{3,5}\b)/i;
+      // Regex patterns: matches 2-8 digits, e.g. KS110, KO117, KS277, KB1011011, FSW-007, KGP50001W-SR
+      const codeRegex = /\b([A-Z]{1,6}[-_]?[0-9]{2,8}[A-Z0-9\-_]*)\b/i;
+      const priceRegex = /(?:`|₹|Rs\.?|INR|Per\s*Piece|MRP)?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{2})?|\b[1-9][0-9]{2,5}\b)/i;
 
-      const candidates: Array<{ index: number; code: string; pdfX: number; pdfY: number }> = [];
+      const candidates: Array<{ index: number; code: string; modelTitle?: string; pdfX: number; pdfY: number }> = [];
 
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const str = (it.str || '').trim();
+        if (!str || !it.transform) continue;
+
+        // Skip non-product accessory/compatibility notes
+        if (
+          str.toLowerCase().startsWith('with ') ||
+          str.toLowerCase().includes('(comp') ||
+          str.toLowerCase().includes('suitable for') ||
+          str.toLowerCase().startsWith('page')
+        ) {
+          continue;
+        }
+
         const m = str.match(codeRegex);
-        if (m && it.transform) {
-          const prevStr = (items[i - 1]?.str || '').toLowerCase();
-          const nextStr = (items[i + 1]?.str || '').toLowerCase();
-          const surrounding = `${prevStr} ${str} ${nextStr}`.toLowerCase();
+        if (m) {
+          const code = m[1].toUpperCase();
           if (
-            surrounding.includes('compatible') ||
-            surrounding.includes('suit') ||
-            str.toLowerCase().includes('page') ||
-            str.length < 5
+            code === 'FAUCET' ||
+            code === 'SANITARYWARE' ||
+            code === 'ROUGH-IN' ||
+            code.startsWith('SIZE') ||
+            code.length < 4
           ) {
             continue;
           }
-          const code = m[1].toUpperCase();
+
+          // Parse prefix as model title (e.g. "KADIN - KS277" -> "KADIN", "TARA - KO117" -> "TARA")
+          let modelTitle = '';
+          if (str.includes(' - ')) {
+            const parts = str.split(' - ');
+            if (parts[0] && parts[0].trim().length >= 3 && !parts[0].match(codeRegex)) {
+              modelTitle = parts[0].trim();
+            }
+          }
+
           if (!candidates.some((c) => c.code === code)) {
             candidates.push({
               index: i,
               code,
+              modelTitle,
               pdfX: it.transform[4],
               pdfY: it.transform[5],
             });
@@ -219,7 +223,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       const results: StagedItem[] = [];
 
       for (const cand of candidates) {
-        let descLines: string[] = [];
+        let descLines: string[] = cand.modelTitle ? [cand.modelTitle] : [];
         let mrp = 0;
 
         for (let j = 0; j < items.length; j++) {
@@ -234,9 +238,9 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           const dy = cand.pdfY - iy;
 
           // Sibling text placed directly below or around the code
-          if (dx >= -25 && dx <= 130 && dy > 0 && dy < 70) {
+          if (dx >= -30 && dx <= 140 && dy > 0 && dy < 75) {
             const isDimension =
-              /\b\d+\s*(?:mm|cm|inch|inches|mtr|meter)\b/i.test(str) ||
+              /\b\d+\s*(?:mm|cm|inch|inches)\b/i.test(str) ||
               /\b\d+\s*x\s*\d+/i.test(str);
             const pMatch = str.match(priceRegex);
             if (pMatch && pMatch[1] && !isDimension && !mrp) {
@@ -265,10 +269,10 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         // Auto-crop photo above code in PDF coordinates
         let photoDataUrl = '';
         try {
-          const cropPdfX = cand.pdfX - 25;
-          const cropPdfY = cand.pdfY + 12;
-          const cropPdfW = 145;
-          const cropPdfH = 135;
+          const cropPdfX = cand.pdfX - 28;
+          const cropPdfY = cand.pdfY + 10;
+          const cropPdfW = 150;
+          const cropPdfH = 140;
 
           const [imgLeft, imgBottom] = viewport.convertToViewportPoint(cropPdfX, cropPdfY);
           const [imgRight, imgTop] = viewport.convertToViewportPoint(
@@ -281,7 +285,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
           const cw = Math.min(sourceCanvas.width - cx, Math.abs(imgRight - imgLeft));
           const ch = Math.min(sourceCanvas.height - cy, Math.abs(imgBottom - imgTop));
 
-          if (cw > 25 && ch > 25) {
+          if (cw > 20 && ch > 20) {
             const thumb = document.createElement('canvas');
             thumb.width = 160;
             thumb.height = 160;
@@ -321,7 +325,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     }
   };
 
-  // 1. Handle PDF Selection
+  // 1. Handle PDF Selection - AUTOMATICALLY SCANS ALL PAGES
   const handleSelectPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
     setImportSuccess(null);
@@ -364,16 +368,16 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       setNumPages(loadedPdf.numPages);
       scannedPagesRef.current.clear();
 
-      // Find first page that contains product codes (skips blank covers or intro pages)
+      // Find first page that contains product codes to render visually on canvas
       let initialPage = 1;
-      const codeRegex = /\b([A-Z]{1,5}[0-9]{4,10}[A-Z0-9]*|[A-Z]{2,5}[-_][0-9]{3,8}[A-Z0-9]*)\b/i;
+      const codeRegex = /\b([A-Z]{1,6}[-_]?[0-9]{2,8}[A-Z0-9\-_]*)\b/i;
       for (let p = 1; p <= Math.min(25, loadedPdf.numPages); p++) {
         try {
           const pg = await loadedPdf.getPage(p);
           const tc = await pg.getTextContent();
           const hasCode = tc.items.some((it: any) => {
             const s = (it.str || '').trim();
-            return s.length >= 5 && codeRegex.test(s) && !s.toLowerCase().includes('page');
+            return s.length >= 4 && codeRegex.test(s) && !s.toLowerCase().includes('page');
           });
           if (hasCode) {
             initialPage = p;
@@ -384,24 +388,15 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
 
       setCurrentPage(initialPage);
 
-      // Render page and immediately auto-detect products & photos!
-      setTimeout(async () => {
-        await renderPage(initialPage, loadedPdf);
-        const autoItems = await extractItemsFromDocPage(
-          loadedPdf,
-          initialPage,
-          detectedBrand,
-          canvasRef.current,
-          renderScaleRef.current || 1.2
-        );
-        if (autoItems.length > 0) {
-          scannedPagesRef.current.add(initialPage);
-          setStagedItems(autoItems);
-          setImportSuccess(
-            `Auto-detected ${autoItems.length} products with photos on Page ${initialPage}! Click "Scan All Pages" to scan all ${loadedPdf.numPages} pages automatically.`
-          );
-        }
-      }, 100);
+      // Render initial page on canvas
+      setTimeout(() => {
+        renderPage(initialPage, loadedPdf);
+      }, 50);
+
+      // AUTOMATICALLY SCAN ENTIRE CATALOGUE IMMEDIATELY (ALL PAGES)
+      setTimeout(() => {
+        startFullCatalogueScan(loadedPdf, detectedBrand);
+      }, 150);
     } catch (err: any) {
       setError('Failed to load PDF document: ' + err.message);
     }
@@ -534,8 +529,14 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
   };
 
   // 4. Scan Entire Catalogue (All Pages)
-  const handleScanEntireCatalogue = async () => {
-    if (!pdfDoc || isScanningAll) return;
+  const startFullCatalogueScan = async (
+    docOverride?: pdfjsLib.PDFDocumentProxy,
+    brandOverride?: string
+  ) => {
+    const doc = docOverride || pdfDoc;
+    const brandToUse = brandOverride || defaultBrand;
+    if (!doc || isScanningAll) return;
+
     setIsScanningAll(true);
     stopScanRef.current = false;
     setError(null);
@@ -545,21 +546,21 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     const existingCodes = new Set(allExtracted.map((it) => it.item_code));
 
     try {
-      for (let p = 1; p <= pdfDoc.numPages; p++) {
+      for (let p = 1; p <= doc.numPages; p++) {
         if (stopScanRef.current) {
           break;
         }
 
         setScanProgress({
           current: p,
-          total: pdfDoc.numPages,
+          total: doc.numPages,
           found: allExtracted.length,
         });
 
         const pageItems = await extractItemsFromDocPage(
-          pdfDoc,
+          doc,
           p,
-          defaultBrand,
+          brandToUse,
           null, // uses offscreen canvas
           1.2
         );
@@ -576,11 +577,11 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
         }
 
         // Allow UI to breathe
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 15));
       }
 
       setImportSuccess(
-        `Catalogue scan finished! Auto-detected ${allExtracted.length} total products with photos. Click "Save Items to Catalog" to commit.`
+        `✅ Entire catalogue scanned! Auto-detected ${allExtracted.length} products with photos. Click "Save Items to Catalog" to commit.`
       );
     } catch (err: any) {
       setError('Catalogue scan interrupted: ' + err.message);
@@ -588,6 +589,10 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
       setIsScanningAll(false);
       setScanProgress(null);
     }
+  };
+
+  const handleScanEntireCatalogue = () => {
+    startFullCatalogueScan();
   };
 
   // 4. Visual Canvas Cropping Handlers
@@ -790,7 +795,7 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     reader.readAsText(file);
   };
 
-  // 9. Batch Save to Database
+  // 9. Batch Save to Database (in safe 50-item chunks)
   const handleSaveToCatalog = async () => {
     if (stagedItems.length === 0) {
       setError('No staged items to save.');
@@ -802,26 +807,38 @@ export const SanitaryPdfCatalogUploaderModal: React.FC<Props> = ({
     setImportSuccess(null);
 
     try {
-      const payload = {
-        catalog_name: catalogName || `${defaultBrand} Sanitary Catalogue`,
-        items: stagedItems.map((it) => ({
-          item_code: it.item_code.trim(),
-          brand: it.brand.trim() || defaultBrand || 'Sanitary',
-          category: it.category.trim() || 'General',
-          item_description: it.item_description.trim(),
-          mrp_price: it.mrp_price || 0,
-          item_image: it.item_image || null,
+      const BATCH_CHUNK_SIZE = 50;
+      let totalSaved = 0;
+
+      for (let i = 0; i < stagedItems.length; i += BATCH_CHUNK_SIZE) {
+        const chunk = stagedItems.slice(i, i + BATCH_CHUNK_SIZE);
+        setImportSuccess(
+          `Saving to database: ${Math.min(i + BATCH_CHUNK_SIZE, stagedItems.length)} of ${stagedItems.length} items...`
+        );
+
+        const payload = {
           catalog_name: catalogName || `${defaultBrand} Sanitary Catalogue`,
-          page_number: it.page_number || 1,
-        })),
-      };
+          items: chunk.map((it) => ({
+            item_code: it.item_code.trim(),
+            brand: it.brand.trim() || defaultBrand || 'Sanitary',
+            category: it.category.trim() || 'General',
+            item_description: it.item_description.trim(),
+            mrp_price: it.mrp_price || 0,
+            item_image: it.item_image || null,
+            catalog_name: catalogName || `${defaultBrand} Sanitary Catalogue`,
+            page_number: it.page_number || 1,
+          })),
+        };
 
-      const res = await fetchApi<any>('/api/sanitary-catalog/batch', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+        const res = await fetchApi<any>('/api/sanitary-catalog/batch', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
 
-      setImportSuccess(`Success! ${res.count || stagedItems.length} items imported into Sanitary Catalog.`);
+        totalSaved += res.count || chunk.length;
+      }
+
+      setImportSuccess(`Success! ${totalSaved} items imported into Sanitary Catalog.`);
       setStagedItems([]);
       if (onImportComplete) {
         onImportComplete();
