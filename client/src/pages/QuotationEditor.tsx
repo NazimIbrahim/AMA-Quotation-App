@@ -104,8 +104,29 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   const [activeTileSuggestRow, setActiveTileSuggestRow] = useState<{ areaIdx: number; itemIdx: number } | null>(null);
   const [tileSuggestions, setTileSuggestions] = useState<TileCatalogItem[]>([]);
   const [tileHighlightIndex, setTileHighlightIndex] = useState(0);
+  const [suggestPosition, setSuggestPosition] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+  } | null>(null);
 
-  // Close suggestions on outside click
+  // Helper to calculate screen position for floating dropdown (prevents clipping by table overflow)
+  const updateSuggestPosition = (el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const showAbove = spaceBelow < 280 && rect.top > 280;
+    const width = Math.max(rect.width, 420);
+
+    setSuggestPosition({
+      top: showAbove ? undefined : rect.bottom + 4,
+      bottom: showAbove ? window.innerHeight - rect.top + 4 : undefined,
+      left: Math.max(10, Math.min(rect.left, window.innerWidth - width - 10)),
+      width,
+    });
+  };
+
+  // Close suggestions on outside click and update on scroll/resize
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -115,13 +136,35 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         setShowSuggestions(false);
       }
       const target = event.target as HTMLElement;
-      if (!target.closest('.tile-suggest-container')) {
+      if (!target.closest('.tile-suggest-dropdown') && !target.closest('.tile-suggest-input')) {
         setActiveTileSuggestRow(null);
+        setSuggestPosition(null);
       }
     };
+
+    const handleScrollOrResize = () => {
+      if (activeTileSuggestRow) {
+        const el = document.querySelector<HTMLElement>(
+          `[data-cell="${activeTileSuggestRow.areaIdx}-${activeTileSuggestRow.itemIdx}-0"]`
+        );
+        if (el) {
+          updateSuggestPosition(el);
+        } else {
+          setActiveTileSuggestRow(null);
+          setSuggestPosition(null);
+        }
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [activeTileSuggestRow]);
 
   // Live customer lookup triggered as user types
   const triggerCustomerLookup = (queryText: string, source: 'search' | 'phone' | 'name') => {
@@ -719,7 +762,12 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   };
 
   // Saved Tile Item Lookup & Autocomplete Handler
-  const handleDescriptionChange = (areaIdx: number, itemIdx: number, text: string) => {
+  const handleDescriptionChange = (
+    areaIdx: number,
+    itemIdx: number,
+    text: string,
+    targetEl?: HTMLElement | null
+  ) => {
     handleItemChange(areaIdx, itemIdx, 'description', text);
     const q = text.trim().toLowerCase();
     if (q.length >= 1) {
@@ -731,14 +779,21 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
       setTileSuggestions(matches);
       setActiveTileSuggestRow({ areaIdx, itemIdx });
       setTileHighlightIndex(0);
+
+      const el = targetEl || document.querySelector<HTMLElement>(`[data-cell="${areaIdx}-${itemIdx}-0"]`);
+      if (el) {
+        updateSuggestPosition(el);
+      }
     } else {
       setActiveTileSuggestRow(null);
+      setSuggestPosition(null);
     }
   };
 
   const handleDescriptionBlur = (areaIdx: number, itemIdx: number) => {
     setTimeout(() => {
       setActiveTileSuggestRow(null);
+      setSuggestPosition(null);
     }, 250);
 
     const item = areas[areaIdx]?.items[itemIdx];
@@ -804,6 +859,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     newAreas[areaIdx].items[itemIdx] = item;
     setAreas(newAreas);
     setActiveTileSuggestRow(null);
+    setSuggestPosition(null);
 
     // Focus next column (e.g. quantity_sqft or size)
     setTimeout(() => {
@@ -2025,77 +2081,23 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         </td>
 
                         <td className="align-top py-1.5 px-2">
-                          <div className="relative tile-suggest-container">
-                            <input
-                              type="text"
-                              data-cell={`${areaIdx}-${itemIdx}-0`}
-                              className="input input-sm py-1 font-medium text-slate-900 w-full"
-                              value={item.description}
-                              onChange={(e) =>
-                                handleDescriptionChange(areaIdx, itemIdx, e.target.value)
+                          <input
+                            type="text"
+                            data-cell={`${areaIdx}-${itemIdx}-0`}
+                            className="input input-sm py-1 font-medium text-slate-900 w-full tile-suggest-input"
+                            value={item.description}
+                            onChange={(e) =>
+                              handleDescriptionChange(areaIdx, itemIdx, e.target.value, e.currentTarget)
+                            }
+                            onFocus={(e) => {
+                              if (item.description) {
+                                handleDescriptionChange(areaIdx, itemIdx, item.description, e.currentTarget);
                               }
-                              onFocus={() => {
-                                if (item.description) handleDescriptionChange(areaIdx, itemIdx, item.description);
-                              }}
-                              onBlur={() => handleDescriptionBlur(areaIdx, itemIdx)}
-                              onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 0)}
-                              placeholder="Surface / Tile description"
-                            />
-                            {/* Autocomplete Dropdown for Saved Products */}
-                            {activeTileSuggestRow?.areaIdx === areaIdx &&
-                              activeTileSuggestRow?.itemIdx === itemIdx &&
-                              tileSuggestions.length > 0 && (
-                                <div className="absolute left-0 top-full mt-1 w-96 bg-white/95 backdrop-blur-md rounded-xl border border-slate-200 shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
-                                  <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                                    <span>Saved Products Memory</span>
-                                    <span className="text-blue-700 font-medium">Click / Enter to Auto-Fill</span>
-                                  </div>
-                                  {tileSuggestions.map((sug, sIdx) => (
-                                    <div
-                                      key={sug.id || sIdx}
-                                      onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        applySavedTileItem(areaIdx, itemIdx, sug);
-                                      }}
-                                      className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors text-left ${
-                                        sIdx === tileHighlightIndex
-                                          ? 'bg-blue-50 text-blue-900 font-semibold'
-                                          : 'hover:bg-slate-50 text-slate-800'
-                                      }`}
-                                    >
-                                      <div className="min-w-0 flex-1 mr-2">
-                                        <div className="font-semibold text-xs text-slate-900 truncate">
-                                          {sug.description}
-                                        </div>
-                                        <div className="flex items-center space-x-1.5 mt-0.5 text-[10px] text-slate-500">
-                                          {sug.brand && (
-                                            <span className="bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium">
-                                              {sug.brand}
-                                            </span>
-                                          )}
-                                          {sug.size && (
-                                            <span className="bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded font-mono font-medium">
-                                              {sug.size}
-                                            </span>
-                                          )}
-                                          <span className="uppercase text-[9px] font-bold text-slate-400">
-                                            {sug.product_type || 'box'}
-                                          </span>
-                                        </div>
-                                      </div>
-                                      <div className="text-right shrink-0">
-                                        <span className="font-mono font-bold text-xs text-emerald-700">
-                                          ₹{formatCurrency(sug.rate_per_sqft || sug.base_rate_per_sqft || sug.rate_per_box || 0)}
-                                        </span>
-                                        <span className="text-[10px] text-slate-400 block">
-                                          {sug.product_type === 'sqft' ? '/Sqft' : sug.product_type === 'box' ? '/Sqft' : '/Unit'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                          </div>
+                            }}
+                            onBlur={() => handleDescriptionBlur(areaIdx, itemIdx)}
+                            onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 0)}
+                            placeholder="Surface / Tile description"
+                          />
                           <div className="flex items-center space-x-1.5 mt-1 text-[10px]">
                             <span className="text-slate-400 font-medium">Encrypted Code:</span>
                             <span
@@ -2576,6 +2578,72 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           quotationId={previewPdf.quotationId}
           initialEncrypted={previewPdf.initialEncrypted}
         />
+      )}
+
+      {/* Floating Dropdown for Saved Products Memory (Rendered at root level with fixed position to prevent table/card clipping) */}
+      {activeTileSuggestRow && tileSuggestions.length > 0 && suggestPosition && (
+        <div
+          style={{
+            position: 'fixed',
+            top: suggestPosition.top !== undefined ? `${suggestPosition.top}px` : undefined,
+            bottom: suggestPosition.bottom !== undefined ? `${suggestPosition.bottom}px` : undefined,
+            left: `${suggestPosition.left}px`,
+            width: `${suggestPosition.width}px`,
+            zIndex: 99999,
+          }}
+          className="tile-suggest-dropdown bg-white rounded-xl border border-slate-300 shadow-2xl max-h-72 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100"
+        >
+          <div className="px-3 py-1.5 bg-slate-100/90 text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center justify-between sticky top-0 border-b border-slate-200 z-10 backdrop-blur-sm">
+            <span className="flex items-center space-x-1.5 text-slate-700">
+              <Sparkles size={11} className="text-amber-500" />
+              <span>Saved Products Memory ({tileSuggestions.length})</span>
+            </span>
+            <span className="text-blue-700 font-semibold">Click / Enter to Auto-Fill</span>
+          </div>
+          {tileSuggestions.map((sug, sIdx) => (
+            <div
+              key={sug.id || sIdx}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applySavedTileItem(activeTileSuggestRow.areaIdx, activeTileSuggestRow.itemIdx, sug);
+              }}
+              className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors text-left ${
+                sIdx === tileHighlightIndex
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'hover:bg-slate-50 text-slate-800'
+              }`}
+            >
+              <div className="min-w-0 flex-1 mr-2">
+                <div className="font-bold text-xs text-slate-900 truncate">
+                  {sug.description}
+                </div>
+                <div className="flex items-center space-x-1.5 mt-0.5 text-[10px] text-slate-500">
+                  {sug.brand && (
+                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium border border-slate-200">
+                      {sug.brand}
+                    </span>
+                  )}
+                  {sug.size && (
+                    <span className="bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded font-mono font-medium border border-blue-100">
+                      {sug.size}
+                    </span>
+                  )}
+                  <span className="uppercase text-[9px] font-bold text-slate-400 bg-slate-50 px-1 py-0.2 rounded">
+                    {sug.product_type || 'box'}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="font-mono font-bold text-xs text-emerald-700 block">
+                  ₹{formatCurrency(sug.rate_per_sqft || sug.base_rate_per_sqft || sug.rate_per_box || 0)}
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  {sug.product_type === 'sqft' ? '/Sqft' : sug.product_type === 'box' ? '/Sqft' : '/Unit'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

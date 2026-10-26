@@ -143,8 +143,30 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
   const [catalogPickerOpen, setCatalogPickerOpen] = useState(false);
   const [activeSuggestRow, setActiveSuggestRow] = useState<number | null>(null);
   const [catalogSuggestions, setCatalogSuggestions] = useState<SanitaryCatalogItem[]>([]);
+  const [catalogHighlightIndex, setCatalogHighlightIndex] = useState(0);
+  const [suggestPosition, setSuggestPosition] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const catalogSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper to calculate screen position for floating dropdown (prevents clipping by table overflow)
+  const updateSuggestPosition = (el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const showAbove = spaceBelow < 280 && rect.top > 280;
+    const width = Math.max(rect.width, 360);
+
+    setSuggestPosition({
+      top: showAbove ? undefined : rect.bottom + 4,
+      bottom: showAbove ? window.innerHeight - rect.top + 4 : undefined,
+      left: Math.max(10, Math.min(rect.left, window.innerWidth - width - 10)),
+      width,
+    });
+  };
 
   const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
@@ -254,7 +276,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
     loadQuotation();
   }, [quotationId]);
 
-  // Close customer suggestions on outside click
+  // Close customer suggestions and catalog floating suggestions on outside click / update on scroll/resize
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -263,10 +285,36 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
       ) {
         setShowSuggestions(false);
       }
+      const target = event.target as HTMLElement;
+      if (!target.closest('.sanitary-suggest-dropdown') && !target.closest('.sanitary-suggest-input')) {
+        setActiveSuggestRow(null);
+        setSuggestPosition(null);
+      }
     };
+
+    const handleScrollOrResize = () => {
+      if (activeSuggestRow !== null) {
+        const el = document.querySelector<HTMLElement>(
+          `[data-sanitary-cell="${activeSuggestRow}-0"]`
+        );
+        if (el) {
+          updateSuggestPosition(el);
+        } else {
+          setActiveSuggestRow(null);
+          setSuggestPosition(null);
+        }
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [activeSuggestRow]);
 
   // Customer search trigger
   const triggerCustomerLookup = (queryText: string) => {
@@ -497,7 +545,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
     if (e.key === 'Enter') {
       if (isSuggestOpen) {
         e.preventDefault();
-        applyCatalogItem(itemIdx, catalogSuggestions[0]);
+        applyCatalogItem(itemIdx, catalogSuggestions[catalogHighlightIndex] || catalogSuggestions[0]);
         return;
       }
       e.preventDefault();
@@ -507,6 +555,8 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
 
     if (e.key === 'ArrowDown') {
       if (isSuggestOpen) {
+        e.preventDefault();
+        setCatalogHighlightIndex((prev) => (prev + 1) % catalogSuggestions.length);
         return;
       }
       e.preventDefault();
@@ -516,6 +566,8 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
 
     if (e.key === 'ArrowUp') {
       if (isSuggestOpen) {
+        e.preventDefault();
+        setCatalogHighlightIndex((prev) => (prev - 1 + catalogSuggestions.length) % catalogSuggestions.length);
         return;
       }
       e.preventDefault();
@@ -622,9 +674,15 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
   };
 
   // Catalog Autocomplete & Auto-Fetch Handlers
-  const handleItemCodeChange = (index: number, code: string) => {
+  const handleItemCodeChange = (index: number, code: string, targetEl?: HTMLElement | null) => {
     updateItem(index, 'item_code', code);
     setActiveSuggestRow(index);
+    setCatalogHighlightIndex(0);
+
+    const el = targetEl || document.querySelector<HTMLElement>(`[data-sanitary-cell="${index}-0"]`);
+    if (el) {
+      updateSuggestPosition(el);
+    }
 
     if (catalogSearchTimeoutRef.current) {
       clearTimeout(catalogSearchTimeoutRef.current);
@@ -633,6 +691,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
     const trimmed = code.trim();
     if (!trimmed) {
       setCatalogSuggestions([]);
+      setSuggestPosition(null);
       return;
     }
 
@@ -648,6 +707,11 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
         // If exact code match found, immediately auto-fill it!
         if (res.item && res.item.item_code.trim().toLowerCase() === trimmed.toLowerCase()) {
           applyCatalogItem(index, res.item);
+        } else if (found.length > 0) {
+          const currentInput = document.querySelector<HTMLElement>(`[data-sanitary-cell="${index}-0"]`);
+          if (currentInput) {
+            updateSuggestPosition(currentInput);
+          }
         }
       } catch (err) {
         console.error('Catalog lookup error:', err);
@@ -680,12 +744,14 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
 
     setActiveSuggestRow(null);
     setCatalogSuggestions([]);
+    setSuggestPosition(null);
   };
 
   const handleItemCodeBlur = (index: number) => {
     // Slight delay to allow clicks on dropdown items
     setTimeout(async () => {
       setActiveSuggestRow(null);
+      setSuggestPosition(null);
       const currentCode = itemsRef.current[index]?.item_code?.trim();
       if (currentCode) {
         try {
@@ -1332,13 +1398,13 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                         data-sanitary-cell={`${index}-0`}
                         placeholder="e.g. KB1011011"
                         value={item.item_code}
-                        onChange={(e) => handleItemCodeChange(index, e.target.value)}
-                        onFocus={() => {
-                          if (item.item_code) handleItemCodeChange(index, item.item_code);
+                        onChange={(e) => handleItemCodeChange(index, e.target.value, e.currentTarget)}
+                        onFocus={(e) => {
+                          if (item.item_code) handleItemCodeChange(index, item.item_code, e.currentTarget);
                         }}
                         onBlur={() => handleItemCodeBlur(index)}
                         onKeyDown={(e) => handleSanitaryCellKeyDown(e, index, 0)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
+                        className="sanitary-suggest-input w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
                       />
                       {isSearchingCatalog && activeSuggestRow === index && (
                         <div className="absolute right-2 top-2.5">
@@ -1346,56 +1412,6 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                         </div>
                       )}
                     </div>
-
-                    {/* Autocomplete Dropdown */}
-                    {activeSuggestRow === index && catalogSuggestions.length > 0 && (
-                      <div className="absolute left-3 top-full mt-1 w-80 bg-white/95 backdrop-blur-md rounded-xl border border-slate-200 shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
-                        <div className="px-2.5 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                          <span>Catalog Matches</span>
-                          <span className="text-teal-700 font-medium">Click to auto-fill</span>
-                        </div>
-                        {catalogSuggestions.map((cat) => (
-                          <div
-                            key={cat.id}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              applyCatalogItem(index, cat);
-                            }}
-                            className="p-2 flex items-center space-x-2.5 hover:bg-teal-50/80 cursor-pointer transition-colors text-left"
-                          >
-                            {cat.item_image ? (
-                              <img
-                                src={cat.item_image}
-                                alt={cat.item_code}
-                                className="w-10 h-10 object-cover rounded-lg border border-slate-200 shrink-0 bg-white"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
-                                <Bath size={16} />
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono font-bold text-xs text-teal-900 truncate">
-                                  {cat.item_code}
-                                </span>
-                                <span className="font-mono font-bold text-xs text-slate-900 shrink-0 ml-2">
-                                  ₹{formatCurrency(cat.mrp_price)}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-600 truncate mt-0.5">
-                                {cat.item_description}
-                              </p>
-                              {cat.brand && (
-                                <span className="inline-block text-[9px] font-semibold px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded mt-0.5">
-                                  {cat.brand}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </td>
 
                   {/* Item Description */}
@@ -1823,6 +1839,73 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
         onClose={() => setCatalogPickerOpen(false)}
         onSelectItem={handleSelectFromPicker}
       />
+
+      {/* Floating Dropdown for Sanitary Catalog Matches (Rendered at root level with fixed position to prevent table/card clipping) */}
+      {activeSuggestRow !== null && catalogSuggestions.length > 0 && suggestPosition && (
+        <div
+          style={{
+            position: 'fixed',
+            top: suggestPosition.top !== undefined ? `${suggestPosition.top}px` : undefined,
+            bottom: suggestPosition.bottom !== undefined ? `${suggestPosition.bottom}px` : undefined,
+            left: `${suggestPosition.left}px`,
+            width: `${suggestPosition.width}px`,
+            zIndex: 99999,
+          }}
+          className="sanitary-suggest-dropdown bg-white rounded-xl border border-slate-300 shadow-2xl max-h-72 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100"
+        >
+          <div className="px-3 py-1.5 bg-slate-100/90 text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center justify-between sticky top-0 border-b border-slate-200 z-10 backdrop-blur-sm">
+            <span className="flex items-center space-x-1.5 text-slate-700">
+              <Sparkles size={11} className="text-teal-600" />
+              <span>Catalog Matches ({catalogSuggestions.length})</span>
+            </span>
+            <span className="text-teal-700 font-semibold">Click / Enter to Auto-Fill</span>
+          </div>
+          {catalogSuggestions.map((cat, cIdx) => (
+            <div
+              key={cat.id || cIdx}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applyCatalogItem(activeSuggestRow, cat);
+              }}
+              className={`p-2 flex items-center space-x-2.5 cursor-pointer transition-colors text-left ${
+                cIdx === catalogHighlightIndex
+                  ? 'bg-teal-50 text-teal-900 font-semibold'
+                  : 'hover:bg-slate-50 text-slate-800'
+              }`}
+            >
+              {cat.item_image ? (
+                <img
+                  src={cat.item_image}
+                  alt={cat.item_code}
+                  className="w-10 h-10 object-cover rounded-lg border border-slate-200 shrink-0 bg-white"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                  <Bath size={16} />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-xs text-teal-900 truncate">
+                    {cat.item_code}
+                  </span>
+                  <span className="font-mono font-bold text-xs text-slate-900 shrink-0 ml-2">
+                    ₹{formatCurrency(cat.mrp_price)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 truncate mt-0.5">
+                  {cat.item_description}
+                </p>
+                {cat.brand && (
+                  <span className="inline-block text-[9px] font-semibold px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded mt-0.5">
+                    {cat.brand}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
