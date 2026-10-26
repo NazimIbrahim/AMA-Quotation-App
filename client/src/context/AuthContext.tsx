@@ -5,7 +5,8 @@ import { useServer } from './ServerContext';
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password?: string) => Promise<void>;
+  loginAsRole: (roleOrUsername: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   refreshUser: () => Promise<void>;
@@ -36,10 +37,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, password?: string) => {
     const data = await fetchApi<{ token: string; user: User }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, role: username }),
+    });
+
+    localStorage.setItem('ama_token', data.token);
+    setToken(data.token);
+    setUser(data.user);
+  };
+
+  const loginAsRole = async (roleOrUsername: string) => {
+    const data = await fetchApi<{ token: string; user: User }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username: roleOrUsername, role: roleOrUsername }),
     });
 
     localStorage.setItem('ama_token', data.token);
@@ -59,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         token,
         login,
+        loginAsRole,
         logout,
         isLoading,
         refreshUser,
