@@ -1006,7 +1006,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
   }
 
   return (
-    <div className="space-y-4 pb-20 select-none">
+    <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0 pb-36 select-none">
       {/* 1. Header Toolbar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex items-center space-x-3">
@@ -1714,7 +1714,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
       </div>
 
       {/* 5. Bottom Sticky Action Bar */}
-      <div className="fixed bottom-0 left-56 right-0 bg-[#0D1B2A]/90 backdrop-blur-md border-t border-white/10 px-6 py-3 flex items-center justify-between text-white z-40">
+      <div className="fixed bottom-0 left-0 md:left-56 right-0 bg-[#0D1B2A]/90 backdrop-blur-md border-t border-white/10 px-4 sm:px-6 py-3 flex items-center justify-between text-white z-40">
         <div className="flex items-center space-x-3 text-xs">
           <span>Net Total: <strong className="text-amber-300 font-mono text-sm ml-1">₹ {formatCurrency(netTotal)}</strong></span>
           <span className="text-white/30">|</span>
