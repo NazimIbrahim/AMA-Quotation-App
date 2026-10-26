@@ -165,21 +165,69 @@ sanitaryCatalogRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// 3. Create or Upsert Single Catalog Item
-sanitaryCatalogRouter.post('/', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+let schemaVerified = false;
+export async function ensureSanitaryCatalogSchema() {
+  if (schemaVerified) return;
   try {
-    const { item_code, brand, category, item_description, mrp_price, item_image, catalog_name, page_number } = req.body;
+    await query(`
+      CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
+        id SERIAL PRIMARY KEY,
+        item_code VARCHAR(100) NOT NULL,
+        brand VARCHAR(150) NOT NULL DEFAULT 'Sanitary',
+        category VARCHAR(100) NOT NULL DEFAULT 'General',
+        item_description TEXT NOT NULL,
+        mrp_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        item_image TEXT,
+        catalog_name VARCHAR(255),
+        page_number INTEGER,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
 
-    if (!item_code || !item_code.trim()) {
-      res.status(400).json({ error: 'Item code is required' });
-      return;
-    }
-    if (!item_description || !item_description.trim()) {
-      res.status(400).json({ error: 'Item description is required' });
-      return;
-    }
+      -- Deduplicate if any duplicates exist before adding UNIQUE constraint
+      DELETE FROM sanitary_catalog_items a
+      USING sanitary_catalog_items b
+      WHERE a.item_code = b.item_code
+        AND a.id < b.id;
 
-    const rows = await query(
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'sanitary_catalog_items_item_code_key' 
+            AND conrelid = 'sanitary_catalog_items'::regclass
+        ) THEN
+          ALTER TABLE sanitary_catalog_items 
+            ADD CONSTRAINT sanitary_catalog_items_item_code_key UNIQUE (item_code);
+        END IF;
+      END $$;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sanitary_catalog_code_unique ON sanitary_catalog_items (item_code);
+      CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_code ON sanitary_catalog_items (item_code);
+      CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
+      CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);
+    `);
+    schemaVerified = true;
+  } catch (err: any) {
+    console.error('ensureSanitaryCatalogSchema notice:', err.message);
+  }
+}
+
+async function upsertCatalogItem(item: any, catalog_name?: string): Promise<any[]> {
+  await ensureSanitaryCatalogSchema();
+
+  const code = (item.item_code || '').trim();
+  const brand = (item.brand || 'Sanitary').trim();
+  const category = (item.category || 'General').trim();
+  const description = (item.item_description || item.description || item.item_code || 'Sanitary Item').trim();
+  const mrp = parseFloat(item.mrp_price || item.mrp || 0) || 0;
+  const image = item.item_image || null;
+  const catName = (catalog_name || item.catalog_name || 'Imported Catalog').trim();
+  const pageNum = item.page_number ? parseInt(item.page_number, 10) : null;
+
+  try {
+    return await query(
       `INSERT INTO sanitary_catalog_items 
         (item_code, brand, category, item_description, mrp_price, item_image, catalog_name, page_number, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
@@ -205,18 +253,101 @@ sanitaryCatalogRouter.post('/', requireRole(['admin', 'manager']), async (req: R
         END,
         updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [
-        item_code.trim(),
-        (brand || 'Sanitary').trim(),
-        (category || 'General').trim(),
-        item_description.trim(),
-        parseFloat(mrp_price) || 0,
-        item_image || null,
-        catalog_name?.trim() || null,
-        page_number ? parseInt(page_number, 10) : null,
-      ]
+      [code, brand, category, description, mrp, image, catName, pageNum]
     );
+  } catch (err: any) {
+    if (err.message && (err.message.includes('ON CONFLICT') || err.message.includes('unique or exclusion constraint'))) {
+      try {
+        await query(`
+          DELETE FROM sanitary_catalog_items a USING sanitary_catalog_items b
+          WHERE a.item_code = b.item_code AND a.id < b.id;
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint 
+              WHERE conname = 'sanitary_catalog_items_item_code_key' 
+                AND conrelid = 'sanitary_catalog_items'::regclass
+            ) THEN
+              ALTER TABLE sanitary_catalog_items ADD CONSTRAINT sanitary_catalog_items_item_code_key UNIQUE (item_code);
+            END IF;
+          END $$;
+        `);
+        return await query(
+          `INSERT INTO sanitary_catalog_items 
+            (item_code, brand, category, item_description, mrp_price, item_image, catalog_name, page_number, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+           ON CONFLICT (item_code) DO UPDATE SET
+            brand = EXCLUDED.brand,
+            category = EXCLUDED.category,
+            item_description = CASE 
+              WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.item_description
+              ELSE EXCLUDED.item_description
+            END,
+            mrp_price = CASE 
+              WHEN EXCLUDED.mrp_price > 0 THEN EXCLUDED.mrp_price 
+              ELSE sanitary_catalog_items.mrp_price 
+            END,
+            item_image = CASE 
+              WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 500 THEN EXCLUDED.item_image 
+              ELSE sanitary_catalog_items.item_image 
+            END,
+            catalog_name = COALESCE(EXCLUDED.catalog_name, sanitary_catalog_items.catalog_name),
+            page_number = CASE 
+              WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.page_number
+              ELSE COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number)
+            END,
+            updated_at = CURRENT_TIMESTAMP
+           RETURNING *`,
+          [code, brand, category, description, mrp, image, catName, pageNum]
+        );
+      } catch (retryErr) {
+        // Fallback: SELECT then UPDATE/INSERT
+        const existing = await query(
+          `SELECT id, item_image, item_description, page_number FROM sanitary_catalog_items WHERE item_code = $1 LIMIT 1`,
+          [code]
+        );
+        if (existing.length > 0) {
+          const row = existing[0];
+          const keepDesc = row.item_image && row.item_image.length > 500 && (!image || image.length <= 500);
+          const finalDesc = keepDesc ? row.item_description : description;
+          const finalImg = image && image.length > 500 ? image : row.item_image;
+          const finalPage = keepDesc ? row.page_number : pageNum || row.page_number;
+          return await query(
+            `UPDATE sanitary_catalog_items 
+             SET brand = $1, category = $2, item_description = $3, mrp_price = CASE WHEN $4 > 0 THEN $4 ELSE mrp_price END,
+                 item_image = $5, catalog_name = COALESCE($6, catalog_name), page_number = $7, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $8 RETURNING *`,
+            [brand, category, finalDesc, mrp, finalImg, catName, finalPage, row.id]
+          );
+        } else {
+          return await query(
+            `INSERT INTO sanitary_catalog_items 
+              (item_code, brand, category, item_description, mrp_price, item_image, catalog_name, page_number, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP) RETURNING *`,
+            [code, brand, category, description, mrp, image, catName, pageNum]
+          );
+        }
+      }
+    }
+    throw err;
+  }
+}
 
+// 3. Create or Upsert Single Catalog Item
+sanitaryCatalogRouter.post('/', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+  try {
+    const { item_code, item_description } = req.body;
+
+    if (!item_code || !item_code.trim()) {
+      res.status(400).json({ error: 'Item code is required' });
+      return;
+    }
+    if (!item_description || !item_description.trim()) {
+      res.status(400).json({ error: 'Item description is required' });
+      return;
+    }
+
+    const rows = await upsertCatalogItem(req.body);
     res.status(201).json({ item: rows[0] });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -236,43 +367,7 @@ sanitaryCatalogRouter.post('/batch', requireRole(['admin', 'manager']), async (r
     let successCount = 0;
     for (const item of items) {
       if (!item.item_code || !item.item_code.trim()) continue;
-
-      await query(
-        `INSERT INTO sanitary_catalog_items 
-          (item_code, brand, category, item_description, mrp_price, item_image, catalog_name, page_number, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
-         ON CONFLICT (item_code) DO UPDATE SET
-          brand = EXCLUDED.brand,
-          category = EXCLUDED.category,
-          item_description = CASE 
-            WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.item_description
-            ELSE EXCLUDED.item_description
-          END,
-          mrp_price = CASE 
-            WHEN EXCLUDED.mrp_price > 0 THEN EXCLUDED.mrp_price 
-            ELSE sanitary_catalog_items.mrp_price 
-          END,
-          item_image = CASE 
-            WHEN EXCLUDED.item_image IS NOT NULL AND length(EXCLUDED.item_image) > 500 THEN EXCLUDED.item_image 
-            ELSE sanitary_catalog_items.item_image 
-          END,
-          catalog_name = COALESCE(EXCLUDED.catalog_name, sanitary_catalog_items.catalog_name),
-          page_number = CASE 
-            WHEN sanitary_catalog_items.item_image IS NOT NULL AND length(sanitary_catalog_items.item_image) > 500 AND (EXCLUDED.item_image IS NULL OR length(EXCLUDED.item_image) <= 500) THEN sanitary_catalog_items.page_number
-            ELSE COALESCE(EXCLUDED.page_number, sanitary_catalog_items.page_number)
-          END,
-          updated_at = CURRENT_TIMESTAMP`,
-        [
-          item.item_code.trim(),
-          (item.brand || 'Sanitary').trim(),
-          (item.category || 'General').trim(),
-          (item.item_description || item.description || item.item_code).trim(),
-          parseFloat(item.mrp_price || item.mrp || 0) || 0,
-          item.item_image || null,
-          (catalog_name || item.catalog_name || 'Imported Catalog').trim(),
-          item.page_number ? parseInt(item.page_number, 10) : null,
-        ]
-      );
+      await upsertCatalogItem(item, catalog_name);
       successCount++;
     }
 

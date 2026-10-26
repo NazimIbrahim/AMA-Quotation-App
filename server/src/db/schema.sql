@@ -226,7 +226,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity_type, ent
 
 CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
     id SERIAL PRIMARY KEY,
-    item_code VARCHAR(100) NOT NULL,
+    item_code VARCHAR(100) NOT NULL UNIQUE,
     brand VARCHAR(150) NOT NULL DEFAULT 'Sanitary',
     category VARCHAR(100) NOT NULL DEFAULT 'General',
     item_description TEXT NOT NULL,
@@ -238,6 +238,7 @@ CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sanitary_catalog_code_unique ON sanitary_catalog_items (item_code);
 CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_code ON sanitary_catalog_items (item_code);
 CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
 CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);

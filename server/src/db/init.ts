@@ -65,7 +65,7 @@ export async function initializeDatabase(): Promise<void> {
 
       CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
           id SERIAL PRIMARY KEY,
-          item_code VARCHAR(100) NOT NULL,
+          item_code VARCHAR(100) NOT NULL UNIQUE,
           brand VARCHAR(150) NOT NULL DEFAULT 'Sanitary',
           category VARCHAR(100) NOT NULL DEFAULT 'General',
           item_description TEXT NOT NULL,
@@ -77,6 +77,26 @@ export async function initializeDatabase(): Promise<void> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- Deduplicate if any duplicates exist before adding UNIQUE constraint
+      DELETE FROM sanitary_catalog_items a
+      USING sanitary_catalog_items b
+      WHERE a.item_code = b.item_code
+        AND a.id < b.id;
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'sanitary_catalog_items_item_code_key' 
+            AND conrelid = 'sanitary_catalog_items'::regclass
+        ) THEN
+          ALTER TABLE sanitary_catalog_items 
+            ADD CONSTRAINT sanitary_catalog_items_item_code_key UNIQUE (item_code);
+        END IF;
+      END $$;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sanitary_catalog_code_unique ON sanitary_catalog_items (item_code);
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_code ON sanitary_catalog_items (item_code);
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);

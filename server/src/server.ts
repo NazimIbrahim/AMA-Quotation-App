@@ -84,9 +84,80 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // Initialize WebSocket server
 initWebSocketServer(server);
 
+// Automatically apply essential database migrations and constraints
+async function runAutoMigrations() {
+  try {
+    logger.info('Checking and applying automatic database schema migrations...');
+
+    // 1. Ensure sanitary_catalog_items table exists with UNIQUE constraint on item_code
+    await query(`
+      CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
+        id SERIAL PRIMARY KEY,
+        item_code VARCHAR(100) NOT NULL,
+        brand VARCHAR(150) NOT NULL DEFAULT 'Sanitary',
+        category VARCHAR(100) NOT NULL DEFAULT 'General',
+        item_description TEXT NOT NULL,
+        mrp_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        item_image TEXT,
+        catalog_name VARCHAR(255),
+        page_number INTEGER,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Deduplicate if any duplicates exist before adding UNIQUE constraint
+      DELETE FROM sanitary_catalog_items a
+      USING sanitary_catalog_items b
+      WHERE a.item_code = b.item_code
+        AND a.id < b.id;
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'sanitary_catalog_items_item_code_key' 
+            AND conrelid = 'sanitary_catalog_items'::regclass
+        ) THEN
+          ALTER TABLE sanitary_catalog_items 
+            ADD CONSTRAINT sanitary_catalog_items_item_code_key UNIQUE (item_code);
+        END IF;
+      END $$;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sanitary_catalog_code_unique ON sanitary_catalog_items (item_code);
+      CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_code ON sanitary_catalog_items (item_code);
+      CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
+      CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);
+    `);
+
+    // 2. Ensure quotation columns and indexes exist
+    await query(`
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_person_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_person_name VARCHAR(120);
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS split_share_type VARCHAR(20) DEFAULT 'percentage';
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS primary_sales_share_percent NUMERIC(5, 2) DEFAULT 100.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS primary_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_share_percent NUMERIC(5, 2) DEFAULT 0.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00;
+      CREATE INDEX IF NOT EXISTS idx_quotations_assisted_sales_person ON quotations (assisted_sales_person_id);
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS quotation_type VARCHAR(30) NOT NULL DEFAULT 'tiles';
+      CREATE INDEX IF NOT EXISTS idx_quotations_type ON quotations (quotation_type);
+
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_image TEXT;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS mrp_price NUMERIC(12, 2) DEFAULT 0.00;
+    `);
+
+    logger.info('Database schema migrations applied successfully.');
+  } catch (err: any) {
+    logger.warn('Auto migrations warning:', err.message);
+  }
+}
+
 // Ensure default users and company settings exist if database was just created
 async function ensureBootstrapData() {
   try {
+    await runAutoMigrations();
     const userCount = await query('SELECT count(*) FROM users');
     if (parseInt(userCount[0]?.count || '0', 10) === 0) {
       logger.info('Fresh database detected (0 users). Seeding default admin, manager, accounts, and salesperson accounts...');
