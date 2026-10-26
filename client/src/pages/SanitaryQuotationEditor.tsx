@@ -434,6 +434,124 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
     );
   };
 
+  // Keyboard Navigation Helpers for Sanitary Grid
+  const focusSanitaryCell = (itemIdx: number, colIdx: number): boolean => {
+    const el = document.querySelector<HTMLElement>(`[data-sanitary-cell="${itemIdx}-${colIdx}"]`);
+    if (el) {
+      el.focus();
+      if (el instanceof HTMLInputElement) {
+        el.select();
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const navigateSanitaryNext = (itemIdx: number, currentCol: number) => {
+    for (let nextCol = currentCol + 1; nextCol <= 5; nextCol++) {
+      if (focusSanitaryCell(itemIdx, nextCol)) {
+        return;
+      }
+    }
+    if (itemIdx + 1 < items.length) {
+      focusSanitaryCell(itemIdx + 1, 0);
+    } else {
+      addItem();
+      setTimeout(() => {
+        focusSanitaryCell(itemIdx + 1, 0);
+      }, 50);
+    }
+  };
+
+  const navigateSanitaryPrev = (itemIdx: number, currentCol: number) => {
+    for (let prevCol = currentCol - 1; prevCol >= 0; prevCol--) {
+      if (focusSanitaryCell(itemIdx, prevCol)) {
+        return;
+      }
+    }
+    if (itemIdx > 0) {
+      focusSanitaryCell(itemIdx - 1, 5);
+    }
+  };
+
+  const navigateSanitaryRow = (itemIdx: number, colIdx: number, direction: 'up' | 'down') => {
+    const targetIdx = direction === 'up' ? itemIdx - 1 : itemIdx + 1;
+    if (targetIdx >= 0 && targetIdx < items.length) {
+      focusSanitaryCell(targetIdx, colIdx);
+    } else if (direction === 'down' && targetIdx === items.length) {
+      addItem();
+      setTimeout(() => {
+        focusSanitaryCell(targetIdx, colIdx);
+      }, 50);
+    }
+  };
+
+  const handleSanitaryCellKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    itemIdx: number,
+    colIdx: number
+  ) => {
+    const isCode = colIdx === 0;
+    const isSuggestOpen = isCode && activeSuggestRow === itemIdx && catalogSuggestions.length > 0;
+
+    if (e.key === 'Enter') {
+      if (isSuggestOpen) {
+        e.preventDefault();
+        applyCatalogItem(itemIdx, catalogSuggestions[0]);
+        return;
+      }
+      e.preventDefault();
+      navigateSanitaryNext(itemIdx, colIdx);
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      if (isSuggestOpen) {
+        return;
+      }
+      e.preventDefault();
+      navigateSanitaryRow(itemIdx, colIdx, 'down');
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      if (isSuggestOpen) {
+        return;
+      }
+      e.preventDefault();
+      navigateSanitaryRow(itemIdx, colIdx, 'up');
+      return;
+    }
+
+    if (e.key === 'ArrowRight') {
+      const target = e.currentTarget as HTMLInputElement;
+      if (target.type === 'text') {
+        if (target.selectionEnd === target.value.length) {
+          e.preventDefault();
+          navigateSanitaryNext(itemIdx, colIdx);
+        }
+      } else {
+        e.preventDefault();
+        navigateSanitaryNext(itemIdx, colIdx);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowLeft') {
+      const target = e.currentTarget as HTMLInputElement;
+      if (target.type === 'text') {
+        if (target.selectionStart === 0) {
+          e.preventDefault();
+          navigateSanitaryPrev(itemIdx, colIdx);
+        }
+      } else {
+        e.preventDefault();
+        navigateSanitaryPrev(itemIdx, colIdx);
+      }
+      return;
+    }
+  };
+
   const handleRemoveAllItems = () => {
     if (!canClearAll) return;
     if (window.confirm('Are you sure you want to remove all items from this sanitary quotation? This action cannot be undone.')) {
@@ -1211,6 +1329,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                     <div className="relative">
                       <input
                         type="text"
+                        data-sanitary-cell={`${index}-0`}
                         placeholder="e.g. KB1011011"
                         value={item.item_code}
                         onChange={(e) => handleItemCodeChange(index, e.target.value)}
@@ -1218,12 +1337,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                           if (item.item_code) handleItemCodeChange(index, item.item_code);
                         }}
                         onBlur={() => handleItemCodeBlur(index)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleItemCodeBlur(index);
-                          }
-                        }}
+                        onKeyDown={(e) => handleSanitaryCellKeyDown(e, index, 0)}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
                       />
                       {isSearchingCatalog && activeSuggestRow === index && (
@@ -1288,9 +1402,11 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                   <td className="py-3 px-3 align-middle">
                     <input
                       type="text"
+                      data-sanitary-cell={`${index}-1`}
                       placeholder="e.g. Wall Hung Rimless WC with Soft Close Seat Cover"
                       value={item.item_description}
                       onChange={(e) => updateItem(index, 'item_description', e.target.value)}
+                      onKeyDown={(e) => handleSanitaryCellKeyDown(e, index, 1)}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-[#415A77] bg-white font-medium"
                     />
                   </td>
@@ -1365,8 +1481,10 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                       type="number"
                       min="1"
                       step="1"
+                      data-sanitary-cell={`${index}-2`}
                       value={item.quantity}
                       onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                      onKeyDown={(e) => handleSanitaryCellKeyDown(e, index, 2)}
                       className="w-20 px-2 py-1.5 rounded-lg border border-slate-300 text-right font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
                     />
                   </td>
@@ -1377,9 +1495,11 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                       type="number"
                       min="0"
                       step="any"
+                      data-sanitary-cell={`${index}-3`}
                       placeholder="0.00"
                       value={item.mrp_price || ''}
                       onChange={(e) => updateItem(index, 'mrp_price', e.target.value)}
+                      onKeyDown={(e) => handleSanitaryCellKeyDown(e, index, 3)}
                       className="w-28 px-2 py-1.5 rounded-lg border border-slate-300 text-right font-mono font-semibold text-slate-800 focus:outline-none focus:border-[#415A77] bg-white"
                     />
                   </td>
@@ -1392,9 +1512,11 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                         min="0"
                         max="100"
                         step="0.1"
+                        data-sanitary-cell={`${index}-4`}
                         placeholder="0"
                         value={item.discount_percent || ''}
                         onChange={(e) => updateItem(index, 'discount_percent', e.target.value)}
+                        onKeyDown={(e) => handleSanitaryCellKeyDown(e, index, 4)}
                         className="w-full pr-5 pl-2 py-1.5 rounded-lg border border-slate-300 text-right font-mono font-semibold text-amber-900 focus:outline-none focus:border-[#415A77] bg-amber-50/50"
                       />
                       <span className="absolute right-1.5 top-2 text-[10px] font-bold text-slate-400">
@@ -1409,9 +1531,11 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
                       type="number"
                       min="0"
                       step="any"
+                      data-sanitary-cell={`${index}-5`}
                       placeholder="0.00"
                       value={item.discounted_price || ''}
                       onChange={(e) => updateItem(index, 'discounted_price', e.target.value)}
+                      onKeyDown={(e) => handleSanitaryCellKeyDown(e, index, 5)}
                       className="w-28 px-2 py-1.5 rounded-lg border border-slate-300 text-right font-mono font-bold text-slate-900 focus:outline-none focus:border-[#415A77] bg-white"
                     />
                   </td>

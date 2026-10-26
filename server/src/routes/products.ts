@@ -254,3 +254,92 @@ productsRouter.delete('/coverages/:id', requireRole(['admin', 'manager']), async
     res.status(500).json({ error: error.message });
   }
 });
+
+// Search / List saved tile catalog items for auto-complete and future reference
+productsRouter.get('/tile-items', async (req: Request, res: Response) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    const brand = (req.query.brand as string || '').trim();
+    const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 100);
+
+    let sql = 'SELECT * FROM tile_catalog_items WHERE 1=1';
+    const params: any[] = [];
+    let pIdx = 1;
+
+    if (q) {
+      sql += ` AND (description ILIKE $${pIdx} OR brand ILIKE $${pIdx})`;
+      params.push(`%${q}%`);
+      pIdx++;
+    }
+    if (brand) {
+      sql += ` AND brand ILIKE $${pIdx}`;
+      params.push(brand);
+      pIdx++;
+    }
+
+    sql += ` ORDER BY usage_count DESC, last_used_at DESC LIMIT $${pIdx}`;
+    params.push(limit);
+
+    const rows = await query(sql, params);
+    res.json({ items: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Save or Upsert single tile catalog item
+productsRouter.post('/tile-items', async (req: Request, res: Response) => {
+  try {
+    const {
+      description,
+      brand,
+      size,
+      product_type,
+      coverage_area,
+      base_rate_per_sqft,
+      rate_per_sqft,
+      base_rate_per_box,
+      rate_per_box,
+    } = req.body;
+
+    const desc = (description || '').trim();
+    if (!desc) {
+      res.status(400).json({ error: 'Description is required' });
+      return;
+    }
+
+    const b = (brand || '').trim();
+    const s = (size || '').trim();
+    const pt = (product_type || 'box').trim().toLowerCase();
+    const cov = parseFloat(coverage_area) || 0;
+    const rSqft = parseFloat(rate_per_sqft) || 0;
+    const baseSqft = parseFloat(base_rate_per_sqft) || rSqft;
+    const rBox = parseFloat(rate_per_box) || 0;
+    const baseBox = parseFloat(base_rate_per_box) || rBox;
+
+    const rows = await query(
+      `INSERT INTO tile_catalog_items (
+        description, brand, size, product_type, coverage_area,
+        base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box,
+        usage_count, last_used_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT (description) DO UPDATE SET
+        brand = COALESCE(NULLIF(EXCLUDED.brand, ''), tile_catalog_items.brand),
+        size = COALESCE(NULLIF(EXCLUDED.size, ''), tile_catalog_items.size),
+        product_type = COALESCE(NULLIF(EXCLUDED.product_type, ''), tile_catalog_items.product_type),
+        coverage_area = CASE WHEN EXCLUDED.coverage_area > 0 THEN EXCLUDED.coverage_area ELSE tile_catalog_items.coverage_area END,
+        base_rate_per_sqft = CASE WHEN EXCLUDED.base_rate_per_sqft > 0 THEN EXCLUDED.base_rate_per_sqft ELSE tile_catalog_items.base_rate_per_sqft END,
+        rate_per_sqft = CASE WHEN EXCLUDED.rate_per_sqft > 0 THEN EXCLUDED.rate_per_sqft ELSE tile_catalog_items.rate_per_sqft END,
+        base_rate_per_box = CASE WHEN EXCLUDED.base_rate_per_box > 0 THEN EXCLUDED.base_rate_per_box ELSE tile_catalog_items.base_rate_per_box END,
+        rate_per_box = CASE WHEN EXCLUDED.rate_per_box > 0 THEN EXCLUDED.rate_per_box ELSE tile_catalog_items.rate_per_box END,
+        usage_count = tile_catalog_items.usage_count + 1,
+        last_used_at = CURRENT_TIMESTAMP
+      RETURNING *`,
+      [desc, b, s, pt, cov, baseSqft, rSqft, baseBox, rBox]
+    );
+
+    res.status(201).json({ item: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});

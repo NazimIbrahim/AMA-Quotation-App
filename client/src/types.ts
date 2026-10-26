@@ -34,6 +34,21 @@ export interface TileBrand {
 
 export type ProductType = 'box' | 'pieces' | 'sqft' | 'bags' | 'nos';
 
+export interface TileCatalogItem {
+  id?: number;
+  description: string;
+  brand?: string;
+  size?: string;
+  product_type?: ProductType;
+  coverage_area?: number;
+  base_rate_per_sqft?: number;
+  rate_per_sqft?: number;
+  base_rate_per_box?: number;
+  rate_per_box?: number;
+  usage_count?: number;
+  last_used_at?: string;
+}
+
 export interface BrandSizeCoverage {
   id: number;
   brand_id: number;

@@ -81,6 +81,24 @@ CREATE TABLE IF NOT EXISTS brand_size_coverages (
 );
 CREATE INDEX IF NOT EXISTS idx_coverages_brand ON brand_size_coverages (brand_id);
 
+CREATE TABLE IF NOT EXISTS tile_catalog_items (
+    id SERIAL PRIMARY KEY,
+    description VARCHAR(255) NOT NULL UNIQUE,
+    brand VARCHAR(150),
+    size VARCHAR(100),
+    product_type VARCHAR(30) NOT NULL DEFAULT 'box',
+    coverage_area NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    base_rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    base_rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    usage_count INTEGER NOT NULL DEFAULT 1,
+    last_used_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tile_catalog_description ON tile_catalog_items (description);
+CREATE INDEX IF NOT EXISTS idx_tile_catalog_usage ON tile_catalog_items (usage_count DESC, last_used_at DESC);
+
 CREATE TABLE IF NOT EXISTS quotation_sequences (
     year_prefix VARCHAR(20) PRIMARY KEY,
     last_seq INTEGER NOT NULL DEFAULT 0

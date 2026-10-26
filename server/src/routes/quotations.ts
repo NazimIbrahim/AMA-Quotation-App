@@ -539,6 +539,32 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
                 mrpPrice,
               ]
             );
+
+            // Automatically record tile item into catalog for future auto-fill memory
+            if (qType !== 'sanitary') {
+              const desc = (item.item_description || item.description || '').trim();
+              if (desc && desc.length > 1) {
+                await client.query(
+                  `INSERT INTO tile_catalog_items (
+                    description, brand, size, product_type, coverage_area,
+                    base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box,
+                    usage_count, last_used_at
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
+                  ON CONFLICT (description) DO UPDATE SET
+                    brand = COALESCE(NULLIF(EXCLUDED.brand, ''), tile_catalog_items.brand),
+                    size = COALESCE(NULLIF(EXCLUDED.size, ''), tile_catalog_items.size),
+                    product_type = COALESCE(NULLIF(EXCLUDED.product_type, ''), tile_catalog_items.product_type),
+                    coverage_area = CASE WHEN EXCLUDED.coverage_area > 0 THEN EXCLUDED.coverage_area ELSE tile_catalog_items.coverage_area END,
+                    base_rate_per_sqft = CASE WHEN EXCLUDED.base_rate_per_sqft > 0 THEN EXCLUDED.base_rate_per_sqft ELSE tile_catalog_items.base_rate_per_sqft END,
+                    rate_per_sqft = CASE WHEN EXCLUDED.rate_per_sqft > 0 THEN EXCLUDED.rate_per_sqft ELSE tile_catalog_items.rate_per_sqft END,
+                    base_rate_per_box = CASE WHEN EXCLUDED.base_rate_per_box > 0 THEN EXCLUDED.base_rate_per_box ELSE tile_catalog_items.base_rate_per_box END,
+                    rate_per_box = CASE WHEN EXCLUDED.rate_per_box > 0 THEN EXCLUDED.rate_per_box ELSE tile_catalog_items.rate_per_box END,
+                    usage_count = tile_catalog_items.usage_count + 1,
+                    last_used_at = CURRENT_TIMESTAMP`,
+                  [desc, item.brand || null, item.size || null, pType, cov, baseSqft, rSqft, baseBox, rBox]
+                ).catch(() => {});
+              }
+            }
           }
         }
       }
@@ -831,6 +857,32 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
                 mrpPrice,
               ]
             );
+
+            // Automatically record tile item into catalog for future auto-fill memory
+            if (qType !== 'sanitary') {
+              const desc = (item.item_description || item.description || '').trim();
+              if (desc && desc.length > 1) {
+                await client.query(
+                  `INSERT INTO tile_catalog_items (
+                    description, brand, size, product_type, coverage_area,
+                    base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box,
+                    usage_count, last_used_at
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
+                  ON CONFLICT (description) DO UPDATE SET
+                    brand = COALESCE(NULLIF(EXCLUDED.brand, ''), tile_catalog_items.brand),
+                    size = COALESCE(NULLIF(EXCLUDED.size, ''), tile_catalog_items.size),
+                    product_type = COALESCE(NULLIF(EXCLUDED.product_type, ''), tile_catalog_items.product_type),
+                    coverage_area = CASE WHEN EXCLUDED.coverage_area > 0 THEN EXCLUDED.coverage_area ELSE tile_catalog_items.coverage_area END,
+                    base_rate_per_sqft = CASE WHEN EXCLUDED.base_rate_per_sqft > 0 THEN EXCLUDED.base_rate_per_sqft ELSE tile_catalog_items.base_rate_per_sqft END,
+                    rate_per_sqft = CASE WHEN EXCLUDED.rate_per_sqft > 0 THEN EXCLUDED.rate_per_sqft ELSE tile_catalog_items.rate_per_sqft END,
+                    base_rate_per_box = CASE WHEN EXCLUDED.base_rate_per_box > 0 THEN EXCLUDED.base_rate_per_box ELSE tile_catalog_items.base_rate_per_box END,
+                    rate_per_box = CASE WHEN EXCLUDED.rate_per_box > 0 THEN EXCLUDED.rate_per_box ELSE tile_catalog_items.rate_per_box END,
+                    usage_count = tile_catalog_items.usage_count + 1,
+                    last_used_at = CURRENT_TIMESTAMP`,
+                  [desc, item.brand || null, item.size || null, pType, cov, baseSqft, rSqft, baseBox, rBox]
+                ).catch(() => {});
+              }
+            }
           }
         }
       }

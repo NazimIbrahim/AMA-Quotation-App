@@ -7,7 +7,7 @@
 !include "FileFunc.nsh"
 
 Name "AMA Ceramics Quotation Host Server"
-OutFile "..\client\release\AMA-Ceramics-Host-Server-Setup-2.4.2.exe"
+OutFile "..\client\release\AMA-Ceramics-Host-Server-Setup-2.4.3.exe"
 InstallDir "C:\AMA-Ceramics-Host-Server"
 InstallDirRegKey HKLM "Software\AMACeramics\HostServer" "Install_Dir"
 RequestExecutionLevel admin
@@ -77,7 +77,7 @@ Section "Install Host Server Files" SecMain
     WriteRegStr HKLM "Software\AMACeramics\HostServer" "Install_Dir" "$INSTDIR"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayName" "AMA Ceramics Quotation Host Server"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "UninstallString" '"$INSTDIR\uninstall.exe"'
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayVersion" "2.4.2"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "DisplayVersion" "2.4.3"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMACeramicsHostServer" "Publisher" "AMA Ceramics Pvt Ltd"
     WriteUninstaller "$INSTDIR\uninstall.exe"
     

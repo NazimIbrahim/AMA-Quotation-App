@@ -100,6 +100,32 @@ export async function initializeDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_code ON sanitary_catalog_items (item_code);
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);
+
+      CREATE TABLE IF NOT EXISTS tile_catalog_items (
+          id SERIAL PRIMARY KEY,
+          description VARCHAR(255) NOT NULL UNIQUE,
+          brand VARCHAR(150),
+          size VARCHAR(100),
+          product_type VARCHAR(30) NOT NULL DEFAULT 'box',
+          coverage_area NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+          base_rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+          rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+          base_rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+          rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+          usage_count INTEGER NOT NULL DEFAULT 1,
+          last_used_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_tile_catalog_description ON tile_catalog_items (description);
+      CREATE INDEX IF NOT EXISTS idx_tile_catalog_usage ON tile_catalog_items (usage_count DESC, last_used_at DESC);
+
+      -- Backfill tile_catalog_items from existing quotation items if empty
+      INSERT INTO tile_catalog_items (description, brand, size, product_type, coverage_area, base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box)
+      SELECT DISTINCT ON (LOWER(TRIM(description))) 
+        TRIM(description), brand, size, product_type, coverage_area, base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box
+      FROM quotation_items
+      WHERE description IS NOT NULL AND length(TRIM(description)) > 1
+      ON CONFLICT (description) DO NOTHING;
     `);
 
     logger.info('Database schema applied successfully.');

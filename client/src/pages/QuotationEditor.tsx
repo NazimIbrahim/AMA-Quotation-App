@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
-import { Quotation, QuotationArea, QuotationItem, Customer, TileBrand, BrandSizeCoverage, User, ProductType } from '../types';
+import { Quotation, QuotationArea, QuotationItem, Customer, TileBrand, BrandSizeCoverage, User, ProductType, TileCatalogItem } from '../types';
 import {
   Save,
   ArrowLeft,
@@ -99,6 +99,12 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   const customerDropdownRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Saved Tile Items Autocomplete & Memory State
+  const [savedTileItems, setSavedTileItems] = useState<TileCatalogItem[]>([]);
+  const [activeTileSuggestRow, setActiveTileSuggestRow] = useState<{ areaIdx: number; itemIdx: number } | null>(null);
+  const [tileSuggestions, setTileSuggestions] = useState<TileCatalogItem[]>([]);
+  const [tileHighlightIndex, setTileHighlightIndex] = useState(0);
+
   // Close suggestions on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -107,6 +113,10 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         !customerDropdownRef.current.contains(event.target as Node)
       ) {
         setShowSuggestions(false);
+      }
+      const target = event.target as HTMLElement;
+      if (!target.closest('.tile-suggest-container')) {
+        setActiveTileSuggestRow(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -325,6 +335,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
     fetchApi('/api/customers?limit=100').then((res) => setCustomers(res.customers || [])).catch(() => {});
     fetchApi('/api/products/brands').then((res) => setBrands(res.brands || [])).catch(() => {});
     fetchApi('/api/products/coverages').then((res) => setCoverages(res.coverages || [])).catch(() => {});
+    fetchApi('/api/products/tile-items?limit=100').then((res) => setSavedTileItems(res.items || [])).catch(() => {});
     fetchApi('/api/users').then((res) => {
       const all: User[] = res.users || [];
       setSalesTeam(all.filter((u) => u.is_active));
@@ -705,6 +716,258 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
     newAreas[areaIdx].items[itemIdx] = item;
     setAreas(newAreas);
+  };
+
+  // Saved Tile Item Lookup & Autocomplete Handler
+  const handleDescriptionChange = (areaIdx: number, itemIdx: number, text: string) => {
+    handleItemChange(areaIdx, itemIdx, 'description', text);
+    const q = text.trim().toLowerCase();
+    if (q.length >= 1) {
+      const matches = savedTileItems.filter(
+        (item) =>
+          item.description.toLowerCase().includes(q) ||
+          (item.brand && item.brand.toLowerCase().includes(q))
+      ).slice(0, 8);
+      setTileSuggestions(matches);
+      setActiveTileSuggestRow({ areaIdx, itemIdx });
+      setTileHighlightIndex(0);
+    } else {
+      setActiveTileSuggestRow(null);
+    }
+  };
+
+  const handleDescriptionBlur = (areaIdx: number, itemIdx: number) => {
+    setTimeout(() => {
+      setActiveTileSuggestRow(null);
+    }, 250);
+
+    const item = areas[areaIdx]?.items[itemIdx];
+    if (item && item.description && item.description.trim().length > 1) {
+      fetchApi('/api/products/tile-items', {
+        method: 'POST',
+        body: JSON.stringify({
+          description: item.description.trim(),
+          brand: item.brand,
+          size: item.size,
+          product_type: item.product_type,
+          coverage_area: item.coverage_area,
+          base_rate_per_sqft: item.base_rate_per_sqft,
+          rate_per_sqft: item.rate_per_sqft,
+          base_rate_per_box: item.base_rate_per_box,
+          rate_per_box: item.rate_per_box,
+        }),
+      }).then((res) => {
+        if (res.item) {
+          setSavedTileItems((prev) => {
+            const exists = prev.some((p) => p.description.toLowerCase() === res.item.description.toLowerCase());
+            if (exists) {
+              return prev.map((p) => p.description.toLowerCase() === res.item.description.toLowerCase() ? res.item : p);
+            }
+            return [res.item, ...prev];
+          });
+        }
+      }).catch(() => {});
+    }
+  };
+
+  const applySavedTileItem = (areaIdx: number, itemIdx: number, saved: TileCatalogItem) => {
+    const newAreas = [...areas];
+    const item = { ...newAreas[areaIdx].items[itemIdx] };
+
+    item.description = saved.description;
+    if (saved.brand) item.brand = saved.brand;
+    if (saved.size) item.size = saved.size;
+    if (saved.product_type) item.product_type = saved.product_type;
+    if (saved.coverage_area) item.coverage_area = saved.coverage_area;
+
+    const pType = (item.product_type || 'box').toLowerCase();
+
+    if (saved.base_rate_per_sqft) {
+      item.base_rate_per_sqft = saved.base_rate_per_sqft;
+      item.rate_per_sqft = saved.rate_per_sqft || saved.base_rate_per_sqft;
+    }
+    if (saved.base_rate_per_box) {
+      item.base_rate_per_box = saved.base_rate_per_box;
+      item.rate_per_box = saved.rate_per_box || saved.base_rate_per_box;
+    }
+
+    const sqft = parseFloat(String(item.quantity_sqft)) || 0;
+    const boxes = parseFloat(String(item.quantity_boxes)) || 0;
+    if (pType === 'sqft') {
+      item.total_amount = parseFloat((sqft * (item.rate_per_sqft || 0)).toFixed(2));
+    } else if (['bags', 'pieces', 'nos'].includes(pType)) {
+      item.total_amount = parseFloat((boxes * (item.rate_per_box || 0)).toFixed(2));
+    } else {
+      item.total_amount = parseFloat((sqft * (item.rate_per_sqft || 0)).toFixed(2));
+    }
+
+    newAreas[areaIdx].items[itemIdx] = item;
+    setAreas(newAreas);
+    setActiveTileSuggestRow(null);
+
+    // Focus next column (e.g. quantity_sqft or size)
+    setTimeout(() => {
+      navigateNext(areaIdx, itemIdx, 0);
+    }, 50);
+  };
+
+  // Keyboard Grid Navigation Handlers
+  const focusGridCell = (areaIdx: number, itemIdx: number, colIdx: number): boolean => {
+    const el = document.querySelector<HTMLElement>(`[data-cell="${areaIdx}-${itemIdx}-${colIdx}"]`);
+    if (el) {
+      el.focus();
+      if (el instanceof HTMLInputElement) {
+        el.select();
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const navigateNext = (areaIdx: number, itemIdx: number, currentCol: number) => {
+    const item = areas[areaIdx]?.items[itemIdx];
+    if (!item) return;
+    const pType = (item.product_type || 'box').toLowerCase();
+
+    for (let nextCol = currentCol + 1; nextCol <= 8; nextCol++) {
+      if (nextCol === 4 && pType !== 'box') continue;
+      if ((nextCol === 5 || nextCol === 6) && pType !== 'box' && pType !== 'sqft') continue;
+      if ((nextCol === 7 || nextCol === 8) && pType === 'sqft') continue;
+
+      if (focusGridCell(areaIdx, itemIdx, nextCol)) {
+        return;
+      }
+    }
+
+    if (itemIdx + 1 < areas[areaIdx].items.length) {
+      focusGridCell(areaIdx, itemIdx + 1, 0);
+    } else {
+      handleAddItem(areaIdx);
+      setTimeout(() => {
+        focusGridCell(areaIdx, itemIdx + 1, 0);
+      }, 50);
+    }
+  };
+
+  const navigatePrev = (areaIdx: number, itemIdx: number, currentCol: number) => {
+    const item = areas[areaIdx]?.items[itemIdx];
+    if (!item) return;
+    const pType = (item.product_type || 'box').toLowerCase();
+
+    for (let prevCol = currentCol - 1; prevCol >= 0; prevCol--) {
+      if (prevCol === 4 && pType !== 'box') continue;
+      if ((prevCol === 5 || prevCol === 6) && pType !== 'box' && pType !== 'sqft') continue;
+      if ((prevCol === 7 || prevCol === 8) && pType === 'sqft') continue;
+
+      if (focusGridCell(areaIdx, itemIdx, prevCol)) {
+        return;
+      }
+    }
+
+    if (itemIdx > 0) {
+      const prevItem = areas[areaIdx].items[itemIdx - 1];
+      const prevType = (prevItem.product_type || 'box').toLowerCase();
+      const lastCol = prevType === 'sqft' ? 6 : 8;
+      focusGridCell(areaIdx, itemIdx - 1, lastCol);
+    }
+  };
+
+  const navigateRow = (areaIdx: number, itemIdx: number, colIdx: number, direction: 'up' | 'down') => {
+    const targetItemIdx = direction === 'up' ? itemIdx - 1 : itemIdx + 1;
+    if (targetItemIdx >= 0 && targetItemIdx < areas[areaIdx].items.length) {
+      focusGridCell(areaIdx, targetItemIdx, colIdx);
+    } else if (direction === 'down' && targetItemIdx === areas[areaIdx].items.length) {
+      handleAddItem(areaIdx);
+      setTimeout(() => {
+        focusGridCell(areaIdx, targetItemIdx, colIdx);
+      }, 50);
+    }
+  };
+
+  const handleCellKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+    areaIdx: number,
+    itemIdx: number,
+    colIdx: number
+  ) => {
+    const isDescription = colIdx === 0;
+    const isSuggestOpen =
+      isDescription &&
+      activeTileSuggestRow?.areaIdx === areaIdx &&
+      activeTileSuggestRow?.itemIdx === itemIdx &&
+      tileSuggestions.length > 0;
+
+    if (e.key === 'Enter') {
+      if (isSuggestOpen) {
+        e.preventDefault();
+        applySavedTileItem(areaIdx, itemIdx, tileSuggestions[tileHighlightIndex] || tileSuggestions[0]);
+        return;
+      }
+      e.preventDefault();
+      navigateNext(areaIdx, itemIdx, colIdx);
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      if (isSuggestOpen) {
+        e.preventDefault();
+        setTileHighlightIndex((prev) => (prev + 1) % tileSuggestions.length);
+        return;
+      }
+      if (e.currentTarget instanceof HTMLSelectElement) {
+        return;
+      }
+      e.preventDefault();
+      navigateRow(areaIdx, itemIdx, colIdx, 'down');
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      if (isSuggestOpen) {
+        e.preventDefault();
+        setTileHighlightIndex((prev) => (prev - 1 + tileSuggestions.length) % tileSuggestions.length);
+        return;
+      }
+      if (e.currentTarget instanceof HTMLSelectElement) {
+        return;
+      }
+      e.preventDefault();
+      navigateRow(areaIdx, itemIdx, colIdx, 'up');
+      return;
+    }
+
+    if (e.key === 'ArrowRight') {
+      const target = e.currentTarget as HTMLInputElement;
+      if (target.type === 'text') {
+        if (target.selectionEnd === target.value.length) {
+          e.preventDefault();
+          navigateNext(areaIdx, itemIdx, colIdx);
+        }
+      } else {
+        e.preventDefault();
+        navigateNext(areaIdx, itemIdx, colIdx);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowLeft') {
+      const target = e.currentTarget as HTMLInputElement;
+      if (target.type === 'text') {
+        if (target.selectionStart === 0) {
+          e.preventDefault();
+          navigatePrev(areaIdx, itemIdx, colIdx);
+        }
+      } else {
+        e.preventDefault();
+        navigatePrev(areaIdx, itemIdx, colIdx);
+      }
+      return;
+    }
+
+    if (e.key === 'Escape' && isSuggestOpen) {
+      e.preventDefault();
+      setActiveTileSuggestRow(null);
+    }
   };
 
   // Re-number SL Nos across all items and collect flat array
@@ -1762,15 +2025,77 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         </td>
 
                         <td className="align-top py-1.5 px-2">
-                          <input
-                            type="text"
-                            className="input input-sm py-1 font-medium text-slate-900 w-full"
-                            value={item.description}
-                            onChange={(e) =>
-                              handleItemChange(areaIdx, itemIdx, 'description', e.target.value)
-                            }
-                            placeholder="Surface / Tile description"
-                          />
+                          <div className="relative tile-suggest-container">
+                            <input
+                              type="text"
+                              data-cell={`${areaIdx}-${itemIdx}-0`}
+                              className="input input-sm py-1 font-medium text-slate-900 w-full"
+                              value={item.description}
+                              onChange={(e) =>
+                                handleDescriptionChange(areaIdx, itemIdx, e.target.value)
+                              }
+                              onFocus={() => {
+                                if (item.description) handleDescriptionChange(areaIdx, itemIdx, item.description);
+                              }}
+                              onBlur={() => handleDescriptionBlur(areaIdx, itemIdx)}
+                              onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 0)}
+                              placeholder="Surface / Tile description"
+                            />
+                            {/* Autocomplete Dropdown for Saved Products */}
+                            {activeTileSuggestRow?.areaIdx === areaIdx &&
+                              activeTileSuggestRow?.itemIdx === itemIdx &&
+                              tileSuggestions.length > 0 && (
+                                <div className="absolute left-0 top-full mt-1 w-96 bg-white/95 backdrop-blur-md rounded-xl border border-slate-200 shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
+                                  <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                                    <span>Saved Products Memory</span>
+                                    <span className="text-blue-700 font-medium">Click / Enter to Auto-Fill</span>
+                                  </div>
+                                  {tileSuggestions.map((sug, sIdx) => (
+                                    <div
+                                      key={sug.id || sIdx}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        applySavedTileItem(areaIdx, itemIdx, sug);
+                                      }}
+                                      className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors text-left ${
+                                        sIdx === tileHighlightIndex
+                                          ? 'bg-blue-50 text-blue-900 font-semibold'
+                                          : 'hover:bg-slate-50 text-slate-800'
+                                      }`}
+                                    >
+                                      <div className="min-w-0 flex-1 mr-2">
+                                        <div className="font-semibold text-xs text-slate-900 truncate">
+                                          {sug.description}
+                                        </div>
+                                        <div className="flex items-center space-x-1.5 mt-0.5 text-[10px] text-slate-500">
+                                          {sug.brand && (
+                                            <span className="bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium">
+                                              {sug.brand}
+                                            </span>
+                                          )}
+                                          {sug.size && (
+                                            <span className="bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded font-mono font-medium">
+                                              {sug.size}
+                                            </span>
+                                          )}
+                                          <span className="uppercase text-[9px] font-bold text-slate-400">
+                                            {sug.product_type || 'box'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <span className="font-mono font-bold text-xs text-emerald-700">
+                                          ₹{formatCurrency(sug.rate_per_sqft || sug.base_rate_per_sqft || sug.rate_per_box || 0)}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 block">
+                                          {sug.product_type === 'sqft' ? '/Sqft' : sug.product_type === 'box' ? '/Sqft' : '/Unit'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                          </div>
                           <div className="flex items-center space-x-1.5 mt-1 text-[10px]">
                             <span className="text-slate-400 font-medium">Encrypted Code:</span>
                             <span
@@ -1785,11 +2110,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
                         <td className="align-top py-1.5 px-2">
                           <select
+                            data-cell={`${areaIdx}-${itemIdx}-1`}
                             className="select select-sm py-1 w-full"
                             value={item.brand}
                             onChange={(e) =>
                               handleItemChange(areaIdx, itemIdx, 'brand', e.target.value)
                             }
+                            onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 1)}
                           >
                             {brands.length > 0 ? (
                               brands.map((b) => (
@@ -1819,11 +2146,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
 
                             return (
                               <select
+                                data-cell={`${areaIdx}-${itemIdx}-2`}
                                 className="select select-sm py-1 font-mono text-xs w-full"
                                 value={item.size}
                                 onChange={(e) =>
                                   handleItemChange(areaIdx, itemIdx, 'size', e.target.value)
                                 }
+                                onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 2)}
                               >
                                 {rowBrandSizes.length > 0 ? (
                                   <>
@@ -1853,6 +2182,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                         {/* Product Type selector */}
                         <td className="align-top py-1.5 px-1.5">
                           <select
+                            data-cell={`${areaIdx}-${itemIdx}-3`}
                             className={`select select-sm py-1 font-semibold text-[11px] w-full ${
                               pType === 'box'
                                 ? 'text-blue-700 bg-blue-50/50'
@@ -1868,6 +2198,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                             onChange={(e) =>
                               handleItemChange(areaIdx, itemIdx, 'product_type', e.target.value)
                             }
+                            onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 3)}
                           >
                             <option value="box">Box</option>
                             <option value="pieces">Pieces</option>
@@ -1883,11 +2214,13 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                             <input
                               type="number"
                               step="0.1"
+                              data-cell={`${areaIdx}-${itemIdx}-4`}
                               className="input input-sm py-1 text-right text-slate-600 font-mono w-full"
                               value={item.coverage_area}
                               onChange={(e) =>
                                 handleItemChange(areaIdx, itemIdx, 'coverage_area', e.target.value)
                               }
+                              onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 4)}
                             />
                           ) : (
                             <span className="text-slate-300 font-mono text-center block pt-2">-</span>
@@ -1900,12 +2233,14 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                             <input
                               type="number"
                               step="1"
+                              data-cell={`${areaIdx}-${itemIdx}-5`}
                               className="input input-sm py-1 text-right font-semibold text-slate-900 tabular-nums w-full"
                               placeholder="Sqft"
                               value={item.quantity_sqft}
                               onChange={(e) =>
                                 handleItemChange(areaIdx, itemIdx, 'quantity_sqft', e.target.value)
                               }
+                              onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 5)}
                             />
                           ) : (
                             <span className="text-slate-300 font-mono text-center block pt-2">-</span>
@@ -1919,12 +2254,14 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                               <input
                                 type="number"
                                 step="0.01"
+                                data-cell={`${areaIdx}-${itemIdx}-6`}
                                 className="input input-sm py-1 text-right text-slate-700 tabular-nums w-full"
                                 placeholder="₹/Sqft"
                                 value={item.base_rate_per_sqft !== undefined && item.base_rate_per_sqft !== null ? item.base_rate_per_sqft : item.rate_per_sqft}
                                 onChange={(e) =>
                                   handleItemChange(areaIdx, itemIdx, 'rate_per_sqft', e.target.value)
                                 }
+                                onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 6)}
                               />
                               {isCeraBrand(item.brand) ? (
                                 <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5 whitespace-nowrap" title="CERA brand excluded from discounts">
@@ -1949,6 +2286,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                             <input
                               type="number"
                               step={pType === 'box' ? '0.01' : '1'}
+                              data-cell={`${areaIdx}-${itemIdx}-7`}
                               className={`input input-sm py-1 text-right tabular-nums w-full ${
                                 pType === 'bags'
                                   ? 'font-bold text-amber-900 bg-amber-50/50'
@@ -1971,6 +2309,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                               onChange={(e) =>
                                 handleItemChange(areaIdx, itemIdx, 'quantity_boxes', e.target.value)
                               }
+                              onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 7)}
                             />
                           )}
                         </td>
@@ -1984,6 +2323,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                               <input
                                 type="number"
                                 step="0.01"
+                                data-cell={`${areaIdx}-${itemIdx}-8`}
                                 className={`input input-sm py-1 text-right tabular-nums w-full ${
                                   pType === 'bags'
                                     ? 'font-bold text-amber-900 bg-amber-50/50'
@@ -2006,6 +2346,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                                 onChange={(e) =>
                                   handleItemChange(areaIdx, itemIdx, 'rate_per_box', e.target.value)
                                 }
+                                onKeyDown={(e) => handleCellKeyDown(e, areaIdx, itemIdx, 8)}
                               />
                               {isCeraBrand(item.brand) ? (
                                 <div className="text-[10px] text-amber-700 font-semibold text-right mt-0.5 whitespace-nowrap" title="CERA brand excluded from discounts">
