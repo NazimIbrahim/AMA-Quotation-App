@@ -64,6 +64,9 @@ export async function initializeDatabase(): Promise<void> {
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS encrypted_code VARCHAR(100);
       CREATE INDEX IF NOT EXISTS idx_quotations_type ON quotations (quotation_type);
 
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      CREATE INDEX IF NOT EXISTS idx_customers_created_by ON customers (created_by_id);
+
       CREATE TABLE IF NOT EXISTS product_encrypted_codes (
           id SERIAL PRIMARY KEY,
           item_name VARCHAR(255) NOT NULL,

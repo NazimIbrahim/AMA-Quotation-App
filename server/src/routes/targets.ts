@@ -22,7 +22,11 @@ targetsRouter.get('/', async (req: Request, res: Response) => {
     const params: any[] = [];
     let idx = 1;
 
-    if (salesperson_id) {
+    // Salespersons can only view their own targets
+    if (req.user!.role === 'salesperson') {
+      sql += ` AND t.sales_person_id = $${idx++}`;
+      params.push(req.user!.id);
+    } else if (salesperson_id) {
       sql += ` AND t.sales_person_id = $${idx++}`;
       params.push(salesperson_id);
     }
@@ -97,18 +101,26 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
     const startDate = (start_date as string) || firstDay;
     const endDate = (end_date as string) || lastDay;
 
-    // Get all salespersons
-    const salespersons = await query(
-      `SELECT id, full_name, email, phone, monthly_target
-       FROM users WHERE role IN ('salesperson', 'manager') AND is_active = true
-       ORDER BY full_name ASC`
-    );
+    const isSalesperson = req.user!.role === 'salesperson';
+
+    // Salespersons only track and view their own performance; managers and admins see all
+    const salespersons = isSalesperson
+      ? await query(
+          `SELECT id, full_name, email, phone, monthly_target
+           FROM users WHERE id = $1 AND is_active = true`,
+          [req.user!.id]
+        )
+      : await query(
+          `SELECT id, full_name, email, phone, monthly_target
+           FROM users WHERE role IN ('salesperson', 'manager') AND is_active = true
+           ORDER BY full_name ASC`
+        );
 
     // Get target amounts in period (targets overlapping this period)
     const targets = await query(
       `SELECT sales_person_id, COALESCE(SUM(target_amount), 0) as total_target
        FROM sales_targets
-       WHERE start_date <= $2 AND end_date >= $1
+       WHERE start_date <= $2 AND end_date >= $1 ${isSalesperson ? `AND sales_person_id = ${req.user!.id}` : ''}
        GROUP BY sales_person_id`,
       [startDate, endDate]
     );
@@ -149,6 +161,7 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
            AND LOWER(q.status) IN ('approved', 'closed')
            AND q.assisted_sales_person_id IS NOT NULL
        ) combined_sales
+       ${isSalesperson ? `WHERE sp_id = ${req.user!.id}` : ''}
        GROUP BY sp_id`,
       [startDate, endDate]
     );
@@ -187,6 +200,7 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
            AND LOWER(q.status) IN ('draft', 'in_review')
            AND q.assisted_sales_person_id IS NOT NULL
        ) combined_pipeline
+       ${isSalesperson ? `WHERE sp_id = ${req.user!.id}` : ''}
        GROUP BY sp_id`,
       [startDate, endDate]
     );
@@ -224,6 +238,7 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
            AND p.status = 'Cleared'
            AND q.assisted_sales_person_id IS NOT NULL
        ) combined_payments
+       ${isSalesperson ? `WHERE sp_id = ${req.user!.id}` : ''}
        GROUP BY sp_id`,
       [startDate, endDate]
     );
@@ -240,11 +255,13 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
       const pipelineData = pipelineMap.get(sp.id) || { count: 0, amount: 0 };
       const collected = collectMap.get(sp.id) || 0;
       const percentage = target > 0 ? parseFloat(((achieveData.amount / target) * 100).toFixed(1)) : 0;
+      const difference = parseFloat((achieveData.amount - target).toFixed(2));
 
       return {
         salesperson: sp,
         target,
         achieved: achieveData.amount,
+        difference,
         quotationsCount: achieveData.count,
         pipelineAmount: pipelineData.amount,
         pipelineCount: pipelineData.count,
@@ -258,6 +275,125 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
       period: { startDate, endDate },
       performance,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Update Salesperson Monthly Target directly (Store Manager / Admin)
+targetsRouter.put('/salesperson/:id', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const { monthly_target } = req.body;
+
+    if (monthly_target === undefined || isNaN(Number(monthly_target))) {
+      res.status(400).json({ error: 'Valid monthly target amount is required' });
+      return;
+    }
+
+    const rows = await query(
+      `UPDATE users SET monthly_target = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, full_name, monthly_target`,
+      [parseFloat(monthly_target), id]
+    );
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Salesperson not found' });
+      return;
+    }
+
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'SALESPERSON_TARGET_UPDATED',
+      entityType: 'user',
+      entityId: id,
+      details: { monthly_target: parseFloat(monthly_target), salesperson_name: rows[0].full_name },
+      ipAddress: req.ip,
+    });
+
+    broadcast({ type: 'TARGET_UPDATED', payload: { sales_person_id: id } });
+
+    res.json({ user: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Update Target Record (Store Manager / Admin)
+targetsRouter.put('/:id', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const { target_type, start_date, end_date, target_amount, notes, period_label } = req.body;
+
+    const rows = await query(
+      `UPDATE sales_targets
+       SET target_type = COALESCE($1, target_type),
+           start_date = COALESCE($2, start_date),
+           end_date = COALESCE($3, end_date),
+           target_amount = COALESCE($4, target_amount),
+           notes = COALESCE($5, notes),
+           period_label = COALESCE($6, period_label),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7
+       RETURNING *`,
+      [
+        target_type,
+        start_date,
+        end_date,
+        target_amount !== undefined ? parseFloat(target_amount) : null,
+        notes,
+        period_label,
+        id,
+      ]
+    );
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Target record not found' });
+      return;
+    }
+
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'TARGET_RECORD_UPDATED',
+      entityType: 'sales_target',
+      entityId: id,
+      details: { target_amount, period_label },
+      ipAddress: req.ip,
+    });
+
+    broadcast({ type: 'TARGET_UPDATED', payload: { sales_person_id: rows[0].sales_person_id } });
+
+    res.json({ target: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Delete Target Record (Store Manager / Admin)
+targetsRouter.delete('/:id', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const rows = await query(`DELETE FROM sales_targets WHERE id = $1 RETURNING *`, [id]);
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'Target record not found' });
+      return;
+    }
+
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'TARGET_DELETED',
+      entityType: 'sales_target',
+      entityId: id,
+      details: { target: rows[0] },
+      ipAddress: req.ip,
+    });
+
+    broadcast({ type: 'TARGET_UPDATED', payload: { sales_person_id: rows[0].sales_person_id } });
+
+    res.json({ message: 'Target removed successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

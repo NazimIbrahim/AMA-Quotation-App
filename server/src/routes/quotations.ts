@@ -16,13 +16,27 @@ quotationsRouter.get('/:id/pdf', optionalAuthenticateToken, async (req: Request,
     const id = parseInt(req.params.id as string, 10);
     const isEncrypted = req.query.encrypted === 'true' || req.query.encrypted === '1';
 
-    const qRows = await query('SELECT * FROM quotations WHERE id = $1', [id]);
+    const qRows = await query(
+      `SELECT q.*, u_app.full_name as approved_by_name
+       FROM quotations q
+       LEFT JOIN users u_app ON u_app.id = q.approved_by_id
+       WHERE q.id = $1`,
+      [id]
+    );
     if (qRows.length === 0) {
       res.status(404).json({ error: 'Quotation not found' });
       return;
     }
 
     const quotation = qRows[0];
+
+    // Salespersons can only view/export/print approved or closed quotations
+    if (req.user?.role === 'salesperson' && !['approved', 'closed'].includes(quotation.status?.toLowerCase())) {
+      res.status(403).json({
+        error: 'Quotation is awaiting Store Manager approval. PDF export and printing will be unlocked once approved.',
+      });
+      return;
+    }
     const areas = await query(
       'SELECT * FROM quotation_areas WHERE quotation_id = $1 ORDER BY display_order ASC',
       [id]
@@ -209,6 +223,10 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
         q.project_name,
         q.quotation_type,
         q.status,
+        q.approved_by_id,
+        u_app.full_name as approved_by_name,
+        q.approved_at,
+        q.manager_approval_note,
         q.gross_total,
         q.discount_amount,
         q.net_total,
@@ -217,6 +235,7 @@ quotationsRouter.get('/', async (req: Request, res: Response) => {
         COALESCE(p.total_paid, 0) as total_paid,
         (q.net_total - COALESCE(p.total_paid, 0)) as balance_due
       FROM quotations q
+      LEFT JOIN users u_app ON u_app.id = q.approved_by_id
       LEFT JOIN (
         SELECT quotation_id, SUM(amount) as total_paid
         FROM payments
@@ -383,10 +402,14 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
       qType
     );
 
-    const initialStatus = reqStatus && ['draft', 'in_review', 'approved', 'closed'].includes(String(reqStatus).toLowerCase())
-      ? String(reqStatus).toLowerCase()
-      : 'draft';
-    const isApprovedOrClosed = ['approved', 'closed'].includes(initialStatus);
+    const isSalesperson = req.user!.role === 'salesperson';
+    // Quotations created by salespersons enter review mode pending store manager approval
+    const initialStatus = isSalesperson
+      ? 'in_review'
+      : (reqStatus && ['draft', 'in_review', 'approved', 'closed'].includes(String(reqStatus).toLowerCase())
+          ? String(reqStatus).toLowerCase()
+          : 'draft');
+    const isApprovedOrClosed = !isSalesperson && ['approved', 'closed'].includes(initialStatus);
 
     const result = await withTransaction(async (client) => {
       const qNumber = await generateNextQuotationNumber(client);
@@ -727,10 +750,15 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
         }
       }
 
-      const nextStatus = reqStatus && ['draft', 'in_review', 'approved', 'closed', 'rejected'].includes(String(reqStatus).toLowerCase())
-        ? String(reqStatus).toLowerCase()
-        : current.rows[0].status;
-      const isNextApproved = ['approved', 'closed'].includes(nextStatus);
+      const isSalesperson = req.user!.role === 'salesperson';
+      // If edited by a salesperson, reset status to 'in_review' requiring Store Manager re-approval
+      let nextStatus = current.rows[0].status;
+      if (isSalesperson) {
+        nextStatus = 'in_review';
+      } else if (reqStatus && ['draft', 'in_review', 'approved', 'closed', 'rejected'].includes(String(reqStatus).toLowerCase())) {
+        nextStatus = String(reqStatus).toLowerCase();
+      }
+      const isNextApproved = !isSalesperson && ['approved', 'closed'].includes(nextStatus);
 
       // Update Quotation Header and bump version
       const nextVersion = current.rows[0].version + 1;
@@ -753,25 +781,37 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
              assisted_sales_share_percent = $15,
              assisted_sales_share_amount = $16,
              status = $17,
-             approved_by_id = CASE WHEN $18 THEN COALESCE(approved_by_id, $19) ELSE approved_by_id END,
-             approved_at = CASE WHEN $18 THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
-             gross_total = $20,
-             discount_percent = $21,
-             discount_amount = $22,
-             taxable_amount = $23,
-             tax_type = $24,
-             cgst_rate = $25,
-             cgst_amount = $26,
-             sgst_rate = $27,
-             sgst_amount = $28,
-             igst_rate = $29,
-             igst_amount = $30,
-             round_off = $31,
-             net_total = $32,
-             special_notes = $33,
-             version = $34,
+             approved_by_id = CASE
+               WHEN $18::boolean THEN COALESCE(approved_by_id, $19::integer)
+               WHEN $20::boolean THEN NULL
+               ELSE approved_by_id
+             END,
+             approved_at = CASE
+               WHEN $18::boolean THEN COALESCE(approved_at, NOW())
+               WHEN $20::boolean THEN NULL
+               ELSE approved_at
+             END,
+             manager_approval_note = CASE
+               WHEN $20::boolean THEN 'Revised by salesperson (' || $21::text || '). Pending Store Manager re-approval.'
+               ELSE manager_approval_note
+             END,
+             gross_total = $22,
+             discount_percent = $23,
+             discount_amount = $24,
+             taxable_amount = $25,
+             tax_type = $26,
+             cgst_rate = $27,
+             cgst_amount = $28,
+             sgst_rate = $29,
+             sgst_amount = $30,
+             igst_rate = $31,
+             igst_amount = $32,
+             round_off = $33,
+             net_total = $34,
+             special_notes = $35,
+             version = $36,
              updated_at = NOW()
-         WHERE id = $35 AND version = $36
+         WHERE id = $37 AND version = $38
          RETURNING *`,
         [
           quotation_date,
@@ -793,6 +833,8 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
           nextStatus,
           isNextApproved,
           req.user!.id,
+          isSalesperson,
+          req.user!.full_name,
           totals.grossTotal,
           parseFloat(discount_percent) || 0,
           totals.discountAmount,

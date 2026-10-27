@@ -36,6 +36,8 @@ export interface Customer {
   is_active: boolean;
   quotations_count?: number;
   total_quoted?: number;
+  closed_count?: number;
+  closed_total?: number;
 }
 
 export interface TileBrand {

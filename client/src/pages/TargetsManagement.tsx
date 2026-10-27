@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useServer } from '../context/ServerContext';
 import { useAuth } from '../context/AuthContext';
-import { Target, TrendingUp, Plus, RefreshCw, X, Award, CheckCircle } from 'lucide-react';
+import { Target, TrendingUp, Plus, RefreshCw, X, Award, CheckCircle, Edit2 } from 'lucide-react';
 
 export const TargetsManagement: React.FC = () => {
   const { fetchApi, subscribeToEvents } = useServer();
@@ -21,7 +21,13 @@ export const TargetsManagement: React.FC = () => {
   const [periodLabel, setPeriodLabel] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Quick Edit Target Modal for Store Managers
+  const [editTargetModal, setEditTargetModal] = useState<{ id: number; name: string; target: number } | null>(null);
+  const [editTargetValue, setEditTargetValue] = useState<string>('');
+  const [savingTarget, setSavingTarget] = useState(false);
+
   const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
+  const isSalesperson = user?.role === 'salesperson';
 
   const loadPerformance = async () => {
     setLoading(true);
@@ -82,6 +88,31 @@ export const TargetsManagement: React.FC = () => {
     }
   };
 
+  const handleOpenEditTarget = (sp: any, currentTarget: number) => {
+    setEditTargetModal({ id: sp.id, name: sp.full_name, target: currentTarget });
+    setEditTargetValue(String(currentTarget || ''));
+  };
+
+  const handleSaveTarget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTargetModal) return;
+    setSavingTarget(true);
+    try {
+      await fetchApi(`/api/targets/salesperson/${editTargetModal.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          monthly_target: parseFloat(editTargetValue) || 0,
+        }),
+      });
+      setEditTargetModal(null);
+      loadPerformance();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update target');
+    } finally {
+      setSavingTarget(false);
+    }
+  };
+
   const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('en-IN', {
       maximumFractionDigits: 0,
@@ -94,9 +125,13 @@ export const TargetsManagement: React.FC = () => {
       {/* Top Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Sales Targets & Performance</h1>
+          <h1 className="text-xl font-bold text-gray-900">
+            {isSalesperson ? 'My Sales Milestone & Performance' : 'Sales Targets & Performance'}
+          </h1>
           <p className="text-xs text-gray-500">
-            Real-time tracking of salesperson milestones, targets, and approved revenue
+            {isSalesperson
+              ? 'Track your personal closed deals, monthly targets, collections, and progress'
+              : 'Real-time tracking of salesperson milestones, targets, and approved revenue'}
           </p>
         </div>
         <div className="flex space-x-2">
@@ -118,11 +153,13 @@ export const TargetsManagement: React.FC = () => {
         {loading && performance.length === 0 ? (
           <div className="col-span-full text-center py-12 text-gray-400">Loading performance data...</div>
         ) : performance.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-gray-400">No active salesperson targets found.</div>
+          <div className="col-span-full text-center py-12 text-gray-400">
+            {isSalesperson ? 'No performance targets assigned yet.' : 'No active salesperson targets found.'}
+          </div>
         ) : (
           performance.map((p) => {
             const pct = Math.min(100, p.percentage);
-            const isAhead = p.difference >= 0;
+            const isAhead = (p.difference ?? 0) >= 0;
 
             return (
               <div key={p.salesperson.id} className="card card-hover p-5 space-y-4">
@@ -160,7 +197,19 @@ export const TargetsManagement: React.FC = () => {
                 {/* Numbers Grid */}
                 <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded border border-gray-100 text-center text-xs">
                   <div>
-                    <p className="text-gray-400 text-[10px]">Target</p>
+                    <div className="flex items-center justify-center space-x-1 text-gray-400 text-[10px]">
+                      <span>Target</span>
+                      {isAdminOrManager && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditTarget(p.salesperson, p.target)}
+                          className="text-primary hover:text-blue-800 p-0.5 rounded"
+                          title="Edit target"
+                        >
+                          <Edit2 size={10} />
+                        </button>
+                      )}
+                    </div>
                     <p className="font-bold text-gray-800 mt-0.5">₹ {formatCurrency(p.target)}</p>
                   </div>
                   <div>
@@ -176,14 +225,82 @@ export const TargetsManagement: React.FC = () => {
                 <div className="text-[11px] flex justify-between items-center text-gray-500">
                   <span>Variance:</span>
                   <span className={`font-bold ${isAhead ? 'text-green-700' : 'text-amber-700'}`}>
-                    {isAhead ? `+ ₹ ${formatCurrency(p.difference)} (Achieved)` : `- ₹ ${formatCurrency(Math.abs(p.difference))} (Shortfall)`}
+                    {isAhead
+                      ? `+ ₹ ${formatCurrency(p.difference || 0)} (Achieved)`
+                      : `- ₹ ${formatCurrency(Math.abs(p.difference || 0))} (Shortfall)`}
                   </span>
                 </div>
+
+                {isAdminOrManager && (
+                  <div className="pt-2 border-t border-gray-100 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditTarget(p.salesperson, p.target)}
+                      className="text-xs text-primary hover:text-blue-800 font-semibold flex items-center space-x-1"
+                    >
+                      <Edit2 size={12} />
+                      <span>Edit Target Amount</span>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
         )}
       </div>
+
+      {/* Edit Target Modal for Store Managers & Admins */}
+      {editTargetModal && (
+        <div className="modal-overlay">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5 border border-gray-200">
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-sm font-bold text-gray-900">
+                Edit Target: {editTargetModal.name}
+              </h2>
+              <button onClick={() => setEditTargetModal(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveTarget} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">
+                  Monthly Target (₹) *
+                </label>
+                <input
+                  type="number"
+                  step="1000"
+                  className="input input-sm w-full font-mono text-sm"
+                  value={editTargetValue}
+                  onChange={(e) => setEditTargetValue(e.target.value)}
+                  placeholder="e.g. 1500000"
+                  required
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Formatted: ₹ {formatCurrency(parseFloat(editTargetValue) || 0)}
+                </p>
+              </div>
+              <div className="flex justify-end space-x-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditTargetModal(null)}
+                  className="btn btn-secondary btn-sm"
+                  disabled={savingTarget}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-sm flex items-center space-x-1"
+                  disabled={savingTarget}
+                >
+                  {savingTarget ? <RefreshCw size={12} className="animate-spin" /> : null}
+                  <span>Save Target</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Set Target Modal */}
       {modalOpen && (

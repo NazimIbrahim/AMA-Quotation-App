@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS customers (
     site_location VARCHAR(150),
     gstin VARCHAR(50),
     notes TEXT,
+    created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP

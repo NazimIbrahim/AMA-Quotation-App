@@ -8,39 +8,61 @@ export const customersRouter = Router();
 
 customersRouter.use(authenticateToken);
 
-// Paginated customer list with debounced search
+// Paginated customer list with debounced search and salesperson scoping
 customersRouter.get('/', async (req: Request, res: Response) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const offset = (page - 1) * limit;
     const search = (req.query.search as string || '').trim();
+    const isSalesperson = req.user!.role === 'salesperson';
 
-    let whereClause = 'WHERE is_active = true';
+    let whereClause = 'WHERE c.is_active = true';
     const params: any[] = [];
     let idx = 1;
 
+    // Salespersons can only view their own customers (created by them or on their quotations)
+    if (isSalesperson) {
+      whereClause += ` AND (c.created_by_id = $${idx} OR c.id IN (
+        SELECT DISTINCT customer_id FROM quotations
+        WHERE customer_id IS NOT NULL AND (sales_person_id = $${idx} OR assisted_sales_person_id = $${idx})
+      ))`;
+      params.push(req.user!.id);
+      idx++;
+    }
+
     if (search) {
-      whereClause += ` AND (name ILIKE $${idx} OR mobile_number ILIKE $${idx} OR site_location ILIKE $${idx})`;
+      whereClause += ` AND (c.name ILIKE $${idx} OR c.mobile_number ILIKE $${idx} OR c.site_location ILIKE $${idx})`;
       params.push(`%${search}%`);
       idx++;
     }
 
     const countRes = await query<{ count: string }>(
-      `SELECT count(*) FROM customers ${whereClause}`,
+      `SELECT count(*) FROM customers c ${whereClause}`,
       params
     );
     const totalCount = parseInt(countRes[0].count, 10);
 
     const dataSql = `
       SELECT c.*,
-        COALESCE(q.quotations_count, 0) as quotations_count,
-        COALESCE(q.total_quoted, 0) as total_quoted
+        COALESCE(q_all.quotations_count, 0) as quotations_count,
+        COALESCE(q_all.total_quoted, 0) as total_quoted,
+        COALESCE(q_closed.closed_count, 0) as closed_count,
+        COALESCE(q_closed.closed_total, 0) as closed_total
       FROM customers c
       LEFT JOIN (
         SELECT customer_id, count(*) as quotations_count, sum(net_total) as total_quoted
-        FROM quotations GROUP BY customer_id
-      ) q ON q.customer_id = c.id
+        FROM quotations
+        ${isSalesperson ? `WHERE sales_person_id = ${req.user!.id} OR assisted_sales_person_id = ${req.user!.id}` : ''}
+        GROUP BY customer_id
+      ) q_all ON q_all.customer_id = c.id
+      LEFT JOIN (
+        SELECT customer_id, count(*) as closed_count, sum(net_total) as closed_total
+        FROM quotations
+        WHERE LOWER(status) IN ('approved', 'closed')
+        ${isSalesperson ? `AND (sales_person_id = ${req.user!.id} OR assisted_sales_person_id = ${req.user!.id})` : ''}
+        GROUP BY customer_id
+      ) q_closed ON q_closed.customer_id = c.id
       ${whereClause}
       ORDER BY c.created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
@@ -96,19 +118,45 @@ customersRouter.get('/lookup', async (req: Request, res: Response) => {
   }
 });
 
-// Get single customer with their quotations
+// Get single customer with their quotations (scoped for salesperson)
 customersRouter.get('/:id', async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
+    const isSalesperson = req.user!.role === 'salesperson';
+
     const custRows = await query('SELECT * FROM customers WHERE id = $1', [id]);
     if (custRows.length === 0) {
       res.status(404).json({ error: 'Customer not found' });
       return;
     }
 
+    if (isSalesperson) {
+      const allowed = await query(
+        `SELECT 1 FROM customers c
+         WHERE c.id = $1 AND (
+           c.created_by_id = $2
+           OR EXISTS (
+             SELECT 1 FROM quotations q
+             WHERE q.customer_id = c.id AND (q.sales_person_id = $2 OR q.assisted_sales_person_id = $2)
+           )
+         )`,
+        [id, req.user!.id]
+      );
+      if (allowed.length === 0) {
+        res.status(403).json({ error: 'You only have access to view your own customers and deals.' });
+        return;
+      }
+    }
+
     const quotations = await query(
-      `SELECT id, quotation_number, quotation_date, status, gross_total, net_total, project_name, created_at
-       FROM quotations WHERE customer_id = $1 ORDER BY quotation_date DESC`,
+      `SELECT q.id, q.quotation_number, q.quotation_date, q.status, q.gross_total, q.net_total,
+              q.project_name, q.quotation_type, q.created_at, q.approved_by_id,
+              u_app.full_name as approved_by_name, q.approved_at
+       FROM quotations q
+       LEFT JOIN users u_app ON u_app.id = q.approved_by_id
+       WHERE q.customer_id = $1
+       ${isSalesperson ? `AND (q.sales_person_id = ${req.user!.id} OR q.assisted_sales_person_id = ${req.user!.id})` : ''}
+       ORDER BY q.quotation_date DESC, q.id DESC`,
       [id]
     );
 
@@ -132,10 +180,19 @@ customersRouter.post('/', async (req: Request, res: Response) => {
     }
 
     const rows = await query(
-      `INSERT INTO customers (name, mobile_number, email, delivery_address, site_location, gstin, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO customers (name, mobile_number, email, delivery_address, site_location, gstin, notes, created_by_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [name.trim(), mobile_number.trim(), email?.trim() || null, delivery_address?.trim() || '', site_location?.trim() || '', gstin?.trim() || '', notes || '']
+      [
+        name.trim(),
+        mobile_number.trim(),
+        email?.trim() || null,
+        delivery_address?.trim() || '',
+        site_location?.trim() || '',
+        gstin?.trim() || '',
+        notes || '',
+        req.user!.id,
+      ]
     );
 
     await recordAuditLog({

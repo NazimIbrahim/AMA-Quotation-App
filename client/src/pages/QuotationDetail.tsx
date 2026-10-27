@@ -15,6 +15,9 @@ import {
   Receipt,
   ShieldAlert,
   X,
+  Lock,
+  CheckCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { buildEncryptedProductMap, derive3LetterCode } from '../utils/encryptedCode';
@@ -42,6 +45,8 @@ export const QuotationDetail: React.FC<Props> = ({
     payments: Payment[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [approving, setApproving] = useState(false);
+  const [editWarningModal, setEditWarningModal] = useState(false);
 
   // PDF Preview State
   const [previewPdf, setPreviewPdf] = useState<{
@@ -128,6 +133,40 @@ export const QuotationDetail: React.FC<Props> = ({
     });
   };
 
+  const handleApproveQuotation = async () => {
+    if (!data) return;
+    setApproving(true);
+    try {
+      await fetchApi(`/api/quotations/${data.quotation.id}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'approved' }),
+      });
+      loadDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to approve quotation');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleEditClick = () => {
+    if (!data) return;
+    const isApproved = ['approved', 'closed'].includes(data.quotation.status?.toLowerCase());
+    const isSalesperson = user?.role === 'salesperson';
+    if (isSalesperson && isApproved) {
+      setEditWarningModal(true);
+    } else {
+      onEdit(data.quotation.id, data.quotation.quotation_type || 'tiles');
+    }
+  };
+
+  const handleConfirmEdit = () => {
+    setEditWarningModal(false);
+    if (data) {
+      onEdit(data.quotation.id, data.quotation.quotation_type || 'tiles');
+    }
+  };
+
   if (loading || !data) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-slate-50">
@@ -140,11 +179,15 @@ export const QuotationDetail: React.FC<Props> = ({
   }
 
   const { quotation, areas = [], payments = [] } = data;
+  const isApproved = ['approved', 'closed'].includes(quotation.status?.toLowerCase());
+  const isSalesperson = user?.role === 'salesperson';
+  const canExportPdf = !isSalesperson || isApproved;
+  const canApprove = ['admin', 'manager'].includes(user?.role || '') && !isApproved;
 
   return (
     <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0">
       {/* Top Header & Actions */}
-      <div className="card p-4 flex items-center justify-between">
+      <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <button
             onClick={onBack}
@@ -170,36 +213,77 @@ export const QuotationDetail: React.FC<Props> = ({
             <p className="text-xs text-slate-500 mt-0.5">
               Issued on {new Date(quotation.quotation_date).toLocaleDateString('en-GB')} by{' '}
               <span className="font-semibold text-slate-700">{quotation.sales_person_name}</span>
+              {quotation.approved_by_name && (
+                <span className="ml-2 font-medium text-emerald-700">
+                  • Approved by Store Manager: <strong className="font-bold">{quotation.approved_by_name}</strong>
+                </span>
+              )}
             </p>
           </div>
         </div>
 
         <div className="flex items-center space-x-2">
+          {canApprove && (
+            <button
+              onClick={handleApproveQuotation}
+              disabled={approving}
+              className="btn btn-sm bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 shadow-sm"
+              title="Approve this quotation as Store Manager / Admin"
+            >
+              <CheckCircle size={14} />
+              <span>{approving ? 'Approving...' : 'Approve Quotation'}</span>
+            </button>
+          )}
+
           <button
-            onClick={() => onEdit(quotation.id, quotation.quotation_type || 'tiles')}
+            onClick={handleEditClick}
             className="btn btn-secondary btn-sm"
+            title={isSalesperson && isApproved ? 'Editing requires re-approval' : 'Edit quotation'}
           >
             <Edit size={13} />
             <span>Edit</span>
           </button>
 
-          <button
-            onClick={handleOpenQuotationPdf}
-            className="btn btn-secondary btn-sm"
-            title="View & Export Official PDF with Brand & Tile names"
-          >
-            <Printer size={13} />
-            <span>Standard PDF</span>
-          </button>
+          {canExportPdf ? (
+            <>
+              <button
+                onClick={handleOpenQuotationPdf}
+                className="btn btn-secondary btn-sm"
+                title="View & Export Official PDF with Brand & Tile names"
+              >
+                <Printer size={13} />
+                <span>Standard PDF</span>
+              </button>
 
-          <button
-            onClick={handleOpenEncryptedQuotationPdf}
-            className="btn btn-secondary btn-sm flex items-center space-x-1.5 bg-slate-900 hover:bg-black text-white border-transparent shadow-sm"
-            title="Export Encrypted PDF: Brand removed, Product name replaced with random code (e.g. HSDS-AMA)"
-          >
-            <ShieldAlert size={13} className="text-amber-400" />
-            <span>Encrypted Export</span>
-          </button>
+              <button
+                onClick={handleOpenEncryptedQuotationPdf}
+                className="btn btn-secondary btn-sm flex items-center space-x-1.5 bg-slate-900 hover:bg-black text-white border-transparent shadow-sm"
+                title="Export Encrypted PDF: Brand removed, Product name replaced with random code (e.g. HSDS-AMA)"
+              >
+                <ShieldAlert size={13} className="text-amber-400" />
+                <span>Encrypted Export</span>
+              </button>
+            </>
+          ) : (
+            <div className="inline-flex items-center space-x-1.5">
+              <button
+                disabled
+                className="btn btn-secondary btn-sm opacity-50 cursor-not-allowed flex items-center space-x-1 bg-gray-100 text-gray-500 border-dashed"
+                title="Quotation is awaiting Store Manager approval before PDF export or printing is enabled."
+              >
+                <Lock size={12} className="text-amber-600" />
+                <span>Standard PDF (Locked)</span>
+              </button>
+              <button
+                disabled
+                className="btn btn-secondary btn-sm opacity-50 cursor-not-allowed flex items-center space-x-1 bg-gray-100 text-gray-500 border-dashed"
+                title="Quotation is awaiting Store Manager approval before PDF export or printing is enabled."
+              >
+                <Lock size={12} className="text-amber-600" />
+                <span>Encrypted Export (Locked)</span>
+              </button>
+            </div>
+          )}
 
           <button
             onClick={() => onRecordPayment(quotation.id)}
@@ -210,6 +294,89 @@ export const QuotationDetail: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {/* Approval Status Banner */}
+      {!isApproved ? (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-900 flex items-start justify-between space-x-2.5 shadow-xs">
+          <div className="flex items-start space-x-2.5">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold flex items-center space-x-2">
+                <span>Quotation Review Mode — Pending Store Manager Approval</span>
+                <span className="badge badge-in_review text-[10px]">In Review</span>
+              </div>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                {isSalesperson
+                  ? 'This quotation is saved in Review Mode. Official PDF generation and printing options will unlock immediately once approved by the Store Manager.'
+                  : 'This quotation is currently awaiting Store Manager approval. Review all quantities, discounts, and line items, then click "Approve Quotation" to unlock PDF export and printing.'}
+              </p>
+            </div>
+          </div>
+          {canApprove && (
+            <button
+              onClick={handleApproveQuotation}
+              disabled={approving}
+              className="btn btn-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shrink-0"
+            >
+              <CheckCircle size={12} className="mr-1" />
+              <span>Approve Now</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-2.5 text-xs text-emerald-950 flex items-center justify-between shadow-xs">
+          <div className="flex items-center space-x-2">
+            <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+            <div>
+              <span className="font-bold">Approved by Store Manager:</span>{' '}
+              <strong className="text-emerald-900 font-extrabold">{quotation.approved_by_name || 'Store Manager'}</strong>
+              {quotation.approved_at && (
+                <span className="text-emerald-800"> on {new Date(quotation.approved_at).toLocaleDateString('en-GB')} at {new Date(quotation.approved_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              )}
+              {quotation.manager_approval_note && (
+                <span className="text-[11px] text-emerald-700 ml-2 italic">({quotation.manager_approval_note})</span>
+              )}
+            </div>
+          </div>
+          <span className="badge badge-approved text-[10px] uppercase font-bold tracking-wider">Approved</span>
+        </div>
+      )}
+
+      {/* Re-Approval Warning Modal for Salespersons */}
+      {editWarningModal && (
+        <div className="modal-overlay">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-amber-300">
+            <div className="flex items-center space-x-2 text-amber-700 font-bold text-sm mb-2.5">
+              <AlertTriangle size={20} />
+              <span>Permission Notice: Re-Approval Required</span>
+            </div>
+            <p className="text-xs text-slate-700 leading-relaxed mb-4">
+              This quotation was previously approved by <strong>{quotation.approved_by_name || 'Store Manager'}</strong>.
+              <br /><br />
+              Modifying this quotation will automatically revoke the approval and reset its status back to <strong>"In Review"</strong>.
+              PDF export and printing will remain locked until your Store Manager reviews and re-approves the updated quotation.
+              <br /><br />
+              Do you wish to proceed with editing?
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setEditWarningModal(false)}
+                className="btn btn-secondary btn-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmEdit}
+                className="btn btn-primary btn-sm bg-amber-600 hover:bg-amber-700 border-transparent text-white"
+              >
+                Proceed to Edit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

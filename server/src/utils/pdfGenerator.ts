@@ -28,6 +28,8 @@ export interface QuotationPdfData {
     net_total: number;
     special_notes?: string;
     quotation_type?: string;
+    approved_by_name?: string;
+    approved_at?: string | Date;
   };
   areas: Array<{
     id: number;
@@ -548,8 +550,8 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
     .font('Helvetica-Bold')
     .fillColor(textColor)
     .text(`${company.store_manager_title}`, 450, currentY + 18)
-    .text(`${company.store_manager_name}`, 450, currentY + 30)
-    .text(`Signature: ________________`, 450, currentY + 44);
+    .text(quotation.approved_by_name || `${company.store_manager_name}`, 450, currentY + 30, { width: 120, ellipsis: true })
+    .text(quotation.approved_at ? `Approved: ${new Date(quotation.approved_at).toLocaleDateString('en-GB')}` : `Signature: ________________`, 450, currentY + 44);
 
   currentY += 68;
 

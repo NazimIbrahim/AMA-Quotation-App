@@ -274,6 +274,7 @@ export function buildQuotationsReportPdf(
     { header: 'Project', key: 'Project', width: 75, align: 'left' },
     { header: 'Salesperson', key: 'Salesperson', width: 85, align: 'left' },
     { header: 'Status', key: 'Status', width: 55, align: 'center' },
+    { header: 'Approved By', key: 'Approved By', width: 75, align: 'left' },
     { header: 'Gross (Rs.)', key: 'Gross Total (INR)', width: 65, align: 'right', format: formatCurrency },
     { header: 'Disc (Rs.)', key: 'Discount (INR)', width: 55, align: 'right', format: formatCurrency },
     { header: 'Net Total (Rs.)', key: 'Net Total (INR)', width: 70, align: 'right', format: formatCurrency },

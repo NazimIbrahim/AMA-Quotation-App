@@ -196,7 +196,7 @@ const AppContent: React.FC = () => {
           />
         );
       case 'customers':
-        return <CustomerManagement />;
+        return <CustomerManagement onSelectQuotation={handleSelectQuotation} />;
       case 'products':
         return <ProductManagement />;
       case 'sanitary-catalog':

@@ -1,14 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { useServer } from '../context/ServerContext';
+import { useAuth } from '../context/AuthContext';
 import { Customer } from '../types';
-import { Search, Plus, Edit, UserCheck, Phone, MapPin, RefreshCw, X } from 'lucide-react';
+import { Search, Plus, Edit, UserCheck, Phone, MapPin, RefreshCw, X, FileText, CheckCircle, Eye } from 'lucide-react';
 
-export const CustomerManagement: React.FC = () => {
+interface Props {
+  onSelectQuotation?: (id: number) => void;
+}
+
+export const CustomerManagement: React.FC<Props> = ({ onSelectQuotation }) => {
   const { fetchApi, subscribeToEvents } = useServer();
+  const { user } = useAuth();
+  const isSalesperson = user?.role === 'salesperson';
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Customer Detail & Closed Quotations Modal
+  const [detailModal, setDetailModal] = useState<{
+    customer: Customer;
+    quotations: any[];
+    loading: boolean;
+  } | null>(null);
 
   // Add / Edit Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -78,6 +93,24 @@ export const CustomerManagement: React.FC = () => {
     setModalOpen(true);
   };
 
+  const openCustomerDetail = async (c: Customer) => {
+    setDetailModal({ customer: c, quotations: [], loading: true });
+    try {
+      const res = await fetchApi(`/api/customers/${c.id}`);
+      setDetailModal({ customer: res.customer || c, quotations: res.quotations || [], loading: false });
+    } catch (err: any) {
+      alert(err.message || 'Failed to load customer quotations');
+      setDetailModal(null);
+    }
+  };
+
+  const formatCurrency = (val: number) => {
+    return Number(val || 0).toLocaleString('en-IN', {
+      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -119,13 +152,28 @@ export const CustomerManagement: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Customer Directory</h1>
-          <p className="text-xs text-gray-500">Manage client contacts, site addresses, and quotation histories</p>
+          <p className="text-xs text-gray-500">
+            {isSalesperson
+              ? 'View and manage your assigned client contacts, site addresses, and closed deals'
+              : 'Manage showroom client contacts, site addresses, and quotation histories'}
+          </p>
         </div>
         <button onClick={openAddModal} className="btn btn-primary btn-sm flex items-center space-x-1">
           <Plus size={14} />
           <span>Add Customer</span>
         </button>
       </div>
+
+      {isSalesperson && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-lg p-3 text-xs flex items-center justify-between shadow-xs">
+          <div className="flex items-center space-x-2">
+            <UserCheck size={16} className="text-blue-600 shrink-0" />
+            <div>
+              <span className="font-semibold">My Client Accounts & Closed Deals:</span> Viewing customer profiles, closed quotations, and sales records associated with your profile.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search Bar */}
       <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex items-center space-x-3">
@@ -150,47 +198,242 @@ export const CustomerManagement: React.FC = () => {
         {loading && customers.length === 0 ? (
           <div className="col-span-full text-center py-10 text-gray-400">Loading customers...</div>
         ) : customers.length === 0 ? (
-          <div className="col-span-full text-center py-10 text-gray-400">No customers found.</div>
+          <div className="col-span-full text-center py-10 text-gray-400">
+            {isSalesperson
+              ? 'No customer accounts or closed quotations found for your profile.'
+              : 'No customers found.'}
+          </div>
         ) : (
           customers.map((c) => (
-            <div key={c.id} className="card card-hover p-4 rounded-lg border border-[#E0E1DD] shadow-sm space-y-2 text-xs">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-bold text-gray-900 text-sm">{c.name}</h3>
-                  <div className="flex items-center space-x-1 text-gray-600 mt-1">
-                    <Phone size={12} className="text-gray-400" />
-                    <span>{c.mobile_number}</span>
+            <div key={c.id} className="card card-hover p-4 rounded-lg border border-[#E0E1DD] shadow-sm space-y-2 text-xs flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm">{c.name}</h3>
+                    <div className="flex items-center space-x-1 text-gray-600 mt-1">
+                      <Phone size={12} className="text-gray-400" />
+                      <span>{c.mobile_number}</span>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => openEditModal(c)}
+                    className="p-1 rounded text-gray-400 hover:text-primary hover:bg-gray-100"
+                    title="Edit Customer"
+                  >
+                    <Edit size={14} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => openEditModal(c)}
-                  className="p-1 rounded text-gray-400 hover:text-primary hover:bg-gray-100"
-                >
-                  <Edit size={14} />
-                </button>
+
+                {c.site_location && (
+                  <div className="flex items-center space-x-1 text-primary font-medium">
+                    <MapPin size={12} />
+                    <span>{c.site_location}</span>
+                  </div>
+                )}
+
+                <p className="text-gray-500 text-[11px] line-clamp-2">
+                  {c.delivery_address || 'No delivery address recorded'}
+                </p>
               </div>
 
-              {c.site_location && (
-                <div className="flex items-center space-x-1 text-primary font-medium">
-                  <MapPin size={12} />
-                  <span>{c.site_location}</span>
+              <div className="pt-2 border-t border-gray-100 space-y-1.5 text-[11px] mt-2">
+                <div className="flex justify-between text-gray-600">
+                  <span className="flex items-center space-x-1">
+                    <CheckCircle size={11} className="text-emerald-600" />
+                    <span className="font-medium text-emerald-800">Closed Deals:</span>
+                  </span>
+                  <span className="font-bold text-emerald-800">
+                    {c.closed_count || 0} deals (₹ {formatCurrency(c.closed_total || 0)})
+                  </span>
                 </div>
-              )}
+                <div className="flex justify-between text-gray-500">
+                  <span>Total Quoted:</span>
+                  <span className="font-semibold text-gray-800">
+                    ₹ {formatCurrency(c.total_quoted || 0)} ({c.quotations_count || 0} quotes)
+                  </span>
+                </div>
 
-              <p className="text-gray-500 text-[11px] line-clamp-2">
-                {c.delivery_address || 'No delivery address recorded'}
-              </p>
-
-              <div className="pt-2 border-t border-gray-100 flex justify-between text-gray-500 text-[11px]">
-                <span>Quotations: {c.quotations_count || 0}</span>
-                <span className="font-semibold text-gray-800">
-                  Total Quoted: ₹ {Number(c.total_quoted || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => openCustomerDetail(c)}
+                  className="w-full btn btn-secondary btn-xs py-1 mt-1 text-primary hover:text-blue-800 font-semibold border-primary/30 flex items-center justify-center space-x-1"
+                >
+                  <FileText size={11} />
+                  <span>View Details & Deals</span>
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Customer Detail & Quotations Modal */}
+      {detailModal && (
+        <div className="modal-overlay">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-6 border border-gray-200 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-start pb-3 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">{detailModal.customer.name}</h2>
+                <div className="flex items-center space-x-3 text-xs text-gray-500 mt-1">
+                  <span className="flex items-center space-x-1">
+                    <Phone size={12} />
+                    <span>{detailModal.customer.mobile_number}</span>
+                  </span>
+                  {detailModal.customer.email && (
+                    <span>• {detailModal.customer.email}</span>
+                  )}
+                  {detailModal.customer.site_location && (
+                    <span className="flex items-center space-x-1 text-primary font-medium">
+                      <MapPin size={12} />
+                      <span>{detailModal.customer.site_location}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setDetailModal(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="py-3 overflow-y-auto space-y-4 flex-1 text-xs">
+              {/* Customer Profile Details */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded border border-slate-200">
+                <div>
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold">Delivery Address</span>
+                  <p className="text-gray-800 mt-0.5">{detailModal.customer.delivery_address || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold">GSTIN</span>
+                  <p className="text-gray-800 mt-0.5 font-mono">{detailModal.customer.gstin || 'None'}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold">Closed Deals</span>
+                  <p className="text-emerald-700 font-bold mt-0.5">
+                    {detailModal.customer.closed_count || 0} deals (₹ {formatCurrency(detailModal.customer.closed_total || 0)})
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold">Total Quoted</span>
+                  <p className="text-gray-900 font-bold mt-0.5">
+                    ₹ {formatCurrency(detailModal.customer.total_quoted || 0)}
+                  </p>
+                </div>
+              </div>
+
+              {detailModal.customer.notes && (
+                <div className="bg-amber-50/60 border border-amber-200 p-2.5 rounded text-[11px] text-amber-900">
+                  <span className="font-semibold">Notes:</span> {detailModal.customer.notes}
+                </div>
+              )}
+
+              {/* Quotations List */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-gray-900 text-xs flex items-center justify-between">
+                  <span>Customer Quotations & Deals</span>
+                  <span className="text-gray-500 font-normal">
+                    {detailModal.quotations.length} total recorded
+                  </span>
+                </h3>
+
+                {detailModal.loading ? (
+                  <div className="py-8 text-center text-gray-400 flex items-center justify-center space-x-2">
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Loading quotations...</span>
+                  </div>
+                ) : detailModal.quotations.length === 0 ? (
+                  <div className="py-6 text-center text-gray-400 bg-gray-50 rounded border border-dashed border-gray-200">
+                    No quotations found for this customer.
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-md overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 text-[11px]">
+                        <tr>
+                          <th className="py-2 px-3">Quotation Ref</th>
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-3">Type</th>
+                          <th className="py-2 px-3 text-center">Status</th>
+                          <th className="py-2 px-3">Approved By</th>
+                          <th className="py-2 px-3 text-right">Net Total</th>
+                          <th className="py-2 px-3 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {detailModal.quotations.map((q: any) => {
+                          const isApproved = ['approved', 'closed'].includes(q.status?.toLowerCase());
+                          return (
+                            <tr key={q.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="py-2 px-3 font-mono font-semibold text-gray-900">
+                                {q.quotation_number}
+                              </td>
+                              <td className="py-2 px-3 text-gray-600 font-mono text-[11px]">
+                                {new Date(q.quotation_date).toLocaleDateString('en-GB')}
+                              </td>
+                              <td className="py-2 px-3">
+                                {q.quotation_type === 'sanitary' ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-100 text-teal-800">
+                                    🚿 Sanitary
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800">
+                                    🧱 Tile
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <span className={`badge badge-${q.status}`}>{q.status}</span>
+                              </td>
+                              <td className="py-2 px-3">
+                                {isApproved ? (
+                                  <span className="text-[11px] text-emerald-800 font-semibold">
+                                    {q.approved_by_name || 'Store Manager'}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-amber-700 italic">
+                                    Pending Approval
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-right font-bold text-gray-900 tabular-nums">
+                                ₹ {formatCurrency(q.net_total)}
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                {onSelectQuotation && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDetailModal(null);
+                                      onSelectQuotation(q.id);
+                                    }}
+                                    className="btn btn-secondary btn-xs px-2 py-0.5 text-primary hover:text-blue-800 font-medium"
+                                  >
+                                    <Eye size={11} className="mr-1" />
+                                    <span>View</span>
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-gray-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDetailModal(null)}
+                className="btn btn-secondary btn-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add / Edit Customer Modal */}
       {modalOpen && (

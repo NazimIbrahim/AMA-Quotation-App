@@ -174,6 +174,7 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
           COALESCE(q.sales_person_name, '') as "Salesperson",
           COALESCE(q.assisted_sales_person_name, '') as "Assisted By",
           COALESCE(q.status, '') as "Status",
+          COALESCE(u_app.full_name, CASE WHEN LOWER(q.status) IN ('approved', 'closed') THEN 'Store Manager' ELSE 'Pending Approval' END) as "Approved By",
           COALESCE(q.gross_total, 0) as "Gross Total (INR)",
           COALESCE(q.discount_amount, 0) as "Discount (INR)",
           COALESCE(q.taxable_amount, 0) as "Taxable (INR)",
@@ -201,6 +202,7 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
             COALESCE(q.assisted_sales_share_amount, 0) as "Assisted Credit (INR)"
           `}
         FROM quotations q
+        LEFT JOIN users u_app ON u_app.id = q.approved_by_id
         LEFT JOIN (
           SELECT quotation_id, SUM(amount) as total_paid FROM payments WHERE status = 'Cleared' GROUP BY quotation_id
         ) p ON p.quotation_id = q.id
@@ -217,6 +219,7 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
         "Salesperson": String(it["Salesperson"] || ''),
         "Assisted By": String(it["Assisted By"] || ''),
         "Status": String(it["Status"] || ''),
+        "Approved By": String(it["Approved By"] || ''),
         "Gross Total (INR)": Number(it["Gross Total (INR)"]) || 0,
         "Discount (INR)": Number(it["Discount (INR)"]) || 0,
         "Taxable (INR)": Number(it["Taxable (INR)"]) || 0,

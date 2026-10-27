@@ -129,12 +129,14 @@ dashboardRouter.get('/summary', async (req: Request, res: Response) => {
     const totalCollected = parseFloat(paymentTotals[0]?.total_collected || '0');
     const totalOutstanding = Math.max(0, approvedRevenue - totalCollected);
 
-    // Recent 10 quotations
+    // Recent 10 quotations with Store Manager approval details
     const recentQuotations = await query(`
       SELECT q.id, q.quotation_number, q.quotation_date, q.customer_name, q.sales_person_name,
-             q.assisted_sales_person_name, q.status, q.net_total,
-             q.primary_sales_share_amount, q.assisted_sales_share_amount
+             q.assisted_sales_person_name, q.status, q.net_total, q.quotation_type,
+             q.primary_sales_share_amount, q.assisted_sales_share_amount,
+             q.approved_by_id, u_app.full_name as approved_by_name, q.approved_at
       FROM quotations q
+      LEFT JOIN users u_app ON u_app.id = q.approved_by_id
       ${filterUser}
       ORDER BY q.created_at DESC
       LIMIT 10

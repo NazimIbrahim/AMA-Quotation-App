@@ -15,6 +15,7 @@ import {
   Printer,
   Plus,
   ShieldAlert,
+  Lock,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 
@@ -394,35 +395,56 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
                         </td>
                         <td className="py-2.5 px-3 align-middle whitespace-nowrap">
                           <span className={`badge badge-${q.status}`}>{q.status}</span>
+                          {['approved', 'closed'].includes(q.status?.toLowerCase()) ? (
+                            <div className="text-[10px] text-emerald-800 font-bold mt-0.5">
+                              Approved: {q.approved_by_name || 'Store Manager'}
+                            </div>
+                          ) : q.status === 'in_review' ? (
+                            <div className="text-[10px] text-amber-700 font-medium mt-0.5">
+                              Pending Approval
+                            </div>
+                          ) : null}
                         </td>
                         <td className="py-2.5 px-3 text-right font-semibold text-[#0D1B2A] tabular-nums align-middle whitespace-nowrap">
                           ₹ {formatCurrency(q.net_total)}
                         </td>
                         <td className="py-2.5 px-3 text-center align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="inline-flex items-center justify-center space-x-1 whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={(e) => handleOpenPdf(q, e, false)}
-                              title="Export / Print Standard PDF"
-                              className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-[#1B263B] hover:text-[#0D1B2A] hover:border-[#778DA9]"
-                            >
-                              <Printer size={11} className="mr-1 text-[#415A77]" />
-                              <span>PDF</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => handleOpenPdf(q, e, true)}
-                              title="Export Encrypted PDF (Masked codes, hidden brand)"
-                              className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-[#0D1B2A] hover:bg-[#1B263B] text-amber-300 hover:text-amber-200 border-transparent shadow-xs"
-                            >
-                              <ShieldAlert size={11} className="mr-1 text-amber-400" />
-                              <span>Encrypted</span>
-                            </button>
+                            {user?.role === 'salesperson' && !['approved', 'closed'].includes(q.status?.toLowerCase()) ? (
+                              <span
+                                className="px-2 py-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded inline-flex items-center"
+                                title="Awaiting Store Manager approval before PDF export or print"
+                              >
+                                <Lock size={10} className="mr-1 text-amber-600" />
+                                <span>Awaiting Approval</span>
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenPdf(q, e, false)}
+                                  title="Export / Print Standard PDF"
+                                  className="btn btn-secondary btn-xs px-2 py-0.5 text-[10px] font-semibold text-[#1B263B] hover:text-[#0D1B2A] hover:border-[#778DA9]"
+                                >
+                                  <Printer size={11} className="mr-1 text-[#415A77]" />
+                                  <span>PDF</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleOpenPdf(q, e, true)}
+                                  title="Export Encrypted PDF (Masked codes, hidden brand)"
+                                  className="btn btn-xs px-2 py-0.5 text-[10px] font-semibold bg-[#0D1B2A] hover:bg-[#1B263B] text-amber-300 hover:text-amber-200 border-transparent shadow-xs"
+                                >
+                                  <ShieldAlert size={11} className="mr-1 text-amber-400" />
+                                  <span>Encrypted</span>
+                                </button>
+                              </>
+                            )}
                             <button
                               type="button"
                               onClick={() => onSelectQuotation(q.id)}
                               className="p-1 rounded text-[#415A77] hover:text-[#0D1B2A] hover:bg-[#E0E1DD]/60 transition-colors"
-                              title="View Details"
+                              title="Review Quotation Details"
                             >
                               <Eye size={13} />
                             </button>

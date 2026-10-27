@@ -52,7 +52,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
   res.json({
     status: dbOk ? 'ok' : 'degraded',
     server: 'AMA Ceramics Quotation Central Server',
-    version: '2.4.4',
+    version: '2.4.5',
     dbConnected: dbOk,
     activeWsClients: getConnectedClientCount(),
     timestamp: new Date().toISOString(),
