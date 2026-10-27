@@ -71,12 +71,22 @@ usersRouter.post('/', requireRole(['admin', 'manager']), async (req: Request, re
 usersRouter.put('/:id', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id as string, 10);
-    const { full_name, role, email, phone, monthly_target, is_active, password } = req.body;
+    const { username, full_name, role, email, phone, monthly_target, is_active, password } = req.body;
 
     let updateFields: string[] = [];
     let params: any[] = [];
     let idx = 1;
 
+    if (username !== undefined && req.user!.role === 'admin') {
+      const cleanUser = String(username).trim();
+      const existing = await query('SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id != $2', [cleanUser, userId]);
+      if (existing.length > 0) {
+        res.status(409).json({ error: 'Username already exists' });
+        return;
+      }
+      updateFields.push(`username = $${idx++}`);
+      params.push(cleanUser);
+    }
     if (full_name !== undefined) {
       updateFields.push(`full_name = $${idx++}`);
       params.push(full_name);
@@ -134,6 +144,44 @@ usersRouter.put('/:id', requireRole(['admin', 'manager']), async (req: Request, 
     });
 
     res.json({ user: rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Dedicated password reset endpoint for Admin
+usersRouter.post('/:id/reset-password', requireRole(['admin']), async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id as string, 10);
+    const { new_password } = req.body;
+
+    if (!new_password || String(new_password).trim().length < 4) {
+      res.status(400).json({ error: 'New password must be at least 4 characters long' });
+      return;
+    }
+
+    const userRows = await query('SELECT id, username, full_name FROM users WHERE id = $1', [userId]);
+    if (userRows.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(String(new_password).trim(), salt);
+
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, userId]);
+
+    await recordAuditLog({
+      userId: req.user!.id,
+      username: req.user!.username,
+      action: 'PASSWORD_RESET',
+      entityType: 'user',
+      entityId: userId,
+      details: { target_username: userRows[0].username, target_name: userRows[0].full_name },
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: `Password for ${userRows[0].username} has been reset successfully` });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

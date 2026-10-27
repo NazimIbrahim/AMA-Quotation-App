@@ -6,8 +6,8 @@ export async function seedDatabase(): Promise<void> {
   logger.info('Starting database seeding...');
 
   await withTransaction(async (client) => {
-    // 1. Seed Users
-    logger.info('Seeding default users...');
+    // 1. Seed Users (Only Administrator kept by default)
+    logger.info('Seeding default admin user...');
     const salt = await bcrypt.genSalt(10);
     const users = [
       {
@@ -17,51 +17,6 @@ export async function seedDatabase(): Promise<void> {
         role: 'admin',
         email: 'admin@amaceramics.com',
         phone: '+91 98250 00001',
-        monthly_target: 0,
-      },
-      {
-        username: 'manager',
-        password: 'managerpassword123',
-        full_name: 'Rajesh Sharma',
-        role: 'manager',
-        email: 'rajesh.sharma@amaceramics.com',
-        phone: '+91 98250 12345',
-        monthly_target: 2500000,
-      },
-      {
-        username: 'sales1',
-        password: 'salespassword123',
-        full_name: 'Ananya Verma',
-        role: 'salesperson',
-        email: 'ananya.v@amaceramics.com',
-        phone: '+91 98791 67890',
-        monthly_target: 900000,
-      },
-      {
-        username: 'sales2',
-        password: 'salespassword123',
-        full_name: 'Vikram Patel',
-        role: 'salesperson',
-        email: 'vikram.p@amaceramics.com',
-        phone: '+91 98240 77889',
-        monthly_target: 1200000,
-      },
-      {
-        username: 'yasmin',
-        password: 'salespassword123',
-        full_name: 'Mr Yasmin',
-        role: 'salesperson',
-        email: 'yasmin@amaceramics.in',
-        phone: '+91 9900382495',
-        monthly_target: 1500000,
-      },
-      {
-        username: 'accounts',
-        password: 'accountspassword123',
-        full_name: 'Hardik Shah',
-        role: 'accounts',
-        email: 'accounts@amaceramics.com',
-        phone: '+91 98250 99887',
         monthly_target: 0,
       },
     ];

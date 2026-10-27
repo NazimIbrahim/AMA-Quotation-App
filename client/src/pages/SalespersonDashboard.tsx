@@ -1058,9 +1058,13 @@ export const SalespersonDashboard: React.FC<Props> = ({
                   >
                     <option value="salesperson">Salesperson / Showroom Associate</option>
                     <option value="manager">Store Manager</option>
+                    <option value="accounts">Accounts & Finance</option>
                   </select>
                 </div>
               </div>
+              <p className="text-[11px] text-slate-500">
+                These unique login credentials will be used by the salesperson to sign in from any PC.
+              </p>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

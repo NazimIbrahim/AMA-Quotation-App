@@ -40,7 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (username: string, password?: string) => {
     const data = await fetchApi<{ token: string; user: User }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password, role: username }),
+      body: JSON.stringify({ username, password }),
     });
 
     localStorage.setItem('ama_token', data.token);

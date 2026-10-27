@@ -4,11 +4,24 @@ export interface User {
   id: number;
   username: string;
   full_name: string;
-  role: 'admin' | 'manager' | 'salesperson' | 'accounts';
+  role: 'admin' | 'manager' | 'salesperson' | 'accounts' | string;
   email?: string;
   phone?: string;
   monthly_target?: number;
   is_active?: boolean;
+  permissions?: Record<string, boolean>;
+}
+
+export interface Role {
+  id: number;
+  name: string;
+  display_name: string;
+  description?: string;
+  permissions: Record<string, boolean>;
+  is_system?: boolean;
+  user_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Customer {

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(120) NOT NULL,
-    role VARCHAR(30) NOT NULL CHECK (role IN ('admin', 'manager', 'salesperson', 'accounts')),
+    role VARCHAR(50) NOT NULL DEFAULT 'salesperson',
     email VARCHAR(120),
     phone VARCHAR(30),
     monthly_target NUMERIC(14, 2) DEFAULT 0.00,

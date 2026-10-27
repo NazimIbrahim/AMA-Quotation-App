@@ -22,6 +22,7 @@ import { SalespersonDashboard } from './pages/SalespersonDashboard';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
 import { AuditLogsPage } from './pages/AuditLogsPage';
 import { BackupRestorePage } from './pages/BackupRestorePage';
+import { AdminPanelPage } from './pages/AdminPanelPage';
 
 const AppContent: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -206,6 +207,8 @@ const AppContent: React.FC = () => {
         return <TargetsManagement />;
       case 'reports':
         return <ReportsPage onSelectQuotation={handleSelectQuotation} />;
+      case 'admin-panel':
+        return <AdminPanelPage />;
       case 'company':
         return <CompanySettingsPage />;
       case 'audit':

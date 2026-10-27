@@ -21,6 +21,7 @@ import { auditRouter } from './routes/audit';
 import { reportsRouter } from './routes/reports';
 import { backupRouter } from './routes/backup';
 import { sanitaryCatalogRouter } from './routes/sanitaryCatalog';
+import { rolesRouter, ensureRolesSchema } from './routes/roles';
 
 const app = express();
 const server = http.createServer(app);
@@ -51,7 +52,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
   res.json({
     status: dbOk ? 'ok' : 'degraded',
     server: 'AMA Ceramics Quotation Central Server',
-    version: '2.4.3',
+    version: '2.4.4',
     dbConnected: dbOk,
     activeWsClients: getConnectedClientCount(),
     timestamp: new Date().toISOString(),
@@ -61,6 +62,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
 // Mount API routes
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/roles', rolesRouter);
 app.use('/api/quotations', quotationsRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/products', productsRouter);
@@ -189,6 +191,9 @@ async function runAutoMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_product_encrypted_codes_norm ON product_encrypted_codes (normalized_name);
       CREATE INDEX IF NOT EXISTS idx_product_encrypted_codes_code ON product_encrypted_codes (encrypted_code);
     `);
+
+    // 5. Ensure roles table and permissions schema exist
+    await ensureRolesSchema();
 
     logger.info('Database schema migrations applied successfully.');
   } catch (err: any) {

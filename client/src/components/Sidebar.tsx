@@ -33,6 +33,7 @@ export type NavTab =
   | 'payments'
   | 'targets'
   | 'reports'
+  | 'admin-panel'
   | 'company'
   | 'audit'
   | 'backup';
@@ -62,8 +63,9 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
   ];
 
   const adminNav = [
+    ...(isAdmin ? [{ id: 'admin-panel' as NavTab, label: 'Admin Panel', icon: ShieldCheck }] : []),
     ...(isAdmin ? [{ id: 'company' as NavTab, label: 'Company Settings', icon: Building }] : []),
-    ...(canAudit ? [{ id: 'audit' as NavTab, label: 'Audit Trail', icon: ShieldCheck }] : []),
+    ...(canAudit ? [{ id: 'audit' as NavTab, label: 'Audit Trail', icon: Layers }] : []),
     ...(isAdmin ? [{ id: 'backup' as NavTab, label: 'Database Backup', icon: Database }] : []),
   ];
 
