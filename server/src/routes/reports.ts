@@ -3,6 +3,12 @@ import { query } from '../db/connection';
 import { authenticateToken, optionalAuthenticateToken } from '../middleware/auth';
 import * as XLSX from 'xlsx';
 import { buildEncryptedProductMap, getOrSaveEncryptedProductCodes, derive3LetterCode } from '../utils/encryptedCode';
+import {
+  buildQuotationsReportPdf,
+  buildItemizedQuotationsReportPdf,
+  buildSalespersonsReportPdf,
+  buildPaymentsReportPdf,
+} from '../utils/reportPdfGenerator';
 
 export const reportsRouter = Router();
 
@@ -251,25 +257,49 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
       }
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, isEncrypted ? 'Encrypted Quotes' : 'Quotations');
-
     const statusSuffix = status ? `_${status}` : '';
     const encSuffix = isEncrypted ? '_Encrypted' : '';
     const dateSuffix = new Date().toISOString().split('T')[0];
     const outFilename = `Quotations${statusSuffix}${encSuffix}_${dateSuffix}.${format}`;
 
-    if (format === 'csv') {
-      const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
-      res.setHeader('Content-Type', 'text/csv');
+    if (format === 'pdf') {
+      const companyRows = await query('SELECT * FROM company_settings LIMIT 1');
+      const company = companyRows[0] || {};
+
+      const filterDict: Record<string, string> = {};
+      if (status) filterDict['Status'] = String(status);
+      if (quotation_type && quotation_type !== 'all') filterDict['Type'] = String(quotation_type);
+      if (start_date) filterDict['From'] = String(start_date);
+      if (end_date) filterDict['To'] = String(end_date);
+      if (search) filterDict['Search'] = String(search);
+
+      let doc;
+      if (isItemized) {
+        doc = buildItemizedQuotationsReportPdf(rows, filterDict, company, isEncrypted);
+      } else {
+        doc = buildQuotationsReportPdf(rows, filterDict, company, isEncrypted);
+      }
+
+      res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
-      res.send(csvOutput);
+      doc.pipe(res);
+      doc.end();
     } else {
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
-      res.send(buffer);
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, isEncrypted ? 'Encrypted Quotes' : 'Quotations');
+
+      if (format === 'csv') {
+        const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+        res.send(csvOutput);
+      } else {
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+        res.send(buffer);
+      }
     }
   } catch (error: any) {
     console.error('Error exporting quotations:', error);
@@ -547,23 +577,38 @@ reportsRouter.get('/salespersons/export', optionalAuthenticateToken, async (req:
       }];
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(formatted);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sales Team Performance');
-
     const dateSuffix = new Date().toISOString().split('T')[0];
     const outFilename = `Sales_Team_Performance_${dateSuffix}.${format}`;
 
-    if (format === 'csv') {
-      const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
-      res.setHeader('Content-Type', 'text/csv');
+    if (format === 'pdf') {
+      const companyRows = await query('SELECT * FROM company_settings LIMIT 1');
+      const company = companyRows[0] || {};
+
+      const filterDict: Record<string, string> = {};
+      if (start_date) filterDict['From'] = String(start_date);
+      if (end_date) filterDict['To'] = String(end_date);
+
+      const doc = buildSalespersonsReportPdf(formatted, filterDict, company);
+      res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
-      res.send(csvOutput);
+      doc.pipe(res);
+      doc.end();
     } else {
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
-      res.send(buffer);
+      const worksheet = XLSX.utils.json_to_sheet(formatted);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Sales Team Performance');
+
+      if (format === 'csv') {
+        const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+        res.send(csvOutput);
+      } else {
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+        res.send(buffer);
+      }
     }
   } catch (error: any) {
     console.error('Error exporting salespersons report:', error);
@@ -636,20 +681,38 @@ reportsRouter.get('/payments/export', optionalAuthenticateToken, async (req: Req
       }];
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Payments');
+    const dateSuffix = new Date().toISOString().split('T')[0];
+    const outFilename = `Payments_Export_${dateSuffix}.${format}`;
 
-    if (format === 'csv') {
-      const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="Payments_Export.csv"');
-      res.send(csvOutput);
+    if (format === 'pdf') {
+      const companyRows = await query('SELECT * FROM company_settings LIMIT 1');
+      const company = companyRows[0] || {};
+
+      const filterDict: Record<string, string> = {};
+      if (start_date) filterDict['From'] = String(start_date);
+      if (end_date) filterDict['To'] = String(end_date);
+
+      const doc = buildPaymentsReportPdf(rows, filterDict, company);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+      doc.pipe(res);
+      doc.end();
     } else {
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename="Payments_Export.xlsx"');
-      res.send(buffer);
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Payments');
+
+      if (format === 'csv') {
+        const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+        res.send(csvOutput);
+      } else {
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFilename}"`);
+        res.send(buffer);
+      }
     }
   } catch (error: any) {
     console.error('Error exporting payments:', error);

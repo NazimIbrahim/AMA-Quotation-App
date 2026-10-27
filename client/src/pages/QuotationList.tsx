@@ -166,7 +166,7 @@ export const QuotationList: React.FC<Props> = ({
     }
   };
 
-  const handleExportList = async (format: 'xlsx' | 'csv') => {
+  const handleExportList = async (format: 'xlsx' | 'csv' | 'pdf') => {
     setExportingFormat(format);
     try {
       const params = new URLSearchParams({ format });
@@ -287,6 +287,14 @@ export const QuotationList: React.FC<Props> = ({
               <span>{exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}...` : 'Export Register'}</span>
             </button>
             <div className="dropdown-menu absolute right-0 top-full mt-1 hidden group-hover:block z-30 bg-white border border-[#CBD5E1] rounded-md shadow-xl p-1 min-w-[185px] animate-dropdown-open">
+              <button
+                type="button"
+                onClick={() => handleExportList('pdf')}
+                className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-rose-50 hover:text-rose-700 rounded flex items-center space-x-2"
+              >
+                <Printer size={13} className="text-rose-600" />
+                <span>Export to PDF (.pdf)</span>
+              </button>
               <button
                 type="button"
                 onClick={() => handleExportList('xlsx')}

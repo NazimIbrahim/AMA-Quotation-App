@@ -242,7 +242,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
   };
 
   // Export State
-  const [exportingFormat, setExportingFormat] = useState<'xlsx' | 'csv' | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   const handleOpenPdf = (q: Quotation, e: React.MouseEvent, encrypted: boolean = false) => {
@@ -261,7 +261,7 @@ export const SalespersonDashboard: React.FC<Props> = ({
     });
   };
 
-  const handleExportList = async (format: 'xlsx' | 'csv') => {
+  const handleExportList = async (format: 'xlsx' | 'csv' | 'pdf') => {
     setExportingFormat(format);
     try {
       const params = new URLSearchParams({ format });
@@ -747,6 +747,17 @@ export const SalespersonDashboard: React.FC<Props> = ({
                     onClick={() => setExportMenuOpen(false)}
                   />
                   <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportMenuOpen(false);
+                        handleExportList('pdf');
+                      }}
+                      className="w-full text-left px-3 py-2 text-slate-800 hover:bg-rose-50 hover:text-rose-700 flex items-center space-x-2 font-medium"
+                    >
+                      <Printer size={14} className="text-rose-600" />
+                      <span>Export to PDF (.pdf)</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {

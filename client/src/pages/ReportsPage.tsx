@@ -131,7 +131,7 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
   // Generic Download Handler
   const handleDownload = async (
     type: 'quotations' | 'payments' | 'salespersons',
-    format: 'xlsx' | 'csv',
+    format: 'xlsx' | 'csv' | 'pdf',
     customParams?: Record<string, string>
   ) => {
     const key = `${type}-${format}${customParams?.encrypted ? '-enc' : ''}`;
@@ -453,7 +453,24 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
               </p>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  handleDownload(
+                    'quotations',
+                    'pdf',
+                    selectedSpId ? { sales_person_id: selectedSpId, ...(spStatus ? { status: spStatus } : {}) } : undefined
+                  )
+                }
+                disabled={exportingKey !== null}
+                className="btn btn-sm bg-rose-600 hover:bg-rose-500 text-white font-bold border-none shadow flex items-center space-x-1.5"
+                title="Export quotations register in high-resolution PDF format"
+              >
+                <Printer size={13} />
+                <span>Export PDF (.pdf)</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() =>
@@ -486,28 +503,50 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                 <span>Export CSV</span>
               </button>
 
-              {/* Encrypted Export for Salesperson Report */}
-              <button
-                type="button"
-                onClick={() =>
-                  handleDownload(
-                    'quotations',
-                    'xlsx',
-                    {
-                      encrypted: 'true',
-                      itemized: 'true',
-                      ...(selectedSpId ? { sales_person_id: selectedSpId } : {}),
-                      ...(spStatus ? { status: spStatus } : {}),
+              {/* Encrypted Export for Salesperson Report (Dropdown for PDF / Excel) */}
+              <div className="relative group">
+                <button
+                  type="button"
+                  disabled={exportingKey !== null}
+                  className="btn btn-sm bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold border-none shadow flex items-center space-x-1.5"
+                  title="Export report with item product names masked with 3-letter encrypted code -AMA and brand hidden"
+                >
+                  <ShieldAlert size={13} className="text-slate-950" />
+                  <span>Encrypted Export</span>
+                </button>
+                <div className="dropdown-menu absolute right-0 top-full mt-1 hidden group-hover:block z-30 bg-white border border-[#CBD5E1] rounded-md shadow-xl p-1 min-w-[195px] animate-dropdown-open">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDownload('quotations', 'pdf', {
+                        encrypted: 'true',
+                        itemized: 'true',
+                        ...(selectedSpId ? { sales_person_id: selectedSpId } : {}),
+                        ...(spStatus ? { status: spStatus } : {}),
+                      })
                     }
-                  )
-                }
-                disabled={exportingKey !== null}
-                className="btn btn-sm bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold border-none shadow flex items-center space-x-1.5"
-                title="Export report with item product names masked with random code -AMA and brand hidden"
-              >
-                <ShieldAlert size={13} className="text-slate-950" />
-                <span>Encrypted Export</span>
-              </button>
+                    className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-rose-50 hover:text-rose-700 rounded flex items-center space-x-2"
+                  >
+                    <Printer size={13} className="text-rose-600" />
+                    <span>Encrypted PDF (.pdf)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDownload('quotations', 'xlsx', {
+                        encrypted: 'true',
+                        itemized: 'true',
+                        ...(selectedSpId ? { sales_person_id: selectedSpId } : {}),
+                        ...(spStatus ? { status: spStatus } : {}),
+                      })
+                    }
+                    className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-emerald-50 hover:text-emerald-700 rounded flex items-center space-x-2"
+                  >
+                    <Download size={13} className="text-emerald-600" />
+                    <span>Encrypted Excel (.xlsx)</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -521,14 +560,26 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                     Sales Associates Performance Matrix
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDownload('salespersons', 'xlsx')}
-                  className="btn btn-secondary btn-xs text-[10px] flex items-center space-x-1"
-                >
-                  <Download size={11} />
-                  <span>Download Summary (.xlsx)</span>
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownload('salespersons', 'pdf')}
+                    className="btn btn-secondary btn-xs text-[10px] flex items-center space-x-1 border border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100"
+                    title="Export Sales Associates Matrix as Landscape PDF"
+                  >
+                    <Printer size={11} className="text-rose-600" />
+                    <span>Download PDF (.pdf)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownload('salespersons', 'xlsx')}
+                    className="btn btn-secondary btn-xs text-[10px] flex items-center space-x-1"
+                    title="Download Sales Associates Matrix as Excel Spreadsheet"
+                  >
+                    <Download size={11} />
+                    <span>Download Excel (.xlsx)</span>
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto w-full">
@@ -879,6 +930,19 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
 
               <div className="flex space-x-2 pt-3 border-t border-slate-200">
                 <button
+                  type="button"
+                  onClick={() => handleDownload('quotations', 'pdf')}
+                  disabled={exportingKey !== null}
+                  className={`btn btn-sm bg-rose-600 hover:bg-rose-500 text-white font-bold border-none shadow flex-1 flex items-center justify-center space-x-1.5 ${
+                    exportingKey === 'quotations-pdf' ? 'btn-exporting' : ''
+                  }`}
+                  title="Download publication-quality PDF report (landscape layout with company branding and summary)"
+                >
+                  <Printer size={13} className={exportingKey === 'quotations-pdf' ? 'animate-bounce' : ''} />
+                  <span>Download PDF (.pdf)</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleDownload('quotations', 'xlsx')}
                   disabled={exportingKey !== null}
                   className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
@@ -889,6 +953,7 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                   <span>Download Excel (.xlsx)</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleDownload('quotations', 'csv')}
                   disabled={exportingKey !== null}
                   className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
@@ -952,6 +1017,19 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
 
               <div className="flex space-x-2 pt-3 border-t border-slate-200">
                 <button
+                  type="button"
+                  onClick={() => handleDownload('payments', 'pdf')}
+                  disabled={exportingKey !== null}
+                  className={`btn btn-sm bg-rose-600 hover:bg-rose-500 text-white font-bold border-none shadow flex-1 flex items-center justify-center space-x-1.5 ${
+                    exportingKey === 'payments-pdf' ? 'btn-exporting' : ''
+                  }`}
+                  title="Download Collections & Payments Register in PDF format"
+                >
+                  <Printer size={13} className={exportingKey === 'payments-pdf' ? 'animate-bounce' : ''} />
+                  <span>Download PDF (.pdf)</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleDownload('payments', 'xlsx')}
                   disabled={exportingKey !== null}
                   className={`btn btn-primary btn-sm flex-1 flex items-center justify-center space-x-1 ${
@@ -962,6 +1040,7 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
                   <span>Download Excel (.xlsx)</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleDownload('payments', 'csv')}
                   disabled={exportingKey !== null}
                   className={`btn btn-secondary btn-sm flex-1 flex items-center justify-center space-x-1 ${
