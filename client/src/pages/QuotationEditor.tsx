@@ -25,8 +25,10 @@ import {
   Award,
   Percent,
   ShieldAlert,
+  History,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
+import { QuotationHistoryModal } from '../components/QuotationHistoryModal';
 import { numberToWordsIndian } from '../utils/numberToWords';
 import { calculateQuotationDiscountAndTotals, isCeraBrand } from '../utils/discountCalculator';
 import { buildEncryptedProductMap, derive3LetterCode } from '../utils/encryptedCode';
@@ -86,6 +88,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   const [assistedSalesSharePercent, setAssistedSalesSharePercent] = useState<number>(50);
   const [assistedSalesShareAmount, setAssistedSalesShareAmount] = useState<number>(0);
   const [salesTeam, setSalesTeam] = useState<User[]>([]);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // Customer Autocomplete & Live Lookup State
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
@@ -386,62 +389,66 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   }, []);
 
   // Load Existing Quotation if editing
+  const loadExistingQuotation = (qId: number) => {
+    fetchApi(`/api/quotations/${qId}`)
+      .then((res) => {
+        const q: Quotation = res.quotation;
+        setCustomerId(q.customer_id || null);
+        setCustomerName(q.customer_name);
+        setCustomerPhone(q.customer_phone);
+        setCustomerGstin(q.customer_gstin || '');
+        setDeliveryAddress(q.delivery_address || '');
+        setSiteLocation(q.site_location || '');
+        setProjectName(q.project_name || '');
+        setQuotationDate(q.quotation_date.split('T')[0]);
+        setSpecialNotes(q.special_notes || '');
+        setDiscountPercent(parseFloat(String(q.discount_percent)) || 0);
+        setDiscountAmount(parseFloat(String(q.discount_amount)) || 0);
+        setTaxType(q.tax_type || 'cgst_sgst');
+        setVersion(q.version || 1);
+        setQuotationNumber(q.quotation_number);
+        setStatus((q.status as any) || 'draft');
+        setPrimarySalesPersonName(q.sales_person_name || '');
+
+        if (q.assisted_sales_person_id) {
+          setEnableSplitSale(true);
+          setAssistedSalesPersonId(q.assisted_sales_person_id);
+          setAssistedSalesPersonName(q.assisted_sales_person_name || '');
+          setSplitShareType((q.split_share_type as any) || 'percentage');
+          setPrimarySalesSharePercent(parseFloat(String(q.primary_sales_share_percent)) || 50);
+          setPrimarySalesShareAmount(parseFloat(String(q.primary_sales_share_amount)) || 0);
+          setAssistedSalesSharePercent(parseFloat(String(q.assisted_sales_share_percent)) || 50);
+          setAssistedSalesShareAmount(parseFloat(String(q.assisted_sales_share_amount)) || 0);
+        } else {
+          setEnableSplitSale(false);
+          setAssistedSalesPersonId(null);
+          setAssistedSalesPersonName('');
+          setSplitShareType('percentage');
+          setPrimarySalesSharePercent(100);
+          setAssistedSalesSharePercent(0);
+        }
+
+        if (Array.isArray(res.areas) && res.areas.length > 0) {
+          setAreas(
+            res.areas.map((a: any) => ({
+              name: a.area_name,
+              items: (a.items || []).map((it: any) => ({
+                ...it,
+                base_rate_per_sqft: parseFloat(it.base_rate_per_sqft) || parseFloat(it.rate_per_sqft) || 0,
+                base_rate_per_box: parseFloat(it.base_rate_per_box) || parseFloat(it.rate_per_box) || 0,
+                discount_percent: parseFloat(it.discount_percent) || 0,
+                discount_amount: parseFloat(it.discount_amount) || 0,
+              })),
+            }))
+          );
+        }
+      })
+      .catch((err) => setError(err.message));
+  };
+
   useEffect(() => {
     if (quotationId) {
-      fetchApi(`/api/quotations/${quotationId}`)
-        .then((res) => {
-          const q: Quotation = res.quotation;
-          setCustomerId(q.customer_id || null);
-          setCustomerName(q.customer_name);
-          setCustomerPhone(q.customer_phone);
-          setCustomerGstin(q.customer_gstin || '');
-          setDeliveryAddress(q.delivery_address || '');
-          setSiteLocation(q.site_location || '');
-          setProjectName(q.project_name || '');
-          setQuotationDate(q.quotation_date.split('T')[0]);
-          setSpecialNotes(q.special_notes || '');
-          setDiscountPercent(parseFloat(String(q.discount_percent)) || 0);
-          setDiscountAmount(parseFloat(String(q.discount_amount)) || 0);
-          setTaxType(q.tax_type || 'cgst_sgst');
-          setVersion(q.version || 1);
-          setQuotationNumber(q.quotation_number);
-          setStatus((q.status as any) || 'draft');
-          setPrimarySalesPersonName(q.sales_person_name || '');
-
-          if (q.assisted_sales_person_id) {
-            setEnableSplitSale(true);
-            setAssistedSalesPersonId(q.assisted_sales_person_id);
-            setAssistedSalesPersonName(q.assisted_sales_person_name || '');
-            setSplitShareType((q.split_share_type as any) || 'percentage');
-            setPrimarySalesSharePercent(parseFloat(String(q.primary_sales_share_percent)) || 50);
-            setPrimarySalesShareAmount(parseFloat(String(q.primary_sales_share_amount)) || 0);
-            setAssistedSalesSharePercent(parseFloat(String(q.assisted_sales_share_percent)) || 50);
-            setAssistedSalesShareAmount(parseFloat(String(q.assisted_sales_share_amount)) || 0);
-          } else {
-            setEnableSplitSale(false);
-            setAssistedSalesPersonId(null);
-            setAssistedSalesPersonName('');
-            setSplitShareType('percentage');
-            setPrimarySalesSharePercent(100);
-            setAssistedSalesSharePercent(0);
-          }
-
-          if (Array.isArray(res.areas) && res.areas.length > 0) {
-            setAreas(
-              res.areas.map((a: any) => ({
-                name: a.area_name,
-                items: (a.items || []).map((it: any) => ({
-                  ...it,
-                  base_rate_per_sqft: parseFloat(it.base_rate_per_sqft) || parseFloat(it.rate_per_sqft) || 0,
-                  base_rate_per_box: parseFloat(it.base_rate_per_box) || parseFloat(it.rate_per_box) || 0,
-                  discount_percent: parseFloat(it.discount_percent) || 0,
-                  discount_amount: parseFloat(it.discount_amount) || 0,
-                })),
-              }))
-            );
-          }
-        })
-        .catch((err) => setError(err.message));
+      loadExistingQuotation(quotationId);
     }
   }, [quotationId]);
 
@@ -1317,6 +1324,18 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
         </div>
 
         <div className="flex items-center space-x-2">
+          {quotationId && (
+            <button
+              type="button"
+              onClick={() => setHistoryModalOpen(true)}
+              className="btn btn-secondary btn-sm flex items-center space-x-1.5"
+              title="View previous quotes and revision history"
+            >
+              <History size={13} className="text-indigo-600" />
+              <span>Previous Quotes {version > 1 ? `(v${version})` : ''}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => handleOpenPdf(false)}
@@ -2643,6 +2662,18 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             </div>
           ))}
         </div>
+      )}
+      {/* Quotation Edit & Version History Modal */}
+      {historyModalOpen && quotationId && (
+        <QuotationHistoryModal
+          quotationId={quotationId}
+          quotationNumber={quotationNumber || String(quotationId)}
+          isOpen={historyModalOpen}
+          onClose={() => setHistoryModalOpen(false)}
+          onRestored={() => {
+            loadExistingQuotation(quotationId);
+          }}
+        />
       )}
     </div>
   );

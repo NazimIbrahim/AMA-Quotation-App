@@ -27,9 +27,11 @@ import {
   Eye,
   Bath,
   ClipboardPaste,
+  History,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { SanitaryCatalogPickerModal } from '../components/SanitaryCatalogPickerModal';
+import { QuotationHistoryModal } from '../components/QuotationHistoryModal';
 import { SanitaryCatalogItem } from '../types';
 import { numberToWordsIndian } from '../utils/numberToWords';
 
@@ -99,6 +101,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
   const [assistedSalesSharePercent, setAssistedSalesSharePercent] = useState<number>(50);
   const [assistedSalesShareAmount, setAssistedSalesShareAmount] = useState<number>(0);
   const [salesTeam, setSalesTeam] = useState<User[]>([]);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // Sanitary Line Items State
   const [items, setItems] = useState<SanitaryLineItem[]>([
@@ -194,85 +197,83 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
   }, []);
 
   // 2. Load Existing Quotation if editing
-  useEffect(() => {
-    if (!quotationId) {
+  const loadQuotation = async (qId?: number) => {
+    const idToLoad = qId || quotationId;
+    if (!idToLoad) {
       setPrimarySalesPersonName(user?.full_name || 'Sales Associate');
       return;
     }
+    setLoading(true);
+    try {
+      const data = await fetchApi(`/api/quotations/${idToLoad}`);
+      const q = data.quotation;
 
-    const loadQuotation = async () => {
-      setLoading(true);
-      try {
-        const data = await fetchApi(`/api/quotations/${quotationId}`);
-        const q = data.quotation;
+      setQuotationNumber(q.quotation_number);
+      setQuotationDate(q.quotation_date.split('T')[0]);
+      setVersion(q.version);
+      setStatus(q.status);
+      setCustomerId(q.customer_id || null);
+      setCustomerName(q.customer_name);
+      setCustomerPhone(q.customer_phone);
+      setCustomerGstin(q.customer_gstin || '');
+      setDeliveryAddress(q.delivery_address || '');
+      setSiteLocation(q.site_location || '');
+      setProjectName(q.project_name || '');
+      setSpecialNotes(q.special_notes || '');
+      setTaxType(q.tax_type || 'cgst_sgst');
+      setPrimarySalesPersonName(q.sales_person_name);
 
-        setQuotationNumber(q.quotation_number);
-        setQuotationDate(q.quotation_date.split('T')[0]);
-        setVersion(q.version);
-        setStatus(q.status);
-        setCustomerId(q.customer_id || null);
-        setCustomerName(q.customer_name);
-        setCustomerPhone(q.customer_phone);
-        setCustomerGstin(q.customer_gstin || '');
-        setDeliveryAddress(q.delivery_address || '');
-        setSiteLocation(q.site_location || '');
-        setProjectName(q.project_name || '');
-        setSpecialNotes(q.special_notes || '');
-        setTaxType(q.tax_type || 'cgst_sgst');
-        setPrimarySalesPersonName(q.sales_person_name);
-
-        // Split sale info
-        if (q.assisted_sales_person_id) {
-          setEnableSplitSale(true);
-          setAssistedSalesPersonId(q.assisted_sales_person_id);
-          setAssistedSalesPersonName(q.assisted_sales_person_name || '');
-          setSplitShareType(q.split_share_type || 'percentage');
-          setPrimarySalesSharePercent(Number(q.primary_sales_share_percent || 50));
-          setPrimarySalesShareAmount(Number(q.primary_sales_share_amount || 0));
-          setAssistedSalesSharePercent(Number(q.assisted_sales_share_percent || 50));
-          setAssistedSalesShareAmount(Number(q.assisted_sales_share_amount || 0));
-        }
-
-        // Map Areas to flat sanitary line items
-        const rawItems: any[] = [];
-        if (Array.isArray(data.areas)) {
-          data.areas.forEach((area: any) => {
-            if (Array.isArray(area.items)) {
-              rawItems.push(...area.items);
-            }
-          });
-        }
-
-        if (rawItems.length > 0) {
-          const mapped: SanitaryLineItem[] = rawItems.map((it: any, index: number) => {
-            const qty = Number(it.quantity_boxes || it.quantity || 1);
-            const mrp = Number(it.mrp_price || it.base_rate_per_box || it.rate_per_box || 0);
-            const discPct = Number(it.discount_percent || 0);
-            const discPrice = Number(it.rate_per_box || it.discounted_price || (mrp > 0 ? mrp * (1 - discPct / 100) : 0));
-            const total = Number(it.total_amount || (qty * discPrice));
-
-            return {
-              id: it.id,
-              sl_no: index + 1,
-              item_code: it.item_code || it.size || '',
-              item_description: it.description || '',
-              item_image: it.item_image || '',
-              quantity: qty,
-              mrp_price: mrp,
-              discount_percent: discPct,
-              discounted_price: discPrice,
-              total_price: total,
-            };
-          });
-          setItems(mapped);
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to load quotation');
-      } finally {
-        setLoading(false);
+      if (q.assisted_sales_person_id) {
+        setEnableSplitSale(true);
+        setAssistedSalesPersonId(q.assisted_sales_person_id);
+        setAssistedSalesPersonName(q.assisted_sales_person_name || '');
+        setSplitShareType(q.split_share_type || 'percentage');
+        setPrimarySalesSharePercent(Number(q.primary_sales_share_percent || 50));
+        setPrimarySalesShareAmount(Number(q.primary_sales_share_amount || 0));
+        setAssistedSalesSharePercent(Number(q.assisted_sales_share_percent || 50));
+        setAssistedSalesShareAmount(Number(q.assisted_sales_share_amount || 0));
       }
-    };
 
+      const rawItems: any[] = [];
+      if (Array.isArray(data.areas)) {
+        data.areas.forEach((area: any) => {
+          if (Array.isArray(area.items)) {
+            rawItems.push(...area.items);
+          }
+        });
+      }
+
+      if (rawItems.length > 0) {
+        const mapped: SanitaryLineItem[] = rawItems.map((it: any, index: number) => {
+          const qty = Number(it.quantity_boxes || it.quantity || 1);
+          const mrp = Number(it.mrp_price || it.base_rate_per_box || it.rate_per_box || 0);
+          const discPct = Number(it.discount_percent || 0);
+          const discPrice = Number(it.rate_per_box || it.discounted_price || (mrp > 0 ? mrp * (1 - discPct / 100) : 0));
+          const total = Number(it.total_amount || (qty * discPrice));
+
+          return {
+            id: it.id,
+            sl_no: index + 1,
+            item_code: it.item_code || it.size || '',
+            item_description: it.description || '',
+            item_image: it.item_image || '',
+            quantity: qty,
+            mrp_price: mrp,
+            discount_percent: discPct,
+            discounted_price: discPrice,
+            total_price: total,
+          };
+        });
+        setItems(mapped);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load quotation');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadQuotation();
   }, [quotationId]);
 
@@ -1050,6 +1051,19 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
 
         {/* Action Controls */}
         <div className="flex items-center space-x-2">
+          {/* Previous Quotes Version History */}
+          {quotationId && (
+            <button
+              type="button"
+              onClick={() => setHistoryModalOpen(true)}
+              className="btn btn-secondary text-xs px-3 py-2 text-[#1B263B] border border-slate-300 shadow-2xs inline-flex items-center space-x-1.5"
+              title="View previous quotes and edit history"
+            >
+              <History size={14} className="text-indigo-600" />
+              <span>Previous Quotes {version > 1 ? `(v${version})` : ''}</span>
+            </button>
+          )}
+
           {/* Standard PDF */}
           <button
             type="button"
@@ -1905,6 +1919,18 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
             </div>
           ))}
         </div>
+      )}
+      {/* Quotation Edit & Version History Modal */}
+      {historyModalOpen && quotationId && (
+        <QuotationHistoryModal
+          quotationId={quotationId}
+          quotationNumber={quotationNumber || String(quotationId)}
+          isOpen={historyModalOpen}
+          onClose={() => setHistoryModalOpen(false)}
+          onRestored={() => {
+            loadQuotation(quotationId);
+          }}
+        />
       )}
     </div>
   );

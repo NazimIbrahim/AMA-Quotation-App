@@ -352,6 +352,83 @@ function calculateTotals(items: any[], discountPercent: number, discountAmount: 
   return calculateQuotationDiscountAndTotals(items, discountAmount, discountPercent, taxType, quotationType);
 }
 
+// Helper: Archive full quotation version snapshot for historical version viewing & rollback
+async function archiveQuotationVersion(
+  client: any,
+  quotationId: number,
+  versionNumber: number,
+  editedById: number | null,
+  editedByName: string | null,
+  revisionSummary: string,
+  customHeader?: any
+) {
+  let qHeader = customHeader;
+  if (!qHeader) {
+    const qRes = await client.query(
+      `SELECT q.*, u_app.full_name as approved_by_name
+       FROM quotations q
+       LEFT JOIN users u_app ON u_app.id = q.approved_by_id
+       WHERE q.id = $1`,
+      [quotationId]
+    );
+    if (qRes.rows.length === 0) return;
+    qHeader = qRes.rows[0];
+  }
+
+  const aRes = await client.query(
+    'SELECT * FROM quotation_areas WHERE quotation_id = $1 ORDER BY display_order ASC',
+    [quotationId]
+  );
+  const iRes = await client.query(
+    'SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY sl_no ASC',
+    [quotationId]
+  );
+
+  const areasWithItems = (aRes.rows || []).map((a: any) => ({
+    ...a,
+    items: (iRes.rows || []).filter((it: any) => it.area_id === a.id),
+  }));
+
+  const snapshot = {
+    quotation: qHeader,
+    areas: areasWithItems,
+  };
+
+  await client.query(
+    `INSERT INTO quotation_versions (
+      quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
+      snapshot_data, gross_total, discount_percent, discount_amount, taxable_amount,
+      net_total, status, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
+    ON CONFLICT (quotation_id, version_number) DO UPDATE SET
+      edited_by_id = EXCLUDED.edited_by_id,
+      edited_by_name = EXCLUDED.edited_by_name,
+      revision_summary = EXCLUDED.revision_summary,
+      snapshot_data = EXCLUDED.snapshot_data,
+      gross_total = EXCLUDED.gross_total,
+      discount_percent = EXCLUDED.discount_percent,
+      discount_amount = EXCLUDED.discount_amount,
+      taxable_amount = EXCLUDED.taxable_amount,
+      net_total = EXCLUDED.net_total,
+      status = EXCLUDED.status,
+      created_at = CURRENT_TIMESTAMP`,
+    [
+      quotationId,
+      versionNumber,
+      editedById,
+      editedByName,
+      revisionSummary,
+      JSON.stringify(snapshot),
+      qHeader.gross_total || 0,
+      qHeader.discount_percent || 0,
+      qHeader.discount_amount || 0,
+      qHeader.taxable_amount || 0,
+      qHeader.net_total || 0,
+      qHeader.status || 'draft',
+    ]
+  );
+}
+
 // 3. Create Quotation (Transactional)
 quotationsRouter.post('/', async (req: Request, res: Response) => {
   try {
@@ -644,6 +721,17 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
         ipAddress: req.ip,
       });
 
+      // Archive initial Version 1 snapshot
+      await archiveQuotationVersion(
+        client,
+        newQ.id,
+        1,
+        req.user!.id,
+        req.user!.full_name,
+        'Initial quotation created',
+        newQ
+      );
+
       return newQ;
     });
 
@@ -855,6 +943,22 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
         ]
       );
 
+      // Ensure the previous version state is permanently archived before updating
+      const prevArchived = await client.query(
+        'SELECT id FROM quotation_versions WHERE quotation_id = $1 AND version_number = $2',
+        [id, current.rows[0].version]
+      );
+      if (prevArchived.rows.length === 0) {
+        await archiveQuotationVersion(
+          client,
+          id,
+          current.rows[0].version,
+          current.rows[0].sales_person_id || req.user!.id,
+          current.rows[0].sales_person_name || req.user!.full_name,
+          `Version ${current.rows[0].version} snapshot before revision ${nextVersion}`
+        );
+      }
+
       // Re-create areas and items cleanly
       await client.query('DELETE FROM quotation_areas WHERE quotation_id = $1', [id]);
 
@@ -996,6 +1100,22 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
         ipAddress: req.ip,
       });
 
+      // Archive newly created version snapshot
+      const revSummary = req.body.revision_summary || (
+        isSalesperson
+          ? `Edited by salesperson (${req.user!.full_name}). Pending Store Manager re-approval.`
+          : `Revised by ${req.user!.full_name}`
+      );
+      await archiveQuotationVersion(
+        client,
+        id,
+        nextVersion,
+        req.user!.id,
+        req.user!.full_name,
+        revSummary,
+        qRes.rows[0]
+      );
+
       return qRes.rows[0];
     });
 
@@ -1042,6 +1162,18 @@ quotationsRouter.post('/:id/status', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Quotation not found' });
       return;
     }
+
+    // Keep active version snapshot synchronized with status update
+    await query(
+      `UPDATE quotation_versions
+       SET status = $1,
+           snapshot_data = jsonb_set(
+             jsonb_set(snapshot_data, '{quotation,status}', to_jsonb($1::text)),
+             '{quotation,approved_by_name}', to_jsonb($2::text)
+           )
+       WHERE quotation_id = $3 AND version_number = $4`,
+      [status, isApproval ? req.user!.full_name : '', id, rows[0].version]
+    ).catch(() => {});
 
     await recordAuditLog({
       userId: req.user!.id,
@@ -1124,6 +1256,378 @@ quotationsRouter.delete('/:id', requireRole(['admin', 'manager', 'accounts']), a
     broadcast({ type: 'QUOTATION_UPDATED', payload: { id, deleted: true } });
 
     res.json({ message: 'Quotation deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 8. List All Versions / Revision History of a Quotation
+quotationsRouter.get('/:id/versions', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const qRows = await query('SELECT * FROM quotations WHERE id = $1', [id]);
+    if (qRows.length === 0) {
+      res.status(404).json({ error: 'Quotation not found' });
+      return;
+    }
+    const currentQ = qRows[0];
+
+    // Salesperson scoping check
+    if (req.user?.role === 'salesperson') {
+      const isOwner = currentQ.sales_person_id === req.user.id;
+      const isAssisted = currentQ.assisted_sales_person_id === req.user.id;
+      if (!isOwner && !isAssisted) {
+        res.status(403).json({ error: 'Access denied: You can only view versions of your assigned quotations.' });
+        return;
+      }
+    }
+
+    let rows = await query(
+      `SELECT id, quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
+              gross_total, discount_percent, discount_amount, taxable_amount, net_total, status, created_at,
+              (snapshot_data->'areas') as areas_summary
+       FROM quotation_versions
+       WHERE quotation_id = $1
+       ORDER BY version_number DESC`,
+      [id]
+    );
+
+    // If no versions exist yet (legacy quotation created before versioning), archive current quotation as initial version
+    if (rows.length === 0) {
+      await withTransaction(async (client) => {
+        await archiveQuotationVersion(
+          client,
+          id,
+          currentQ.version || 1,
+          currentQ.sales_person_id || req.user!.id,
+          currentQ.sales_person_name || req.user!.full_name,
+          'Initial quotation snapshot',
+          currentQ
+        );
+      });
+
+      rows = await query(
+        `SELECT id, quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
+                gross_total, discount_percent, discount_amount, taxable_amount, net_total, status, created_at,
+                (snapshot_data->'areas') as areas_summary
+         FROM quotation_versions
+         WHERE quotation_id = $1
+         ORDER BY version_number DESC`,
+        [id]
+      );
+    }
+
+    const versions = rows.map((r: any) => {
+      let itemCount = 0;
+      if (Array.isArray(r.areas_summary)) {
+        r.areas_summary.forEach((a: any) => {
+          if (Array.isArray(a.items)) itemCount += a.items.length;
+        });
+      }
+      return {
+        id: r.id,
+        quotation_id: r.quotation_id,
+        version_number: r.version_number,
+        is_current: r.version_number === currentQ.version,
+        edited_by_id: r.edited_by_id,
+        edited_by_name: r.edited_by_name || 'System / Associate',
+        revision_summary: r.revision_summary || `Revision ${r.version_number}`,
+        gross_total: parseFloat(r.gross_total) || 0,
+        discount_percent: parseFloat(r.discount_percent) || 0,
+        discount_amount: parseFloat(r.discount_amount) || 0,
+        taxable_amount: parseFloat(r.taxable_amount) || 0,
+        net_total: parseFloat(r.net_total) || 0,
+        status: r.status,
+        created_at: r.created_at,
+        items_count: itemCount,
+      };
+    });
+
+    res.json({
+      versions,
+      current_version: currentQ.version,
+      quotation_number: currentQ.quotation_number,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 9. Get Single Historical Quotation Version Snapshot (Full line items & areas)
+quotationsRouter.get('/:id/versions/:versionNumber', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const versionNum = parseInt(req.params.versionNumber as string, 10);
+
+    const rows = await query(
+      `SELECT * FROM quotation_versions WHERE quotation_id = $1 AND version_number = $2`,
+      [id, versionNum]
+    );
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: `Quotation version ${versionNum} not found` });
+      return;
+    }
+
+    const versionRow = rows[0];
+    const snapshot = typeof versionRow.snapshot_data === 'string'
+      ? JSON.parse(versionRow.snapshot_data)
+      : versionRow.snapshot_data;
+
+    res.json({
+      id: versionRow.id,
+      quotation_id: versionRow.quotation_id,
+      version_number: versionRow.version_number,
+      edited_by_name: versionRow.edited_by_name,
+      revision_summary: versionRow.revision_summary,
+      created_at: versionRow.created_at,
+      status: versionRow.status,
+      net_total: parseFloat(versionRow.net_total) || 0,
+      snapshot,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 10. Stream PDF of a Historical Quotation Version
+quotationsRouter.get('/:id/versions/:versionNumber/pdf', optionalAuthenticateToken, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const versionNum = parseInt(req.params.versionNumber as string, 10);
+    const isEncrypted = req.query.encrypted === 'true' || req.query.encrypted === '1';
+
+    const rows = await query(
+      `SELECT * FROM quotation_versions WHERE quotation_id = $1 AND version_number = $2`,
+      [id, versionNum]
+    );
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: `Quotation version ${versionNum} not found` });
+      return;
+    }
+
+    const versionRow = rows[0];
+    const snapshot = typeof versionRow.snapshot_data === 'string'
+      ? JSON.parse(versionRow.snapshot_data)
+      : versionRow.snapshot_data;
+
+    const quotation = snapshot.quotation || {};
+    const areas = snapshot.areas || [];
+
+    // Salespersons can only view/export approved or closed quotations
+    if (req.user?.role === 'salesperson' && !['approved', 'closed'].includes(quotation.status?.toLowerCase())) {
+      res.status(403).json({
+        error: 'Historical revision is awaiting Store Manager approval. PDF will unlock once approved.',
+      });
+      return;
+    }
+
+    const companyRows = await query('SELECT * FROM company_settings LIMIT 1');
+    const company = companyRows[0] || {};
+
+    let encryptedMap = new Map<string, string>();
+    if (isEncrypted) {
+      const allNames: string[] = [];
+      for (const a of areas) {
+        for (const it of a.items || []) {
+          if (it.description) allNames.push(it.description);
+          if (it.item_code) allNames.push(it.item_code);
+          if (it.size) allNames.push(it.size);
+        }
+      }
+      encryptedMap = await getOrSaveEncryptedProductCodes(allNames);
+    }
+
+    const doc = generateQuotationPdf({
+      quotation: {
+        ...quotation,
+        quotation_number: `${quotation.quotation_number || id}_v${versionNum}`,
+      },
+      areas,
+      company: {
+        ...company,
+        terms_json: company.terms_json
+          ? (typeof company.terms_json === 'string' ? JSON.parse(company.terms_json) : company.terms_json)
+          : [],
+      },
+      encrypted: isEncrypted,
+      encryptedMap,
+    });
+
+    const filename = isEncrypted
+      ? `Quotation_${quotation.quotation_number}_v${versionNum}_Encrypted.pdf`
+      : `Quotation_${quotation.quotation_number}_v${versionNum}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    doc.pipe(res);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 11. Restore Quotation to a Historical Version
+quotationsRouter.post('/:id/versions/:versionNumber/restore', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const versionNum = parseInt(req.params.versionNumber as string, 10);
+
+    const rows = await query(
+      `SELECT * FROM quotation_versions WHERE quotation_id = $1 AND version_number = $2`,
+      [id, versionNum]
+    );
+
+    if (rows.length === 0) {
+      res.status(404).json({ error: `Version ${versionNum} not found` });
+      return;
+    }
+
+    const versionRow = rows[0];
+    const snapshot = typeof versionRow.snapshot_data === 'string'
+      ? JSON.parse(versionRow.snapshot_data)
+      : versionRow.snapshot_data;
+
+    const histQ = snapshot.quotation;
+    const histAreas = snapshot.areas || [];
+
+    const restored = await withTransaction(async (client) => {
+      const cur = await client.query('SELECT version, quotation_number FROM quotations WHERE id = $1', [id]);
+      if (cur.rows.length === 0) throw new Error('Quotation not found');
+
+      const nextVer = cur.rows[0].version + 1;
+      const isSalesperson = req.user!.role === 'salesperson';
+      const newStatus = isSalesperson ? 'in_review' : (histQ.status || 'draft');
+
+      // Update header
+      const qUpdate = await client.query(
+        `UPDATE quotations
+         SET customer_name = $1,
+             customer_phone = $2,
+             customer_gstin = $3,
+             delivery_address = $4,
+             site_location = $5,
+             project_name = $6,
+             status = $7,
+             gross_total = $8,
+             discount_percent = $9,
+             discount_amount = $10,
+             taxable_amount = $11,
+             tax_type = $12,
+             cgst_rate = $13,
+             cgst_amount = $14,
+             sgst_rate = $15,
+             sgst_amount = $16,
+             igst_rate = $17,
+             igst_amount = $18,
+             round_off = $19,
+             net_total = $20,
+             special_notes = $21,
+             version = $22,
+             updated_at = NOW()
+         WHERE id = $23
+         RETURNING *`,
+        [
+          histQ.customer_name,
+          histQ.customer_phone,
+          histQ.customer_gstin || null,
+          histQ.delivery_address || '',
+          histQ.site_location || '',
+          histQ.project_name || '',
+          newStatus,
+          histQ.gross_total || 0,
+          histQ.discount_percent || 0,
+          histQ.discount_amount || 0,
+          histQ.taxable_amount || 0,
+          histQ.tax_type || 'cgst_sgst',
+          histQ.cgst_rate || 9,
+          histQ.cgst_amount || 0,
+          histQ.sgst_rate || 9,
+          histQ.sgst_amount || 0,
+          histQ.igst_rate || 18,
+          histQ.igst_amount || 0,
+          histQ.round_off || 0,
+          histQ.net_total || 0,
+          histQ.special_notes || '',
+          nextVer,
+          id,
+        ]
+      );
+
+      // Re-create areas and items
+      await client.query('DELETE FROM quotation_areas WHERE quotation_id = $1', [id]);
+
+      let itemSlNo = 1;
+      for (let i = 0; i < histAreas.length; i++) {
+        const area = histAreas[i];
+        const areaRes = await client.query(
+          `INSERT INTO quotation_areas (quotation_id, area_name, display_order)
+           VALUES ($1, $2, $3) RETURNING id`,
+          [id, area.area_name || `Area ${i + 1}`, i + 1]
+        );
+        const areaId = areaRes.rows[0].id;
+
+        for (const it of area.items || []) {
+          await client.query(
+            `INSERT INTO quotation_items (
+              quotation_id, area_id, sl_no, description, size, brand,
+              product_type, coverage_area, quantity_sqft, base_rate_per_sqft, rate_per_sqft,
+              quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount,
+              item_code, item_image, mrp_price, encrypted_code
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+            [
+              id,
+              areaId,
+              itemSlNo++,
+              it.description,
+              it.size,
+              it.brand,
+              it.product_type || 'box',
+              it.coverage_area || 0,
+              it.quantity_sqft || 0,
+              it.base_rate_per_sqft || 0,
+              it.rate_per_sqft || 0,
+              it.quantity_boxes || 0,
+              it.base_rate_per_box || 0,
+              it.rate_per_box || 0,
+              it.discount_percent || 0,
+              it.discount_amount || 0,
+              it.total_amount || 0,
+              it.item_code || null,
+              it.item_image || null,
+              it.mrp_price || 0,
+              it.encrypted_code || null,
+            ]
+          );
+        }
+      }
+
+      await archiveQuotationVersion(
+        client,
+        id,
+        nextVer,
+        req.user!.id,
+        req.user!.full_name,
+        `Restored from historical Version ${versionNum} by ${req.user!.full_name}`,
+        qUpdate.rows[0]
+      );
+
+      await recordAuditLog({
+        userId: req.user!.id,
+        username: req.user!.username,
+        action: 'QUOTATION_RESTORED',
+        entityType: 'quotation',
+        entityId: id,
+        details: { restored_from_version: versionNum, new_version: nextVer },
+        ipAddress: req.ip,
+      });
+
+      return qUpdate.rows[0];
+    });
+
+    broadcast({ type: 'QUOTATION_UPDATED', payload: { id, version: restored.version } });
+
+    res.json({ message: `Successfully restored to Version ${versionNum}`, quotation: restored });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

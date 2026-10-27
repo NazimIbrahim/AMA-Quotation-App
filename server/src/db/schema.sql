@@ -196,6 +196,25 @@ CREATE TABLE IF NOT EXISTS quotation_items (
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items (quotation_id);
 CREATE INDEX IF NOT EXISTS idx_quotation_items_area ON quotation_items (area_id);
 
+CREATE TABLE IF NOT EXISTS quotation_versions (
+    id SERIAL PRIMARY KEY,
+    quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+    version_number INTEGER NOT NULL,
+    edited_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    edited_by_name VARCHAR(120),
+    revision_summary TEXT,
+    snapshot_data JSONB NOT NULL,
+    gross_total NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0.00,
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    taxable_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    net_total NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    status VARCHAR(30),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quotation_versions_unique ON quotation_versions (quotation_id, version_number);
+CREATE INDEX IF NOT EXISTS idx_quotation_versions_qid ON quotation_versions (quotation_id, version_number DESC);
+
 CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,
     payment_number VARCHAR(60) UNIQUE NOT NULL,

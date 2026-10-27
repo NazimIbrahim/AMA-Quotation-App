@@ -18,8 +18,10 @@ import {
   Lock,
   CheckCircle,
   AlertTriangle,
+  History,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
+import { QuotationHistoryModal } from '../components/QuotationHistoryModal';
 import { buildEncryptedProductMap, derive3LetterCode } from '../utils/encryptedCode';
 import { isCeraBrand } from '../utils/discountCalculator';
 
@@ -47,6 +49,7 @@ export const QuotationDetail: React.FC<Props> = ({
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
   const [editWarningModal, setEditWarningModal] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // PDF Preview State
   const [previewPdf, setPreviewPdf] = useState<{
@@ -208,6 +211,15 @@ export const QuotationDetail: React.FC<Props> = ({
               }`}>
                 {quotation.quotation_type === 'sanitary' ? '🚿 Sanitary' : '🧱 Tile'}
               </span>
+              <button
+                type="button"
+                onClick={() => setHistoryModalOpen(true)}
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition-colors flex items-center space-x-1 cursor-pointer"
+                title="View previous quotes and edit history"
+              >
+                <History size={11} className="text-indigo-600" />
+                <span>v{quotation.version || 1} History</span>
+              </button>
               <span className={`badge badge-${quotation.status}`}>{quotation.status ? quotation.status.replace('_', ' ') : ''}</span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -242,6 +254,16 @@ export const QuotationDetail: React.FC<Props> = ({
           >
             <Edit size={13} />
             <span>Edit</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setHistoryModalOpen(true)}
+            className="btn btn-secondary btn-sm flex items-center space-x-1.5"
+            title="View previous quotes and edit history"
+          >
+            <History size={13} className="text-indigo-600" />
+            <span>History (v{quotation.version || 1})</span>
           </button>
 
           {canExportPdf ? (
@@ -824,6 +846,19 @@ export const QuotationDetail: React.FC<Props> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Quotation Edit & Version History Modal */}
+      {historyModalOpen && (
+        <QuotationHistoryModal
+          quotationId={quotation.id}
+          quotationNumber={quotation.quotation_number}
+          isOpen={historyModalOpen}
+          onClose={() => setHistoryModalOpen(false)}
+          onRestored={() => {
+            loadDetail();
+          }}
+        />
       )}
     </div>
   );

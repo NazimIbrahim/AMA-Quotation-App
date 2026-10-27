@@ -24,8 +24,10 @@ import {
   Trash2,
   Lock,
   AlertTriangle,
+  History,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
+import { QuotationHistoryModal } from '../components/QuotationHistoryModal';
 
 interface Props {
   onSelectQuotation: (id: number) => void;
@@ -75,6 +77,9 @@ export const QuotationList: React.FC<Props> = ({
     quotationId?: number;
     initialEncrypted?: boolean;
   } | null>(null);
+
+  // Quotation History Modal State
+  const [historyModalQuotation, setHistoryModalQuotation] = useState<{ id: number; number: string } | null>(null);
 
   // Load sales team for filter
   useEffect(() => {
@@ -545,6 +550,20 @@ export const QuotationList: React.FC<Props> = ({
                             🧱 Tile
                           </span>
                         )}
+                        {q.version && q.version > 1 ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setHistoryModalQuotation({ id: q.id, number: q.quotation_number });
+                            }}
+                            className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-sans tracking-wide cursor-pointer flex items-center space-x-0.5"
+                            title={`Revision ${q.version}. Click to view previous quotes and edit history.`}
+                          >
+                            <History size={9} />
+                            <span>v{q.version}</span>
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                     <td className="py-3 px-3 text-slate-600 whitespace-nowrap align-middle font-mono text-xs">
@@ -642,6 +661,19 @@ export const QuotationList: React.FC<Props> = ({
                         >
                           <Eye size={11} className="mr-1 text-[#415A77]" />
                           <span>Review</span>
+                        </button>
+
+                        {/* Version History Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setHistoryModalQuotation({ id: q.id, number: q.quotation_number });
+                          }}
+                          title="View Previous Quotes & Version History"
+                          className="p-1.5 rounded-md text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-colors"
+                        >
+                          <History size={13} />
                         </button>
 
                         {/* Edit Quotation */}
@@ -853,6 +885,19 @@ export const QuotationList: React.FC<Props> = ({
           fileName={previewPdf.fileName}
           quotationId={previewPdf.quotationId}
           initialEncrypted={previewPdf.initialEncrypted}
+        />
+      )}
+
+      {/* Quotation Edit & Version History Modal */}
+      {historyModalQuotation && (
+        <QuotationHistoryModal
+          quotationId={historyModalQuotation.id}
+          quotationNumber={historyModalQuotation.number}
+          isOpen={Boolean(historyModalQuotation)}
+          onClose={() => setHistoryModalQuotation(null)}
+          onRestored={() => {
+            loadQuotations();
+          }}
         />
       )}
     </div>

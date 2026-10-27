@@ -52,7 +52,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
   res.json({
     status: dbOk ? 'ok' : 'degraded',
     server: 'AMA Ceramics Quotation Central Server',
-    version: '2.4.6',
+    version: '2.4.7',
     dbConnected: dbOk,
     activeWsClients: getConnectedClientCount(),
     timestamp: new Date().toISOString(),
@@ -190,9 +190,74 @@ async function runAutoMigrations() {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_product_encrypted_codes_norm ON product_encrypted_codes (normalized_name);
       CREATE INDEX IF NOT EXISTS idx_product_encrypted_codes_code ON product_encrypted_codes (encrypted_code);
+
+      -- 5. Ensure quotation_versions exists for full audit trail & historical version viewing
+      CREATE TABLE IF NOT EXISTS quotation_versions (
+        id SERIAL PRIMARY KEY,
+        quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+        version_number INTEGER NOT NULL,
+        edited_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        edited_by_name VARCHAR(120),
+        revision_summary TEXT,
+        snapshot_data JSONB NOT NULL,
+        gross_total NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0.00,
+        discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        taxable_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        net_total NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+        status VARCHAR(30),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_quotation_versions_unique ON quotation_versions (quotation_id, version_number);
+      CREATE INDEX IF NOT EXISTS idx_quotation_versions_qid ON quotation_versions (quotation_id, version_number DESC);
+
+      -- Backfill any existing quotations that do not yet have an initial version archived
+      INSERT INTO quotation_versions (
+        quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
+        snapshot_data, gross_total, discount_percent, discount_amount, taxable_amount,
+        net_total, status, created_at
+      )
+      SELECT
+        q.id,
+        COALESCE(q.version, 1),
+        q.sales_person_id,
+        q.sales_person_name,
+        'Initial quotation snapshot',
+        jsonb_build_object(
+          'quotation', to_jsonb(q),
+          'areas', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'id', a.id,
+                'area_name', a.area_name,
+                'display_order', a.display_order,
+                'items', COALESCE((
+                  SELECT jsonb_agg(to_jsonb(it))
+                  FROM quotation_items it
+                  WHERE it.area_id = a.id
+                ), '[]'::jsonb)
+              )
+            )
+            FROM quotation_areas a
+            WHERE a.quotation_id = q.id
+          ), '[]'::jsonb)
+        ),
+        q.gross_total,
+        q.discount_percent,
+        q.discount_amount,
+        q.taxable_amount,
+        q.net_total,
+        q.status,
+        q.created_at
+      FROM quotations q
+      WHERE NOT EXISTS (
+        SELECT 1 FROM quotation_versions qv
+        WHERE qv.quotation_id = q.id AND qv.version_number = COALESCE(q.version, 1)
+      )
+      ON CONFLICT (quotation_id, version_number) DO NOTHING;
     `);
 
-    // 5. Ensure roles table and permissions schema exist
+    // 6. Ensure roles table and permissions schema exist
     await ensureRolesSchema();
 
     logger.info('Database schema migrations applied successfully.');
