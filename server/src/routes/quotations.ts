@@ -363,17 +363,25 @@ async function archiveQuotationVersion(
   customHeader?: any
 ) {
   let qHeader = customHeader;
-  if (!qHeader) {
+  if (!qHeader || !qHeader.approved_by_name || !qHeader.sales_person_name) {
     const qRes = await client.query(
-      `SELECT q.*, u_app.full_name as approved_by_name
+      `SELECT q.*, u_app.full_name as approved_by_name, u_sales.full_name as sales_person_name
        FROM quotations q
        LEFT JOIN users u_app ON u_app.id = q.approved_by_id
+       LEFT JOIN users u_sales ON u_sales.id = q.sales_person_id
        WHERE q.id = $1`,
       [quotationId]
     );
-    if (qRes.rows.length === 0) return;
-    qHeader = qRes.rows[0];
+    if (qRes.rows.length > 0) {
+      qHeader = {
+        ...qRes.rows[0],
+        ...(customHeader || {}),
+        approved_by_name: (customHeader && customHeader.approved_by_name) || qRes.rows[0].approved_by_name,
+        sales_person_name: (customHeader && customHeader.sales_person_name) || qRes.rows[0].sales_person_name,
+      };
+    }
   }
+  if (!qHeader) return;
 
   const aRes = await client.query(
     'SELECT * FROM quotation_areas WHERE quotation_id = $1 ORDER BY display_order ASC',
@@ -419,11 +427,11 @@ async function archiveQuotationVersion(
       editedByName,
       revisionSummary,
       JSON.stringify(snapshot),
-      qHeader.gross_total || 0,
-      qHeader.discount_percent || 0,
-      qHeader.discount_amount || 0,
-      qHeader.taxable_amount || 0,
-      qHeader.net_total || 0,
+      parseFloat(qHeader.gross_total) || 0,
+      parseFloat(qHeader.discount_percent) || 0,
+      parseFloat(qHeader.discount_amount) || 0,
+      parseFloat(qHeader.taxable_amount) || 0,
+      parseFloat(qHeader.net_total) || 0,
       qHeader.status || 'draft',
     ]
   );
@@ -848,8 +856,25 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
       }
       const isNextApproved = !isSalesperson && ['approved', 'closed'].includes(nextStatus);
 
-      // Update Quotation Header and bump version
+      // Ensure the previous version state is permanently archived BEFORE modifying quotation header and areas
       const nextVersion = current.rows[0].version + 1;
+      const prevArchived = await client.query(
+        'SELECT id FROM quotation_versions WHERE quotation_id = $1 AND version_number = $2',
+        [id, current.rows[0].version]
+      );
+      if (prevArchived.rows.length === 0) {
+        await archiveQuotationVersion(
+          client,
+          id,
+          current.rows[0].version,
+          current.rows[0].sales_person_id || req.user!.id,
+          current.rows[0].sales_person_name || req.user!.full_name,
+          `Version ${current.rows[0].version} snapshot before revision ${nextVersion}`,
+          current.rows[0]
+        );
+      }
+
+      // Update Quotation Header and bump version
       const qRes = await client.query(
         `UPDATE quotations
          SET quotation_date = $1,
@@ -942,22 +967,6 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
           current.rows[0].version,
         ]
       );
-
-      // Ensure the previous version state is permanently archived before updating
-      const prevArchived = await client.query(
-        'SELECT id FROM quotation_versions WHERE quotation_id = $1 AND version_number = $2',
-        [id, current.rows[0].version]
-      );
-      if (prevArchived.rows.length === 0) {
-        await archiveQuotationVersion(
-          client,
-          id,
-          current.rows[0].version,
-          current.rows[0].sales_person_id || req.user!.id,
-          current.rows[0].sales_person_name || req.user!.full_name,
-          `Version ${current.rows[0].version} snapshot before revision ${nextVersion}`
-        );
-      }
 
       // Re-create areas and items cleanly
       await client.query('DELETE FROM quotation_areas WHERE quotation_id = $1', [id]);
@@ -1317,6 +1326,51 @@ quotationsRouter.get('/:id/versions', async (req: Request, res: Response) => {
       );
     }
 
+    // If only 1 version exists and its version_number is > 1 (e.g. legacy quotation created before versioning),
+    // clone it as v1 baseline so users can view the initial quote creation and have multiple revisions visible
+    if (rows.length === 1 && rows[0].version_number > 1) {
+      await withTransaction(async (client) => {
+        const v1Exists = await client.query(
+          'SELECT id FROM quotation_versions WHERE quotation_id = $1 AND version_number = 1',
+          [id]
+        );
+        if (v1Exists.rows.length === 0) {
+          const baseRow = rows[0];
+          await client.query(
+            `INSERT INTO quotation_versions (
+              quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
+              snapshot_data, gross_total, discount_percent, discount_amount, taxable_amount,
+              net_total, status, created_at
+            ) VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [
+              id,
+              baseRow.edited_by_id,
+              baseRow.edited_by_name,
+              'Initial quotation creation',
+              baseRow.snapshot_data,
+              baseRow.gross_total,
+              baseRow.discount_percent,
+              baseRow.discount_amount,
+              baseRow.taxable_amount,
+              baseRow.net_total,
+              baseRow.status,
+              currentQ.created_at || baseRow.created_at,
+            ]
+          );
+        }
+      });
+
+      rows = await query(
+        `SELECT id, quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
+                gross_total, discount_percent, discount_amount, taxable_amount, net_total, status, created_at,
+                (snapshot_data->'areas') as areas_summary
+         FROM quotation_versions
+         WHERE quotation_id = $1
+         ORDER BY version_number DESC`,
+        [id]
+      );
+    }
+
     const versions = rows.map((r: any) => {
       let itemCount = 0;
       if (Array.isArray(r.areas_summary)) {
@@ -1373,6 +1427,22 @@ quotationsRouter.get('/:id/versions/:versionNumber', async (req: Request, res: R
     const snapshot = typeof versionRow.snapshot_data === 'string'
       ? JSON.parse(versionRow.snapshot_data)
       : versionRow.snapshot_data;
+
+    // Enrich snapshot with joined names if missing
+    if (snapshot?.quotation) {
+      if (snapshot.quotation.approved_by_id && !snapshot.quotation.approved_by_name) {
+        const uApp = await query('SELECT full_name FROM users WHERE id = $1', [snapshot.quotation.approved_by_id]);
+        if (uApp.length > 0) {
+          snapshot.quotation.approved_by_name = uApp[0].full_name;
+        }
+      }
+      if (snapshot.quotation.sales_person_id && !snapshot.quotation.sales_person_name) {
+        const uSales = await query('SELECT full_name FROM users WHERE id = $1', [snapshot.quotation.sales_person_id]);
+        if (uSales.length > 0) {
+          snapshot.quotation.sales_person_name = uSales[0].full_name;
+        }
+      }
+    }
 
     res.json({
       id: versionRow.id,

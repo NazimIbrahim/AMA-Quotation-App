@@ -52,7 +52,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
   res.json({
     status: dbOk ? 'ok' : 'degraded',
     server: 'AMA Ceramics Quotation Central Server',
-    version: '2.4.7',
+    version: '2.4.8',
     dbConnected: dbOk,
     activeWsClients: getConnectedClientCount(),
     timestamp: new Date().toISOString(),
@@ -224,7 +224,7 @@ async function runAutoMigrations() {
         q.sales_person_name,
         'Initial quotation snapshot',
         jsonb_build_object(
-          'quotation', to_jsonb(q),
+          'quotation', jsonb_set(to_jsonb(q), '{approved_by_name}', to_jsonb(COALESCE(u_app.full_name, ''))),
           'areas', COALESCE((
             SELECT jsonb_agg(
               jsonb_build_object(
@@ -250,9 +250,55 @@ async function runAutoMigrations() {
         q.status,
         q.created_at
       FROM quotations q
+      LEFT JOIN users u_app ON u_app.id = q.approved_by_id
       WHERE NOT EXISTS (
         SELECT 1 FROM quotation_versions qv
         WHERE qv.quotation_id = q.id AND qv.version_number = COALESCE(q.version, 1)
+      )
+      ON CONFLICT (quotation_id, version_number) DO NOTHING;
+
+      -- Ensure baseline version 1 exists for all quotations
+      INSERT INTO quotation_versions (
+        quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
+        snapshot_data, gross_total, discount_percent, discount_amount, taxable_amount,
+        net_total, status, created_at
+      )
+      SELECT
+        q.id,
+        1,
+        q.sales_person_id,
+        q.sales_person_name,
+        'Initial quotation creation',
+        jsonb_build_object(
+          'quotation', jsonb_set(to_jsonb(q), '{approved_by_name}', to_jsonb(COALESCE(u_app.full_name, ''))),
+          'areas', COALESCE((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'id', a.id,
+                'area_name', a.area_name,
+                'display_order', a.display_order,
+                'items', COALESCE((
+                  SELECT jsonb_agg(to_jsonb(it))
+                  FROM quotation_items it
+                  WHERE it.area_id = a.id
+                ), '[]'::jsonb)
+              )
+            )
+            FROM quotation_areas a
+            WHERE a.quotation_id = q.id
+          ), '[]'::jsonb)
+        ),
+        q.gross_total,
+        q.discount_percent,
+        q.discount_amount,
+        q.taxable_amount,
+        q.net_total,
+        q.status,
+        q.created_at
+      FROM quotations q
+      LEFT JOIN users u_app ON u_app.id = q.approved_by_id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM quotation_versions qv WHERE qv.quotation_id = q.id AND qv.version_number = 1
       )
       ON CONFLICT (quotation_id, version_number) DO NOTHING;
     `);
