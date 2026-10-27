@@ -271,6 +271,9 @@ export const SalespersonDashboard: React.FC<Props> = ({
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (status) params.append('status', status);
 
+      const token = localStorage.getItem('ama_token');
+      if (token) params.append('token', token);
+
       const downloadUrl = `${serverUrl}/api/reports/quotations/export?${params.toString()}`;
       const spName = selectedUser ? `_${selectedUser.full_name.replace(/\s+/g, '_')}` : '';
       const statusLabel = status ? `_${status}` : '';

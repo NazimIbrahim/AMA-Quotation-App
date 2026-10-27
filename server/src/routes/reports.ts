@@ -9,17 +9,25 @@ export const reportsRouter = Router();
 // Export Quotations as XLSX or CSV (supports optional auth or query token)
 reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: Request, res: Response) => {
   try {
-    const { format = 'xlsx', status, start_date, end_date, sales_person_id, search, encrypted, itemized } = req.query;
+    const { format = 'xlsx', status, start_date, end_date, sales_person_id, search, encrypted, itemized, quotation_type } = req.query;
 
     const whereClauses = ['1=1'];
     const params: any[] = [];
     let idx = 1;
 
-    const targetSpId = req.user?.role === 'salesperson' ? req.user.id : (sales_person_id ? parseInt(sales_person_id as string, 10) : null);
+    const targetSpId = req.user?.role === 'salesperson'
+      ? req.user.id
+      : (sales_person_id && !isNaN(Number(sales_person_id)) ? parseInt(sales_person_id as string, 10) : null);
+
     if (targetSpId) {
-      whereClauses.push(`(q.sales_person_id = $${idx} OR q.assisted_sales_person_id = $${idx})`);
+      whereClauses.push(`(q.sales_person_id = $${idx}::integer OR q.assisted_sales_person_id = $${idx}::integer)`);
       params.push(targetSpId);
       idx++;
+    }
+
+    if (quotation_type && quotation_type !== 'all') {
+      whereClauses.push(`q.quotation_type = $${idx++}::text`);
+      params.push(String(quotation_type));
     }
 
     if (status) {
@@ -29,25 +37,25 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
       } else if (st === 'closed') {
         whereClauses.push(`q.status = 'closed'`);
       } else {
-        whereClauses.push(`q.status = $${idx++}`);
-        params.push(status);
+        whereClauses.push(`q.status = $${idx++}::text`);
+        params.push(st);
       }
     }
 
     if (search) {
       whereClauses.push(
-        `(q.quotation_number ILIKE $${idx} OR q.customer_name ILIKE $${idx} OR q.customer_phone ILIKE $${idx} OR q.project_name ILIKE $${idx} OR q.assisted_sales_person_name ILIKE $${idx})`
+        `(q.quotation_number ILIKE $${idx}::text OR q.customer_name ILIKE $${idx}::text OR q.customer_phone ILIKE $${idx}::text OR q.project_name ILIKE $${idx}::text OR q.assisted_sales_person_name ILIKE $${idx}::text)`
       );
       params.push(`%${search}%`);
       idx++;
     }
 
     if (start_date) {
-      whereClauses.push(`q.quotation_date >= $${idx++}`);
+      whereClauses.push(`q.quotation_date >= $${idx++}::date`);
       params.push(start_date);
     }
     if (end_date) {
-      whereClauses.push(`q.quotation_date <= $${idx++}`);
+      whereClauses.push(`q.quotation_date <= $${idx++}::date`);
       params.push(end_date);
     }
 
@@ -61,21 +69,21 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
         SELECT
           q.quotation_number as "Quotation No",
           TO_CHAR(q.quotation_date, 'YYYY-MM-DD') as "Date",
-          q.customer_name as "Customer",
-          q.sales_person_name as "Salesperson",
+          COALESCE(q.customer_name, '') as "Customer",
+          COALESCE(q.sales_person_name, '') as "Salesperson",
           COALESCE(q.assisted_sales_person_name, '') as "Assisted By",
-          q.status as "Status",
-          qa.area_name as "Area / Room",
-          qi.sl_no as "Item No",
-          qi.description as "Product Description",
-          qi.brand as "Brand",
-          qi.size as "Size",
-          qi.product_type as "Product Type",
-          qi.quantity_sqft as "Sqft",
-          qi.rate_per_sqft as "Rate/Sqft",
-          qi.quantity_boxes as "Boxes/Qty",
-          qi.rate_per_box as "Rate/Unit",
-          qi.total_amount as "Item Total (INR)"
+          COALESCE(q.status, '') as "Status",
+          COALESCE(qa.area_name, 'General') as "Area / Room",
+          COALESCE(qi.sl_no, 1) as "Item No",
+          COALESCE(qi.description, '') as "Product Description",
+          COALESCE(qi.brand, '') as "Brand",
+          COALESCE(qi.size, '') as "Size",
+          COALESCE(qi.product_type, '') as "Product Type",
+          COALESCE(qi.quantity_sqft, 0) as "Sqft",
+          COALESCE(qi.rate_per_sqft, 0) as "Rate/Sqft",
+          COALESCE(qi.quantity_boxes, 0) as "Boxes/Qty",
+          COALESCE(qi.rate_per_box, 0) as "Rate/Unit",
+          COALESCE(qi.total_amount, 0) as "Item Total (INR)"
         FROM quotation_items qi
         JOIN quotation_areas qa ON qa.id = qi.area_id
         JOIN quotations q ON q.id = qa.quotation_id
@@ -87,7 +95,7 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
         // Deterministically mask product descriptions and omit brand
         const qGroups = new Map<string, Array<{ description: string }>>();
         for (const it of itemRows) {
-          const qNo = it["Quotation No"];
+          const qNo = String(it["Quotation No"] || '');
           if (!qGroups.has(qNo)) qGroups.set(qNo, []);
           qGroups.get(qNo)!.push({ description: it["Product Description"] });
         }
@@ -97,46 +105,84 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
         }
 
         rows = itemRows.map((it: any) => {
-          const qNo = it["Quotation No"];
-          const masked = qMaps.get(qNo)?.get(String(it["Product Description"] || '').trim()) || `${it["Product Description"]}-AMA`;
+          const qNo = String(it["Quotation No"] || '');
+          const desc = String(it["Product Description"] || '').trim();
+          const masked = qMaps.get(qNo)?.get(desc) || `${desc || 'ITEM'}-AMA`;
           return {
-            "Quotation No": it["Quotation No"],
-            "Date": it["Date"],
-            "Customer": it["Customer"],
-            "Salesperson": it["Salesperson"],
-            "Status": it["Status"],
-            "Area / Room": it["Area / Room"],
-            "Item No": it["Item No"],
+            "Quotation No": qNo,
+            "Date": String(it["Date"] || ''),
+            "Customer": String(it["Customer"] || ''),
+            "Salesperson": String(it["Salesperson"] || ''),
+            "Status": String(it["Status"] || ''),
+            "Area / Room": String(it["Area / Room"] || ''),
+            "Item No": Number(it["Item No"]) || 1,
             "Encrypted Product Code": masked,
-            "Size": it["Size"],
-            "Product Type": it["Product Type"],
-            "Sqft": it["Sqft"],
-            "Rate/Sqft": it["Rate/Sqft"],
-            "Boxes/Qty": it["Boxes/Qty"],
-            "Rate/Unit": it["Rate/Unit"],
-            "Item Total (INR)": it["Item Total (INR)"],
+            "Size": String(it["Size"] || ''),
+            "Product Type": String(it["Product Type"] || ''),
+            "Sqft": Number(it["Sqft"]) || 0,
+            "Rate/Sqft": Number(it["Rate/Sqft"]) || 0,
+            "Boxes/Qty": Number(it["Boxes/Qty"]) || 0,
+            "Rate/Unit": Number(it["Rate/Unit"]) || 0,
+            "Item Total (INR)": Number(it["Item Total (INR)"]) || 0,
           };
         });
       } else {
-        rows = itemRows;
+        rows = itemRows.map((it: any) => ({
+          "Quotation No": String(it["Quotation No"] || ''),
+          "Date": String(it["Date"] || ''),
+          "Customer": String(it["Customer"] || ''),
+          "Salesperson": String(it["Salesperson"] || ''),
+          "Status": String(it["Status"] || ''),
+          "Area / Room": String(it["Area / Room"] || ''),
+          "Item No": Number(it["Item No"]) || 1,
+          "Product Description": String(it["Product Description"] || ''),
+          "Brand": String(it["Brand"] || ''),
+          "Size": String(it["Size"] || ''),
+          "Product Type": String(it["Product Type"] || ''),
+          "Sqft": Number(it["Sqft"]) || 0,
+          "Rate/Sqft": Number(it["Rate/Sqft"]) || 0,
+          "Boxes/Qty": Number(it["Boxes/Qty"]) || 0,
+          "Rate/Unit": Number(it["Rate/Unit"]) || 0,
+          "Item Total (INR)": Number(it["Item Total (INR)"]) || 0,
+        }));
+      }
+
+      if (rows.length === 0) {
+        rows = [{
+          "Quotation No": "No records found",
+          "Date": "",
+          "Customer": "",
+          "Salesperson": "",
+          "Status": "",
+          "Area / Room": "",
+          "Item No": 1,
+          ...(isEncrypted ? { "Encrypted Product Code": "" } : { "Product Description": "", "Brand": "" }),
+          "Size": "",
+          "Product Type": "",
+          "Sqft": 0,
+          "Rate/Sqft": 0,
+          "Boxes/Qty": 0,
+          "Rate/Unit": 0,
+          "Item Total (INR)": 0,
+        }];
       }
     } else {
       const regRows = await query(`
         SELECT
           q.quotation_number as "Quotation No",
           TO_CHAR(q.quotation_date, 'YYYY-MM-DD') as "Date",
-          q.customer_name as "Customer",
-          q.customer_phone as "Phone",
-          q.project_name as "Project",
-          q.sales_person_name as "Salesperson",
+          COALESCE(q.customer_name, '') as "Customer",
+          COALESCE(q.customer_phone, '') as "Phone",
+          COALESCE(q.project_name, '') as "Project",
+          COALESCE(q.sales_person_name, '') as "Salesperson",
           COALESCE(q.assisted_sales_person_name, '') as "Assisted By",
-          q.status as "Status",
-          q.gross_total as "Gross Total (INR)",
-          q.discount_amount as "Discount (INR)",
-          q.taxable_amount as "Taxable (INR)",
-          q.net_total as "Net Total (INR)",
+          COALESCE(q.status, '') as "Status",
+          COALESCE(q.gross_total, 0) as "Gross Total (INR)",
+          COALESCE(q.discount_amount, 0) as "Discount (INR)",
+          COALESCE(q.taxable_amount, 0) as "Taxable (INR)",
+          COALESCE(q.net_total, 0) as "Net Total (INR)",
           COALESCE(p.total_paid, 0) as "Paid (INR)",
-          (q.net_total - COALESCE(p.total_paid, 0)) as "Balance Due (INR)",
+          (COALESCE(q.net_total, 0) - COALESCE(p.total_paid, 0)) as "Balance Due (INR)",
           ${targetSpId ? `
             CASE
               WHEN q.assisted_sales_person_id = ${targetSpId} THEN 'Assisted'
@@ -148,12 +194,12 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
               ELSE COALESCE(q.primary_sales_share_percent, 100)
             END as "Sales Share %",
             CASE
-              WHEN q.assisted_sales_person_id = ${targetSpId} THEN COALESCE(q.assisted_sales_share_amount, ROUND((q.net_total * COALESCE(q.assisted_sales_share_percent, 50) / 100.0)::numeric, 2))
-              ELSE COALESCE(q.primary_sales_share_amount, q.net_total)
+              WHEN q.assisted_sales_person_id = ${targetSpId} THEN COALESCE(q.assisted_sales_share_amount, ROUND((COALESCE(q.net_total, 0) * COALESCE(q.assisted_sales_share_percent, 50) / 100.0)::numeric, 2))
+              ELSE COALESCE(q.primary_sales_share_amount, COALESCE(q.net_total, 0))
             END as "Sales Credit (INR)"
           ` : `
             COALESCE(q.primary_sales_share_percent, 100) as "Primary Share %",
-            COALESCE(q.primary_sales_share_amount, q.net_total) as "Primary Credit (INR)",
+            COALESCE(q.primary_sales_share_amount, COALESCE(q.net_total, 0)) as "Primary Credit (INR)",
             COALESCE(q.assisted_sales_share_percent, 0) as "Assisted Share %",
             COALESCE(q.assisted_sales_share_amount, 0) as "Assisted Credit (INR)"
           `}
@@ -165,7 +211,53 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
         ORDER BY q.quotation_date DESC, q.id DESC
       `, params);
 
-      rows = regRows;
+      rows = regRows.map((it: any) => ({
+        "Quotation No": String(it["Quotation No"] || ''),
+        "Date": String(it["Date"] || ''),
+        "Customer": String(it["Customer"] || ''),
+        "Phone": String(it["Phone"] || ''),
+        "Project": String(it["Project"] || ''),
+        "Salesperson": String(it["Salesperson"] || ''),
+        "Assisted By": String(it["Assisted By"] || ''),
+        "Status": String(it["Status"] || ''),
+        "Gross Total (INR)": Number(it["Gross Total (INR)"]) || 0,
+        "Discount (INR)": Number(it["Discount (INR)"]) || 0,
+        "Taxable (INR)": Number(it["Taxable (INR)"]) || 0,
+        "Net Total (INR)": Number(it["Net Total (INR)"]) || 0,
+        "Paid (INR)": Number(it["Paid (INR)"]) || 0,
+        "Balance Due (INR)": Number(it["Balance Due (INR)"]) || 0,
+        ...(targetSpId
+          ? {
+              "Salesperson Role": String(it["Salesperson Role"] || 'Sales Associate'),
+              "Sales Share %": Number(it["Sales Share %"]) || 0,
+              "Sales Credit (INR)": Number(it["Sales Credit (INR)"]) || 0,
+            }
+          : {
+              "Primary Share %": Number(it["Primary Share %"]) || 100,
+              "Primary Credit (INR)": Number(it["Primary Credit (INR)"]) || 0,
+              "Assisted Share %": Number(it["Assisted Share %"]) || 0,
+              "Assisted Credit (INR)": Number(it["Assisted Credit (INR)"]) || 0,
+            }),
+      }));
+
+      if (rows.length === 0) {
+        rows = [{
+          "Quotation No": "No records found matching filter criteria",
+          "Date": "",
+          "Customer": "",
+          "Phone": "",
+          "Project": "",
+          "Salesperson": "",
+          "Assisted By": "",
+          "Status": "",
+          "Gross Total (INR)": 0,
+          "Discount (INR)": 0,
+          "Taxable (INR)": 0,
+          "Net Total (INR)": 0,
+          "Paid (INR)": 0,
+          "Balance Due (INR)": 0,
+        }];
+      }
     }
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -189,6 +281,7 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
       res.send(buffer);
     }
   } catch (error: any) {
+    console.error('Error exporting quotations:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -197,25 +290,27 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
 reportsRouter.get('/salespersons/summary', optionalAuthenticateToken, async (req: Request, res: Response) => {
   try {
     const { start_date, end_date, sales_person_id } = req.query;
-    const targetSpId = req.user?.role === 'salesperson' ? req.user.id : (sales_person_id ? parseInt(sales_person_id as string, 10) : null);
+    const targetSpId = req.user?.role === 'salesperson'
+      ? req.user.id
+      : (sales_person_id && !isNaN(Number(sales_person_id)) ? parseInt(sales_person_id as string, 10) : null);
 
     const dateClauses: string[] = [];
     const params: any[] = [];
     let idx = 1;
 
     if (start_date) {
-      dateClauses.push(`q.quotation_date >= $${idx++}`);
+      dateClauses.push(`q.quotation_date >= $${idx++}::date`);
       params.push(start_date);
     }
     if (end_date) {
-      dateClauses.push(`q.quotation_date <= $${idx++}`);
+      dateClauses.push(`q.quotation_date <= $${idx++}::date`);
       params.push(end_date);
     }
 
     const dateFilter = dateClauses.length > 0 ? `AND ${dateClauses.join(' AND ')}` : '';
     let userFilter = '';
     if (targetSpId) {
-      userFilter = `AND u.id = $${idx++}`;
+      userFilter = `AND u.id = $${idx++}::integer`;
       params.push(targetSpId);
     }
 
@@ -323,6 +418,7 @@ reportsRouter.get('/salespersons/summary', optionalAuthenticateToken, async (req
 
     res.json({ success: true, summary });
   } catch (error: any) {
+    console.error('Error fetching salesperson summary:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -337,11 +433,11 @@ reportsRouter.get('/salespersons/export', optionalAuthenticateToken, async (req:
     let idx = 1;
 
     if (start_date) {
-      dateClauses.push(`q.quotation_date >= $${idx++}`);
+      dateClauses.push(`q.quotation_date >= $${idx++}::date`);
       params.push(start_date);
     }
     if (end_date) {
-      dateClauses.push(`q.quotation_date <= $${idx++}`);
+      dateClauses.push(`q.quotation_date <= $${idx++}::date`);
       params.push(end_date);
     }
 
@@ -421,8 +517,8 @@ reportsRouter.get('/salespersons/export', optionalAuthenticateToken, async (req:
       ORDER BY "Closed Revenue (INR)" DESC, "Total Quoted Value (INR)" DESC
     `, params);
 
-    // Calculate win rates
-    const formatted = rows.map((r: any) => {
+    // Calculate win rates and format clean primitive values
+    let formatted = rows.map((r: any) => {
       const tot = parseInt(r["Total Quotes"], 10) || 0;
       const closed = parseInt(r["Closed Quotes"], 10) || 0;
       const winRate = tot > 0 ? `${((closed / tot) * 100).toFixed(1)}%` : '0%';
@@ -430,11 +526,35 @@ reportsRouter.get('/salespersons/export', optionalAuthenticateToken, async (req:
       const clsdVal = parseFloat(r["Closed Revenue (INR)"]) || 0;
       const ach = tgt > 0 ? `${((clsdVal / tgt) * 100).toFixed(1)}%` : '0%';
       return {
-        ...r,
+        "Salesperson": String(r["Salesperson"] || ''),
+        "Role": String(r["Role"] || ''),
+        "Monthly Target (INR)": tgt,
+        "Total Quotes": tot,
+        "Closed Quotes": closed,
+        "Pipeline Quotes": parseInt(r["Pipeline Quotes"], 10) || 0,
+        "Closed Revenue (INR)": clsdVal,
+        "Pipeline Value (INR)": parseFloat(r["Pipeline Value (INR)"]) || 0,
+        "Total Quoted Value (INR)": parseFloat(r["Total Quoted Value (INR)"]) || 0,
         "Win Rate": winRate,
         "Target Achievement": ach,
       };
     });
+
+    if (formatted.length === 0) {
+      formatted = [{
+        "Salesperson": "No records found",
+        "Role": "",
+        "Monthly Target (INR)": 0,
+        "Total Quotes": 0,
+        "Closed Quotes": 0,
+        "Pipeline Quotes": 0,
+        "Closed Revenue (INR)": 0,
+        "Pipeline Value (INR)": 0,
+        "Total Quoted Value (INR)": 0,
+        "Win Rate": "0%",
+        "Target Achievement": "0%",
+      }];
+    }
 
     const worksheet = XLSX.utils.json_to_sheet(formatted);
     const workbook = XLSX.utils.book_new();
@@ -455,6 +575,7 @@ reportsRouter.get('/salespersons/export', optionalAuthenticateToken, async (req:
       res.send(buffer);
     }
   } catch (error: any) {
+    console.error('Error exporting salespersons report:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -469,32 +590,60 @@ reportsRouter.get('/payments/export', optionalAuthenticateToken, async (req: Req
     let idx = 1;
 
     if (start_date) {
-      whereClauses.push(`p.payment_date >= $${idx++}`);
+      whereClauses.push(`p.payment_date >= $${idx++}::date`);
       params.push(start_date);
     }
     if (end_date) {
-      whereClauses.push(`p.payment_date <= $${idx++}`);
+      whereClauses.push(`p.payment_date <= $${idx++}::date`);
       params.push(end_date);
     }
 
-    const rows = await query(`
+    const rawRows = await query(`
       SELECT
         p.payment_number as "Receipt No",
-        p.payment_date as "Date",
+        TO_CHAR(p.payment_date, 'YYYY-MM-DD') as "Date",
         q.quotation_number as "Quotation No",
-        q.customer_name as "Customer",
-        p.amount as "Amount (INR)",
-        p.payment_mode as "Payment Mode",
-        p.reference_number as "Ref / Txn No",
-        p.status as "Status",
-        u.full_name as "Recorded By",
-        p.notes as "Notes"
+        COALESCE(q.customer_name, '') as "Customer",
+        COALESCE(p.amount, 0) as "Amount (INR)",
+        COALESCE(p.payment_mode, '') as "Payment Mode",
+        COALESCE(p.reference_number, '') as "Ref / Txn No",
+        COALESCE(p.status, '') as "Status",
+        COALESCE(u.full_name, '') as "Recorded By",
+        COALESCE(p.notes, '') as "Notes"
       FROM payments p
       JOIN quotations q ON q.id = p.quotation_id
       LEFT JOIN users u ON u.id = p.recorded_by_id
       WHERE ${whereClauses.join(' AND ')}
       ORDER BY p.payment_date DESC
     `, params);
+
+    let rows = rawRows.map((it: any) => ({
+      "Receipt No": String(it["Receipt No"] || ''),
+      "Date": String(it["Date"] || ''),
+      "Quotation No": String(it["Quotation No"] || ''),
+      "Customer": String(it["Customer"] || ''),
+      "Amount (INR)": Number(it["Amount (INR)"]) || 0,
+      "Payment Mode": String(it["Payment Mode"] || ''),
+      "Ref / Txn No": String(it["Ref / Txn No"] || ''),
+      "Status": String(it["Status"] || ''),
+      "Recorded By": String(it["Recorded By"] || ''),
+      "Notes": String(it["Notes"] || ''),
+    }));
+
+    if (rows.length === 0) {
+      rows = [{
+        "Receipt No": "No records found",
+        "Date": "",
+        "Quotation No": "",
+        "Customer": "",
+        "Amount (INR)": 0,
+        "Payment Mode": "",
+        "Ref / Txn No": "",
+        "Status": "",
+        "Recorded By": "",
+        "Notes": "",
+      }];
+    }
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
@@ -512,6 +661,7 @@ reportsRouter.get('/payments/export', optionalAuthenticateToken, async (req: Req
       res.send(buffer);
     }
   } catch (error: any) {
+    console.error('Error exporting payments:', error);
     res.status(500).json({ error: error.message });
   }
 });

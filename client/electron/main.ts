@@ -146,26 +146,63 @@ ipcMain.handle('download-file', async (_event, { url, filename }: { url: string;
     }
 
     const destPath = saveResult.filePath;
-    const fileStream = fs.createWriteStream(destPath);
 
     return new Promise((resolve) => {
       const client = url.startsWith('https') ? https : http;
-      client
-        .get(url, (response) => {
-          if (response.statusCode !== 200) {
-            resolve({ success: false, error: `Server returned status ${response.statusCode}` });
-            return;
-          }
-          response.pipe(fileStream);
-          fileStream.on('finish', () => {
-            fileStream.close();
+      const req = client.get(url, { timeout: 45000 }, (response) => {
+        if (response.statusCode !== 200) {
+          let errorBody = '';
+          response.setEncoding('utf8');
+          response.on('data', (chunk) => {
+            errorBody += chunk;
+          });
+          response.on('end', () => {
+            try {
+              if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+            } catch (_) {}
+            let errorMsg = `Server returned status ${response.statusCode}`;
+            try {
+              const parsed = JSON.parse(errorBody);
+              if (parsed.error) errorMsg = parsed.error;
+            } catch (_) {
+              if (errorBody && errorBody.length < 200) errorMsg = errorBody.trim();
+            }
+            resolve({ success: false, error: errorMsg });
+          });
+          return;
+        }
+
+        const fileStream = fs.createWriteStream(destPath);
+        response.pipe(fileStream);
+
+        fileStream.on('finish', () => {
+          fileStream.close(() => {
             resolve({ success: true, filePath: destPath });
           });
-        })
-        .on('error', (err) => {
-          fs.unlink(destPath, () => {});
+        });
+
+        fileStream.on('error', (err) => {
+          try {
+            if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+          } catch (_) {}
           resolve({ success: false, error: err.message });
         });
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        try {
+          if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+        } catch (_) {}
+        resolve({ success: false, error: 'Download request timed out (45s)' });
+      });
+
+      req.on('error', (err) => {
+        try {
+          if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+        } catch (_) {}
+        resolve({ success: false, error: err.message });
+      });
     });
   } catch (err: any) {
     return { success: false, error: err.message };

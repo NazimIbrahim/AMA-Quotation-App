@@ -175,6 +175,9 @@ export const QuotationList: React.FC<Props> = ({
       if (quotationTypeFilter !== 'all') params.append('quotation_type', quotationTypeFilter);
       if (selectedSalesPersonId) params.append('sales_person_id', String(selectedSalesPersonId));
 
+      const token = localStorage.getItem('ama_token');
+      if (token) params.append('token', token);
+
       const downloadUrl = `${serverUrl}/api/reports/quotations/export?${params.toString()}`;
       const statusLabel = status ? `_${status}` : '';
       const filename = `Quotations${statusLabel}_${new Date().toISOString().split('T')[0]}.${format}`;

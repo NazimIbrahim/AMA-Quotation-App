@@ -137,7 +137,10 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
     const key = `${type}-${format}${customParams?.encrypted ? '-enc' : ''}`;
     setExportingKey(key);
 
+    const token = localStorage.getItem('ama_token');
     const params = new URLSearchParams({ format, ...(customParams || {}) });
+    if (token) params.set('token', token);
+
     if (type === 'quotations' && !customParams) {
       if (qStatus) params.append('status', qStatus);
       if (qSalespersonId) params.append('sales_person_id', qSalespersonId);
@@ -148,6 +151,9 @@ export const ReportsPage: React.FC<Props> = ({ onSelectQuotation }) => {
     } else if (type === 'payments' && !customParams) {
       if (pStartDate) params.append('start_date', pStartDate);
       if (pEndDate) params.append('end_date', pEndDate);
+    } else if (type === 'salespersons' && !customParams) {
+      if (spStartDate) params.append('start_date', spStartDate);
+      if (spEndDate) params.append('end_date', spEndDate);
     }
 
     const downloadUrl = `${serverUrl}/api/reports/${type}/export?${params.toString()}`;
