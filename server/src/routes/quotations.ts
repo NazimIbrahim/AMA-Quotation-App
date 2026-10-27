@@ -6,6 +6,7 @@ import { generateQuotationPdf } from '../utils/pdfGenerator';
 import { recordAuditLog } from '../utils/audit';
 import { broadcast } from '../ws';
 import { calculateQuotationDiscountAndTotals, isCeraBrand } from '../utils/discountCalculator';
+import { getOrSaveEncryptedProductCodes } from '../utils/encryptedCode';
 
 export const quotationsRouter = Router();
 
@@ -33,6 +34,27 @@ quotationsRouter.get('/:id/pdf', optionalAuthenticateToken, async (req: Request,
     const companyRows = await query('SELECT * FROM company_settings LIMIT 1');
     const company = companyRows[0] || {};
 
+    let encryptedMap = new Map<string, string>();
+    if (isEncrypted) {
+      const allNames: string[] = [];
+      for (const it of items) {
+        if (it.description) allNames.push(it.description);
+        if (quotation.quotation_type === 'sanitary') {
+          if (it.item_code) allNames.push(it.item_code);
+          if (it.size) allNames.push(it.size);
+        }
+      }
+      encryptedMap = await getOrSaveEncryptedProductCodes(allNames);
+
+      // Persist any resolved codes back to quotation_items if not set
+      for (const it of items) {
+        const code = encryptedMap.get((it.description || '').trim());
+        if (code && !it.encrypted_code) {
+          query('UPDATE quotation_items SET encrypted_code = $1 WHERE id = $2', [code, it.id]).catch(() => {});
+        }
+      }
+    }
+
     const areasWithItems = (areas || []).map((a) => ({
       ...a,
       items: (items || []).filter((it) => it.area_id === a.id),
@@ -48,6 +70,7 @@ quotationsRouter.get('/:id/pdf', optionalAuthenticateToken, async (req: Request,
           : [],
       },
       encrypted: isEncrypted,
+      encryptedMap,
     });
 
     const filename = isEncrypted
@@ -269,9 +292,13 @@ quotationsRouter.get('/:id', async (req: Request, res: Response) => {
       [id]
     );
 
-    // Fetch Items
+    // Fetch Items with persistent encrypted_code
     const items = await query(
-      `SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY sl_no ASC, id ASC`,
+      `SELECT qi.*, COALESCE(qi.encrypted_code, pec.encrypted_code) as encrypted_code
+       FROM quotation_items qi
+       LEFT JOIN product_encrypted_codes pec ON pec.normalized_name = LOWER(TRIM(qi.description))
+       WHERE qi.quotation_id = $1
+       ORDER BY qi.sl_no ASC, qi.id ASC`,
       [id]
     );
 
@@ -457,6 +484,18 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
       const newQ = qRes.rows[0];
       let itemSlNo = 1;
 
+      // Pre-resolve and save encrypted codes for all items
+      const allItemNames: string[] = [];
+      for (const a of areas) {
+        if (Array.isArray(a.items)) {
+          for (const it of a.items) {
+            const desc = (it.item_description || it.description || '').trim();
+            if (desc) allItemNames.push(desc);
+          }
+        }
+      }
+      const encryptedCodesMap = await getOrSaveEncryptedProductCodes(allItemNames, (sql, p) => client.query(sql, p).then((r: any) => r.rows));
+
       for (let i = 0; i < areas.length; i++) {
         const area = areas[i];
         const areaRes = await client.query(
@@ -508,19 +547,21 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
             const itemCode = item.item_code || (qType === 'sanitary' ? (item.size || null) : null);
             const itemImage = item.item_image || null;
             const mrpPrice = parseFloat(item.mrp_price) || (pType === 'nos' ? baseBox : 0);
+            const itemDesc = item.item_description || item.description || (qType === 'sanitary' ? 'Sanitary Item' : 'Vitrified Tile');
+            const encCode = encryptedCodesMap.get(itemDesc.trim()) || null;
 
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
                 product_type, coverage_area, quantity_sqft, base_rate_per_sqft, rate_per_sqft,
                 quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount,
-                item_code, item_image, mrp_price
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                item_code, item_image, mrp_price, encrypted_code
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
               [
                 newQ.id,
                 areaId,
                 itemSlNo++,
-                item.item_description || item.description || (qType === 'sanitary' ? 'Sanitary Item' : 'Vitrified Tile'),
+                itemDesc,
                 item.size || (qType === 'sanitary' ? (itemCode || 'Nos') : 'Standard'),
                 item.brand || (qType === 'sanitary' ? 'Sanitary' : 'AMA Collection'),
                 pType,
@@ -537,6 +578,7 @@ quotationsRouter.post('/', async (req: Request, res: Response) => {
                 itemCode,
                 itemImage,
                 mrpPrice,
+                encCode,
               ]
             );
 
@@ -774,6 +816,18 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
       // Re-create areas and items cleanly
       await client.query('DELETE FROM quotation_areas WHERE quotation_id = $1', [id]);
 
+      // Pre-resolve and save encrypted codes for all items
+      const allItemNames: string[] = [];
+      for (const a of areas) {
+        if (Array.isArray(a.items)) {
+          for (const it of a.items) {
+            const desc = (it.item_description || it.description || '').trim();
+            if (desc) allItemNames.push(desc);
+          }
+        }
+      }
+      const encryptedCodesMap = await getOrSaveEncryptedProductCodes(allItemNames, (sql, p) => client.query(sql, p).then((r: any) => r.rows));
+
       let itemSlNo = 1;
       for (let i = 0; i < areas.length; i++) {
         const area = areas[i];
@@ -826,19 +880,21 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
             const itemCode = item.item_code || (qType === 'sanitary' ? (item.size || null) : null);
             const itemImage = item.item_image || null;
             const mrpPrice = parseFloat(item.mrp_price) || (pType === 'nos' ? baseBox : 0);
+            const itemDesc = item.item_description || item.description || (qType === 'sanitary' ? 'Sanitary Item' : 'Tile Item');
+            const encCode = encryptedCodesMap.get(itemDesc.trim()) || null;
 
             await client.query(
               `INSERT INTO quotation_items (
                 quotation_id, area_id, sl_no, description, size, brand,
                 product_type, coverage_area, quantity_sqft, base_rate_per_sqft, rate_per_sqft,
                 quantity_boxes, base_rate_per_box, rate_per_box, discount_percent, discount_amount, total_amount,
-                item_code, item_image, mrp_price
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                item_code, item_image, mrp_price, encrypted_code
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
               [
                 id,
                 areaId,
                 itemSlNo++,
-                item.item_description || item.description || (qType === 'sanitary' ? 'Sanitary Item' : 'Tile Item'),
+                itemDesc,
                 item.size || (qType === 'sanitary' ? (itemCode || 'Nos') : ''),
                 item.brand || (qType === 'sanitary' ? 'Sanitary' : ''),
                 pType,
@@ -855,6 +911,7 @@ quotationsRouter.put('/:id', async (req: Request, res: Response) => {
                 itemCode,
                 itemImage,
                 mrpPrice,
+                encCode,
               ]
             );
 

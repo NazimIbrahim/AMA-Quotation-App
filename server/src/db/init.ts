@@ -61,7 +61,19 @@ export async function initializeDatabase(): Promise<void> {
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_image TEXT;
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS mrp_price NUMERIC(12, 2) DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS encrypted_code VARCHAR(100);
       CREATE INDEX IF NOT EXISTS idx_quotations_type ON quotations (quotation_type);
+
+      CREATE TABLE IF NOT EXISTS product_encrypted_codes (
+          id SERIAL PRIMARY KEY,
+          item_name VARCHAR(255) NOT NULL,
+          normalized_name VARCHAR(255) UNIQUE NOT NULL,
+          encrypted_code VARCHAR(100) NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_product_encrypted_codes_norm ON product_encrypted_codes (normalized_name);
+      CREATE INDEX IF NOT EXISTS idx_product_encrypted_codes_code ON product_encrypted_codes (encrypted_code);
 
       CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
           id SERIAL PRIMARY KEY,

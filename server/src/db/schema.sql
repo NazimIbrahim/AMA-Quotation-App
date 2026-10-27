@@ -189,7 +189,8 @@ CREATE TABLE IF NOT EXISTS quotation_items (
     total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     item_code VARCHAR(100),
     item_image TEXT,
-    mrp_price NUMERIC(12, 2) DEFAULT 0.00
+    mrp_price NUMERIC(12, 2) DEFAULT 0.00,
+    encrypted_code VARCHAR(100)
 );
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items (quotation_id);
 CREATE INDEX IF NOT EXISTS idx_quotation_items_area ON quotation_items (area_id);
@@ -260,4 +261,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sanitary_catalog_code_unique ON sanitary_c
 CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_code ON sanitary_catalog_items (item_code);
 CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
 CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);
+
+CREATE TABLE IF NOT EXISTS product_encrypted_codes (
+    id SERIAL PRIMARY KEY,
+    item_name VARCHAR(255) NOT NULL,
+    normalized_name VARCHAR(255) UNIQUE NOT NULL,
+    encrypted_code VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_encrypted_codes_norm ON product_encrypted_codes (normalized_name);
+CREATE INDEX IF NOT EXISTS idx_product_encrypted_codes_code ON product_encrypted_codes (encrypted_code);
 

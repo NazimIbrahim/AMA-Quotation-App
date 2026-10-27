@@ -29,7 +29,7 @@ import {
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { numberToWordsIndian } from '../utils/numberToWords';
 import { calculateQuotationDiscountAndTotals, isCeraBrand } from '../utils/discountCalculator';
-import { buildEncryptedProductMap } from '../utils/encryptedCode';
+import { buildEncryptedProductMap, derive3LetterCode } from '../utils/encryptedCode';
 
 const formatCurrency = (val: number) => {
   return Number(val || 0).toLocaleString('en-IN', {
@@ -2104,8 +2104,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
                               className="bg-slate-900 text-amber-300 font-mono font-bold px-1.5 py-0.2 rounded border border-slate-700 shadow-2xs"
                               title="Masked product code generated on Encrypted Export (Brand removed, random alphabet code ending with -AMA)"
                             >
-                              {encryptedProductMap.get((item.description || '').trim()) ||
-                                `${(item.description || 'TILE').replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'HSDS'}-AMA`}
+                              {encryptedProductMap.get((item.description || '').trim()) || derive3LetterCode(item.description)}
                             </span>
                           </div>
                         </td>

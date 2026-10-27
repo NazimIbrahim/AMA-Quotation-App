@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '../db/connection';
 import { authenticateToken, optionalAuthenticateToken } from '../middleware/auth';
 import * as XLSX from 'xlsx';
-import { buildEncryptedProductMap } from '../utils/encryptedCode';
+import { buildEncryptedProductMap, getOrSaveEncryptedProductCodes, derive3LetterCode } from '../utils/encryptedCode';
 
 export const reportsRouter = Router();
 
@@ -92,22 +92,13 @@ reportsRouter.get('/quotations/export', optionalAuthenticateToken, async (req: R
       `, params);
 
       if (isEncrypted) {
-        // Deterministically mask product descriptions and omit brand
-        const qGroups = new Map<string, Array<{ description: string }>>();
-        for (const it of itemRows) {
-          const qNo = String(it["Quotation No"] || '');
-          if (!qGroups.has(qNo)) qGroups.set(qNo, []);
-          qGroups.get(qNo)!.push({ description: it["Product Description"] });
-        }
-        const qMaps = new Map<string, Map<string, string>>();
-        for (const [qNo, items] of qGroups.entries()) {
-          qMaps.set(qNo, buildEncryptedProductMap(qNo, items));
-        }
+        const itemNames = itemRows.map((it: any) => String(it["Product Description"] || '').trim()).filter(Boolean);
+        const encryptedCodesMap = await getOrSaveEncryptedProductCodes(itemNames);
 
         rows = itemRows.map((it: any) => {
           const qNo = String(it["Quotation No"] || '');
           const desc = String(it["Product Description"] || '').trim();
-          const masked = qMaps.get(qNo)?.get(desc) || `${desc || 'ITEM'}-AMA`;
+          const masked = encryptedCodesMap.get(desc) || derive3LetterCode(desc);
           return {
             "Quotation No": qNo,
             "Date": String(it["Date"] || ''),

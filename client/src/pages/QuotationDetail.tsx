@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
-import { buildEncryptedProductMap } from '../utils/encryptedCode';
+import { buildEncryptedProductMap, derive3LetterCode } from '../utils/encryptedCode';
 import { isCeraBrand } from '../utils/discountCalculator';
 
 interface Props {
@@ -459,7 +459,7 @@ export const QuotationDetail: React.FC<Props> = ({
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center space-x-1">
                                 <span>Ref:</span>
                                 <span className="bg-amber-50 text-amber-800 font-semibold px-1 rounded border border-amber-200/60" title="Masked product code on Encrypted Export">
-                                  {encryptedProductMap.get((item.description || '').trim()) || `${item.description}-AMA`}
+                                  {item.encrypted_code || encryptedProductMap.get((item.description || '').trim()) || derive3LetterCode(item.description)}
                                 </span>
                               </div>
                             </td>

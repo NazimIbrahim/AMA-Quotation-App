@@ -146,6 +146,7 @@ async function runAutoMigrations() {
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_image TEXT;
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS mrp_price NUMERIC(12, 2) DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS encrypted_code VARCHAR(100);
     `);
 
     // 3. Ensure tile_catalog_items exists for autocomplete and item memory
@@ -175,6 +176,18 @@ async function runAutoMigrations() {
       FROM quotation_items
       WHERE description IS NOT NULL AND length(TRIM(description)) > 1
       ON CONFLICT (description) DO NOTHING;
+
+      -- 4. Ensure product_encrypted_codes exists for persistent 3-letter encrypted codes
+      CREATE TABLE IF NOT EXISTS product_encrypted_codes (
+        id SERIAL PRIMARY KEY,
+        item_name VARCHAR(255) NOT NULL,
+        normalized_name VARCHAR(255) UNIQUE NOT NULL,
+        encrypted_code VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_product_encrypted_codes_norm ON product_encrypted_codes (normalized_name);
+      CREATE INDEX IF NOT EXISTS idx_product_encrypted_codes_code ON product_encrypted_codes (encrypted_code);
     `);
 
     logger.info('Database schema migrations applied successfully.');

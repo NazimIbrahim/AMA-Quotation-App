@@ -113,6 +113,7 @@ export interface QuotationItem {
   item_code?: string;
   item_image?: string;
   mrp_price?: number;
+  encrypted_code?: string;
   _itemBaseTotal?: number;
 }
 

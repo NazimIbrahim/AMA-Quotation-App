@@ -73,6 +73,7 @@ export interface QuotationPdfData {
     terms_json: string[];
   };
   encrypted?: boolean;
+  encryptedMap?: Map<string, string>;
 }
 
 export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument {
@@ -198,7 +199,7 @@ export function generateQuotationPdf(data: QuotationPdfData): PDFKit.PDFDocument
   const isSanitary = quotation.quotation_type === 'sanitary';
   const allItems = areas.flatMap((a) => a.items || []);
   const encryptedMap = isEncrypted
-    ? buildEncryptedProductMap(quotation.quotation_number || quotation.quotation_date || 'AMA', allItems)
+    ? (data.encryptedMap || buildEncryptedProductMap(quotation.quotation_number || quotation.quotation_date || 'AMA', allItems))
     : new Map<string, string>();
 
   let currentY = 180;
