@@ -47,42 +47,93 @@ targetsRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// 2. Create Target (Manager / Admin)
+// 2. Set / Update Target (Manager / Admin) - Updates existing target instead of adding/accumulating
 targetsRouter.post('/', requireRole(['admin', 'manager']), async (req: Request, res: Response) => {
   try {
     const { sales_person_id, target_type, start_date, end_date, target_amount, notes, period_label } = req.body;
 
-    if (!sales_person_id || !target_type || !start_date || !end_date || !target_amount) {
-      res.status(400).json({ error: 'Salesperson, target type, dates, and amount are required' });
+    if (!sales_person_id || !target_type || !start_date || !end_date || target_amount === undefined || isNaN(Number(target_amount))) {
+      res.status(400).json({ error: 'Salesperson, target type, dates, and a valid amount are required' });
       return;
     }
 
     const startObj = new Date(start_date);
     const year = startObj.getFullYear();
     const month = startObj.getMonth() + 1;
-    const label = period_label || `${target_type} Target (${start_date} to ${end_date})`;
+    let finalStartDate = start_date;
+    let finalEndDate = end_date;
+    if (target_type === 'Monthly') {
+      finalStartDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+      finalEndDate = new Date(year, month, 0).toISOString().split('T')[0];
+    }
+    const label = period_label || `${target_type} Target (${finalStartDate} to ${finalEndDate})`;
+    const parsedAmount = parseFloat(target_amount);
 
-    const rows = await query(
-      `INSERT INTO sales_targets (
-        sales_person_id, target_type, start_date, end_date, year, month, period_label, target_amount, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *`,
-      [sales_person_id, target_type, start_date, end_date, year, month, label, parseFloat(target_amount), notes || '']
+    // Check if an existing target exists for this salesperson (for this period, year/month, or target type)
+    const existing = await query(
+      `SELECT id FROM sales_targets
+       WHERE sales_person_id = $1
+       ORDER BY created_at DESC`,
+      [sales_person_id]
+    );
+
+    let targetRow: any;
+    if (existing.length > 0) {
+      // Update the active target record with the exact new amount
+      const primaryId = existing[0].id;
+      const updated = await query(
+        `UPDATE sales_targets
+         SET target_type = $1,
+             start_date = $2,
+             end_date = $3,
+             year = $4,
+             month = $5,
+             period_label = $6,
+             target_amount = $7,
+             notes = $8,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $9
+         RETURNING *`,
+        [target_type, finalStartDate, finalEndDate, year, month, label, parsedAmount, notes || '', primaryId]
+      );
+      targetRow = updated[0];
+
+      // Purge any stale duplicate rows for this salesperson so they NEVER accumulate or add up
+      if (existing.length > 1) {
+        const extraIds = existing.slice(1).map((r: any) => r.id);
+        await query(`DELETE FROM sales_targets WHERE id = ANY($1::int[])`, [extraIds]);
+      }
+    } else {
+      // Insert fresh target
+      const inserted = await query(
+        `INSERT INTO sales_targets (
+          sales_person_id, target_type, start_date, end_date, year, month, period_label, target_amount, notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *`,
+        [sales_person_id, target_type, finalStartDate, finalEndDate, year, month, label, parsedAmount, notes || '']
+      );
+      targetRow = inserted[0];
+    }
+
+    // Always update the salesperson's base monthly_target in users table to match the exact target
+    await query(
+      `UPDATE users SET monthly_target = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [parsedAmount, sales_person_id]
     );
 
     await recordAuditLog({
       userId: req.user!.id,
       username: req.user!.username,
-      action: 'TARGET_CREATED',
+      action: 'TARGET_UPDATED',
       entityType: 'sales_target',
-      entityId: rows[0].id,
-      details: { sales_person_id, target_type, target_amount },
+      entityId: targetRow.id,
+      details: { sales_person_id, target_type, target_amount: parsedAmount },
       ipAddress: req.ip,
     });
 
     broadcast({ type: 'TARGET_UPDATED', payload: { sales_person_id } });
 
-    res.status(201).json({ target: rows[0] });
+    res.status(200).json({ target: targetRow });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -116,12 +167,16 @@ targetsRouter.get('/performance', async (req: Request, res: Response) => {
            ORDER BY full_name ASC`
         );
 
-    // Get target amounts in period (targets overlapping this period)
+    // Get exact active target per salesperson (takes the latest defined target without summing or accumulating)
     const targets = await query(
-      `SELECT sales_person_id, COALESCE(SUM(target_amount), 0) as total_target
+      `SELECT DISTINCT ON (sales_person_id)
+         sales_person_id, target_amount as total_target
        FROM sales_targets
-       WHERE start_date <= $2 AND end_date >= $1 ${isSalesperson ? `AND sales_person_id = ${req.user!.id}` : ''}
-       GROUP BY sales_person_id`,
+       WHERE (
+         (start_date <= $2 AND end_date >= $1)
+         OR (year = EXTRACT(YEAR FROM $1::date) AND month = EXTRACT(MONTH FROM $1::date))
+       ) ${isSalesperson ? `AND sales_person_id = ${req.user!.id}` : ''}
+       ORDER BY sales_person_id, created_at DESC`,
       [startDate, endDate]
     );
 
@@ -301,6 +356,12 @@ targetsRouter.put('/salesperson/:id', requireRole(['admin', 'manager']), async (
       return;
     }
 
+    // Keep sales_targets active record synchronized
+    await query(
+      `UPDATE sales_targets SET target_amount = $1, updated_at = CURRENT_TIMESTAMP WHERE sales_person_id = $2`,
+      [parseFloat(monthly_target), id]
+    );
+
     await recordAuditLog({
       userId: req.user!.id,
       username: req.user!.username,
@@ -350,6 +411,13 @@ targetsRouter.put('/:id', requireRole(['admin', 'manager']), async (req: Request
     if (rows.length === 0) {
       res.status(404).json({ error: 'Target record not found' });
       return;
+    }
+
+    if (target_amount !== undefined) {
+      await query(
+        `UPDATE users SET monthly_target = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [parseFloat(target_amount), rows[0].sales_person_id]
+      );
     }
 
     await recordAuditLog({

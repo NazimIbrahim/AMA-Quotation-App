@@ -65,6 +65,68 @@ export const TargetsManagement: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  const getDatesForType = (type: string) => {
+    const now = new Date();
+    if (type === 'Monthly') {
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const fDay = `${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, '0')}-01`;
+      const lDay = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+      return { start: fDay, end: lDay };
+    } else if (type === 'Weekly') {
+      const day = now.getDay();
+      const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+      const mon = new Date(now.setDate(diffToMon));
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      return {
+        start: mon.toISOString().split('T')[0],
+        end: sun.toISOString().split('T')[0],
+      };
+    } else if (type === 'Daily') {
+      const today = new Date().toISOString().split('T')[0];
+      return { start: today, end: today };
+    }
+    const today = new Date().toISOString().split('T')[0];
+    return { start: today, end: today };
+  };
+
+  const handleTargetTypeChange = (type: string) => {
+    setTargetType(type);
+    if (type !== 'Custom') {
+      const { start, end } = getDatesForType(type);
+      setStartDate(start);
+      setEndDate(end);
+    }
+  };
+
+  const openSetTargetModal = (spId?: number) => {
+    const targetId = spId || salesPersonId || (users[0]?.id ?? 0);
+    setSalesPersonId(targetId);
+    const found = performance.find((p) => p.salesperson.id === targetId);
+    if (found && found.target > 0) {
+      setTargetAmount(String(found.target));
+    } else {
+      setTargetAmount('500000');
+    }
+    const { start, end } = getDatesForType('Monthly');
+    setTargetType('Monthly');
+    setStartDate(start);
+    setEndDate(end);
+    setPeriodLabel('Monthly Target');
+    setModalOpen(true);
+  };
+
+  const handleSalesPersonChange = (id: number) => {
+    setSalesPersonId(id);
+    const found = performance.find((p) => p.salesperson.id === id);
+    if (found && found.target > 0) {
+      setTargetAmount(String(found.target));
+    }
+  };
+
   const handleCreateTarget = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -84,7 +146,7 @@ export const TargetsManagement: React.FC = () => {
       setModalOpen(false);
       loadPerformance();
     } catch (err: any) {
-      alert(err.message || 'Failed to create target');
+      alert(err.message || 'Failed to update target');
     }
   };
 
@@ -140,7 +202,7 @@ export const TargetsManagement: React.FC = () => {
             <span>Refresh</span>
           </button>
           {isAdminOrManager && (
-            <button onClick={() => setModalOpen(true)} className="btn btn-primary btn-sm flex items-center space-x-1">
+            <button onClick={() => openSetTargetModal()} className="btn btn-primary btn-sm flex items-center space-x-1">
               <Plus size={14} />
               <span>Set Target</span>
             </button>
@@ -302,16 +364,19 @@ export const TargetsManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Set Target Modal */}
+      {/* Set / Update Target Modal */}
       {modalOpen && (
         <div className="modal-overlay">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 border border-gray-200">
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-base font-bold text-gray-900">Define Salesperson Target</h2>
+            <div className="flex justify-between items-center mb-1">
+              <h2 className="text-base font-bold text-gray-900">Set / Update Salesperson Target</h2>
               <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={18} />
               </button>
             </div>
+            <p className="text-[11px] text-gray-500 mb-3">
+              The entered amount updates this salesperson's target directly (without adding to previous targets).
+            </p>
 
             <form onSubmit={handleCreateTarget} className="space-y-3 text-xs">
               <div>
@@ -319,7 +384,7 @@ export const TargetsManagement: React.FC = () => {
                 <select
                   className="input input-sm"
                   value={salesPersonId}
-                  onChange={(e) => setSalesPersonId(parseInt(e.target.value, 10))}
+                  onChange={(e) => handleSalesPersonChange(parseInt(e.target.value, 10))}
                   required
                 >
                   {users.map((u) => (
@@ -335,7 +400,7 @@ export const TargetsManagement: React.FC = () => {
                 <select
                   className="input input-sm"
                   value={targetType}
-                  onChange={(e) => setTargetType(e.target.value)}
+                  onChange={(e) => handleTargetTypeChange(e.target.value)}
                 >
                   <option value="Daily">Daily Target</option>
                   <option value="Weekly">Weekly Target</option>
@@ -378,6 +443,9 @@ export const TargetsManagement: React.FC = () => {
                   placeholder="e.g. 1500000"
                   required
                 />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Target: ₹ {formatCurrency(parseFloat(targetAmount) || 0)}
+                </p>
               </div>
 
               <div>
@@ -396,7 +464,7 @@ export const TargetsManagement: React.FC = () => {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary btn-sm">
-                  Save Target
+                  Save / Update Target
                 </button>
               </div>
             </form>
