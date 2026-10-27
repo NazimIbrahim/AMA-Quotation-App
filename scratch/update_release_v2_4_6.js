@@ -18,6 +18,8 @@ function streamUploadToGitHub(token, uploadUrl, filePath, fileSize) {
     const url = new URL(uploadUrl);
     const options = {
       method: 'POST',
+      minVersion: 'TLSv1.2',
+      maxVersion: 'TLSv1.2',
       headers: {
         'Authorization': `Bearer ${token}`,
         'User-Agent': 'AMA-Quotation-App',
@@ -161,20 +163,25 @@ async function main() {
     throw new Error(`Host Server executable not found at: ${hostExePath}`);
   }
 
-  const clientUrl = await uploadAssetWithRetry(
-    token,
-    release.id,
-    clientExePath,
-    'AMA-Ceramics-Quotation-System-Setup-2.4.6.exe',
-    repo
-  );
-
   const hostUrl = await uploadAssetWithRetry(
     token,
     release.id,
     hostExePath,
     'AMA-Ceramics-Host-Server-Setup-2.4.6.exe',
-    repo
+    repo,
+    5
+  );
+
+  console.log('Waiting 5s before next upload...');
+  await new Promise((r) => setTimeout(r, 5000));
+
+  const clientUrl = await uploadAssetWithRetry(
+    token,
+    release.id,
+    clientExePath,
+    'AMA-Ceramics-Quotation-System-Setup-2.4.6.exe',
+    repo,
+    5
   );
 
   const releaseNotes = `## AMA Ceramics Quotation System v2.4.6 Release Notes
