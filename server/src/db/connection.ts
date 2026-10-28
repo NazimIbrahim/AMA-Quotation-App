@@ -73,6 +73,14 @@ export async function withTransaction<T>(callback: (client: PoolClient) => Promi
   }
 }
 
+export function formatDbError(err: any): string {
+  if (!err) return 'Database connection failed';
+  if (err.errors && Array.isArray(err.errors) && err.errors.length > 0) {
+    return err.errors.map((e: any) => e?.message || String(e)).join('; ');
+  }
+  return err?.message || String(err) || 'Database connection failed';
+}
+
 export async function testConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
     const rows = await query<{ ok: number }>('SELECT 1 as ok');
@@ -80,8 +88,8 @@ export async function testConnection(): Promise<{ ok: boolean; error?: string }>
     if (ok) lastDbError = null;
     return { ok };
   } catch (err: any) {
-    lastDbError = err?.message || String(err) || 'Database connection failed';
+    lastDbError = formatDbError(err);
     logger.error('Database connection test failed:', lastDbError);
-    return { ok: false, error: lastDbError || undefined };
+    return { ok: false, error: lastDbError };
   }
 }

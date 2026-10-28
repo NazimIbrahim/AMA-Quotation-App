@@ -13,12 +13,19 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   try {
     const { username, password, role } = req.body;
 
+    // Check if cloud DATABASE_URL is configured
+    if (!config.db.connectionString && (process.env.NODE_ENV === 'production' || process.env.RENDER)) {
+      return res.status(503).json({
+        error: 'DATABASE_URL environment variable is missing on Render. Please open your Render dashboard -> Environment tab -> Add variable DATABASE_URL with your Neon.tech connection string.'
+      });
+    }
+
     // Check database connection before doing anything
     const conn = await testConnection();
     if (!conn.ok) {
       const errDetail = conn.error || getLastDbError() || 'Connection failed';
       return res.status(503).json({
-        error: `Database is offline (${errDetail}). If deploying on Render, please verify that the DATABASE_URL environment variable is set in the Render dashboard.`
+        error: `Database is offline (${errDetail}). Please verify your DATABASE_URL in the Render dashboard.`
       });
     }
 
