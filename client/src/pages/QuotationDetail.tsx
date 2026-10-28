@@ -19,6 +19,7 @@ import {
   CheckCircle,
   AlertTriangle,
   History,
+  Eye,
 } from 'lucide-react';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { QuotationHistoryModal } from '../components/QuotationHistoryModal';
@@ -50,6 +51,7 @@ export const QuotationDetail: React.FC<Props> = ({
   const [approving, setApproving] = useState(false);
   const [editWarningModal, setEditWarningModal] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [historyModalInitialVersion, setHistoryModalInitialVersion] = useState<number | null>(null);
 
   // PDF Preview State
   const [previewPdf, setPreviewPdf] = useState<{
@@ -511,6 +513,54 @@ export const QuotationDetail: React.FC<Props> = ({
             <span className="tabular-nums">₹ {formatCurrency(quotation.balance_due || 0)}</span>
           </div>
         </div>
+
+      {/* Revision Notice Banner with Direct Review Button */}
+      {(quotation.version || 1) > 1 && (
+        <div className="bg-gradient-to-r from-indigo-50/90 via-slate-50 to-amber-50/70 border border-indigo-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+              <History size={16} />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-slate-900 text-xs">
+                  Quotation Revision Active (Version {quotation.version})
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                  Previous Quotation (v{(quotation.version || 2) - 1}) Available
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                This quotation was edited and updated. You can review previous quotation line items, rates, and values anytime.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => {
+                setHistoryModalInitialVersion((quotation.version || 2) - 1);
+                setHistoryModalOpen(true);
+              }}
+              className="btn btn-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center space-x-1.5 shadow-xs cursor-pointer"
+            >
+              <Eye size={13} />
+              <span>Review Previous Quotation (v{(quotation.version || 2) - 1})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setHistoryModalInitialVersion(null);
+                setHistoryModalOpen(true);
+              }}
+              className="btn btn-secondary btn-sm flex items-center space-x-1 cursor-pointer"
+            >
+              <History size={13} className="text-slate-600" />
+              <span>Full History</span>
+            </button>
+          </div>
+        </div>
+      )}
       </div>
 
       {/* Items Section (Sanitary vs Tiles) */}
@@ -854,10 +904,14 @@ export const QuotationDetail: React.FC<Props> = ({
           quotationId={quotation.id}
           quotationNumber={quotation.quotation_number}
           isOpen={historyModalOpen}
-          onClose={() => setHistoryModalOpen(false)}
+          onClose={() => {
+            setHistoryModalOpen(false);
+            setHistoryModalInitialVersion(null);
+          }}
           onRestored={() => {
             loadDetail();
           }}
+          initialVersion={historyModalInitialVersion || undefined}
         />
       )}
     </div>
