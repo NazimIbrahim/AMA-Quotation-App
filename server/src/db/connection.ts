@@ -24,22 +24,36 @@ const poolConfig: PoolConfig = config.db.connectionString
 
 export const pool = new Pool(poolConfig);
 
+let lastDbError: string | null = null;
+
+export function getLastDbError(): string | null {
+  return lastDbError;
+}
+
 pool.on('error', (err) => {
+  lastDbError = err?.message || String(err);
   logger.error('Unexpected error on idle PostgreSQL client', err);
 });
 
 export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
   const start = Date.now();
-  const client = await pool.connect();
+  let client: PoolClient | null = null;
   try {
+    client = await pool.connect();
     const res = await client.query(text, params);
     const duration = Date.now() - start;
     if (duration > 300) {
       logger.warn(`Slow query (${duration}ms): ${text.substring(0, 100)}`);
     }
+    lastDbError = null;
     return res.rows as T[];
+  } catch (err: any) {
+    lastDbError = err?.message || String(err);
+    throw err;
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 }
 
@@ -50,7 +64,8 @@ export async function withTransaction<T>(callback: (client: PoolClient) => Promi
     const result = await callback(client);
     await client.query('COMMIT');
     return result;
-  } catch (error) {
+  } catch (error: any) {
+    lastDbError = error?.message || String(error);
     await client.query('ROLLBACK');
     throw error;
   } finally {
@@ -58,12 +73,15 @@ export async function withTransaction<T>(callback: (client: PoolClient) => Promi
   }
 }
 
-export async function testConnection(): Promise<boolean> {
+export async function testConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
     const rows = await query<{ ok: number }>('SELECT 1 as ok');
-    return rows.length > 0 && rows[0].ok === 1;
+    const ok = rows.length > 0 && rows[0].ok === 1;
+    if (ok) lastDbError = null;
+    return { ok };
   } catch (err: any) {
-    logger.error('Database connection test failed:', err.message);
-    return false;
+    lastDbError = err?.message || String(err) || 'Database connection failed';
+    logger.error('Database connection test failed:', lastDbError);
+    return { ok: false, error: lastDbError || undefined };
   }
 }

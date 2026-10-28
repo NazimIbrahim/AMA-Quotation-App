@@ -94,7 +94,7 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
             className="text-blue-700 hover:text-blue-800 text-xs font-semibold flex items-center space-x-1 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded border border-blue-200 transition-colors cursor-pointer"
           >
             <Server size={12} />
-            <span>Configure LAN</span>
+            <span>Configure Server</span>
           </button>
         </div>
 
@@ -104,8 +104,8 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
               <div className="flex items-center space-x-2.5">
                 <AlertCircle size={18} className="text-amber-600 shrink-0" />
                 <div>
-                  <span className="font-bold block">Host Server Disconnected</span>
-                  <span className="text-[11px] text-amber-700">Connect to the host PC LAN IP to sign in.</span>
+                  <span className="font-bold block">Server Disconnected</span>
+                  <span className="text-[11px] text-amber-700">Connect to the host PC LAN IP or Cloud URL to sign in.</span>
                 </div>
               </div>
               <button
@@ -113,7 +113,7 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
                 onClick={onOpenServerSettings}
                 className="btn btn-primary btn-xs py-1 px-3 text-[11px] shrink-0 font-bold"
               >
-                Set IP
+                Configure
               </button>
             </div>
           )}
@@ -121,7 +121,7 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs flex items-start space-x-2 shadow-2xs animate-fade-in">
               <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <span className="font-medium">{error}</span>
+              <span className="font-medium whitespace-pre-wrap">{error}</span>
             </div>
           )}
 
@@ -239,7 +239,7 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
 
         <div className="px-6 py-2.5 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-500 flex justify-between">
           <span>Security: Direct LAN / Cloud Session</span>
-          <span>AMA Quotation System v2.4.11</span>
+          <span>AMA Quotation System v2.4.12</span>
         </div>
       </div>
     </div>

@@ -125,7 +125,9 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const data = await response.json();
         return {
           ok: true,
-          message: `Connected (${data.server || 'Server OK'}, DB: ${data.dbConnected ? 'Online' : 'Degraded'})`,
+          message: data.dbConnected
+            ? `Connected (${data.server || 'Server OK'}, DB: Online)`
+            : `Server Connected, but Database Degraded: ${data.dbError || 'PostgreSQL offline'}. Please check DATABASE_URL in Render.`,
           latency,
         };
       } else {

@@ -2,7 +2,7 @@ import { ensureRolesSchema } from './roles';
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { query } from '../db/connection';
+import { query, testConnection, getLastDbError } from '../db/connection';
 import { config } from '../config';
 import { authenticateToken, AuthUser } from '../middleware/auth';
 import { recordAuditLog } from '../utils/audit';
@@ -12,6 +12,15 @@ export const authRouter = Router();
 authRouter.post('/login', async (req: Request, res: Response) => {
   try {
     const { username, password, role } = req.body;
+
+    // Check database connection before doing anything
+    const conn = await testConnection();
+    if (!conn.ok) {
+      const errDetail = conn.error || getLastDbError() || 'Connection failed';
+      return res.status(503).json({
+        error: `Database is offline (${errDetail}). If deploying on Render, please verify that the DATABASE_URL environment variable is set in the Render dashboard.`
+      });
+    }
 
     // 1. Instant 1-Click Administrator login (when role === 'admin' and no password is provided)
     if ((role === 'admin' || username === 'admin') && (!password || String(password).trim() === '')) {
@@ -135,7 +144,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     return res.json({ token, user: payload });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Internal server error during login' });
+    const errorMsg = error?.message || (typeof error === 'string' ? error : '') || getLastDbError() || 'Internal server error during login';
+    res.status(500).json({ error: errorMsg });
   }
 });
 

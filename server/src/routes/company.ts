@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query } from '../db/connection';
+import { query, getLastDbError } from '../db/connection';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { recordAuditLog } from '../utils/audit';
 import { broadcast } from '../ws';
@@ -24,7 +24,8 @@ companyRouter.get('/', async (req: Request, res: Response) => {
     }
     res.json({ company: settings });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const errorMsg = error?.message || (typeof error === 'string' ? error : '') || getLastDbError() || 'Failed to fetch company settings';
+    res.status(500).json({ error: errorMsg });
   }
 });
 
@@ -127,6 +128,7 @@ companyRouter.put('/', authenticateToken, requireRole(['admin']), async (req: Re
 
     res.json({ company: rows[0] });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const errorMsg = error?.message || (typeof error === 'string' ? error : '') || getLastDbError() || 'Failed to fetch company settings';
+    res.status(500).json({ error: errorMsg });
   }
 });

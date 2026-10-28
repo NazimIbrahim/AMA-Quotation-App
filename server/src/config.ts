@@ -4,15 +4,27 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '../.env') });
 dotenv.config();
 
+let rawDbUrl = (process.env.DATABASE_URL || '').trim();
+if (rawDbUrl && ((rawDbUrl.startsWith('"') && rawDbUrl.endsWith('"')) || (rawDbUrl.startsWith("'") && rawDbUrl.endsWith("'")))) {
+  rawDbUrl = rawDbUrl.slice(1, -1).trim();
+}
+
+// Strip sslmode from query string so pg connection parser doesn't overwrite rejectUnauthorized: false
+let sanitizedDbUrl = rawDbUrl;
+if (sanitizedDbUrl) {
+  sanitizedDbUrl = sanitizedDbUrl.replace(/([?&])sslmode=[^&]+(&|$)/i, '$1').replace(/[?&]$/, '');
+}
+
 const isCloudSsl = Boolean(
-  process.env.DATABASE_URL ||
+  sanitizedDbUrl ||
   process.env.DB_SSL === 'true'
 );
 
 export const config = {
   port: parseInt(process.env.PORT || '4000', 10),
   db: {
-    connectionString: process.env.DATABASE_URL || undefined,
+    connectionString: sanitizedDbUrl || undefined,
+    rawConnectionString: rawDbUrl || undefined,
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
     database: process.env.DB_NAME || 'ama_quotations',

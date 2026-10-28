@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { config } from './config';
 import { logger } from './utils/logger';
-import { testConnection, query } from './db/connection';
+import { testConnection, query, getLastDbError } from './db/connection';
 import { seedDatabase } from './db/seed';
 import { initWebSocketServer, getConnectedClientCount } from './ws';
 
@@ -48,14 +48,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Health check endpoint for connection tests from desktop client
+// Health check endpoint for connection tests from desktop client & cloud diagnostics
 app.get('/api/health', async (req: Request, res: Response) => {
-  const dbOk = await testConnection();
+  const conn = await testConnection();
   res.json({
-    status: dbOk ? 'ok' : 'degraded',
+    status: conn.ok ? 'ok' : 'degraded',
     server: 'AMA Ceramics Quotation Central Server',
-    version: '2.4.11',
-    dbConnected: dbOk,
+    version: '2.4.12',
+    dbConnected: conn.ok,
+    dbError: conn.ok ? null : (conn.error || getLastDbError() || 'Unknown database connection error'),
+    hasDatabaseUrl: Boolean(config.db.connectionString),
     activeWsClients: getConnectedClientCount(),
     timestamp: new Date().toISOString(),
   });
