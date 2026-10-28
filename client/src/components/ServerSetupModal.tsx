@@ -40,21 +40,21 @@ export const ServerSetupModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <Server size={24} />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-900">LAN Central Server Connection</h2>
-            <p className="text-xs text-gray-500">Configure central PostgreSQL & API server address</p>
+            <h2 className="text-lg font-bold text-gray-900">Server Connection Settings</h2>
+            <p className="text-xs text-gray-500">Connect to Central LAN Host or Cloud Backend (Render / Neon)</p>
           </div>
         </div>
 
         <form onSubmit={handleSave} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Server Address (IP or Hostname with Port)
+              Server Address (LAN IP or Cloud URL)
             </label>
             <div className="flex space-x-2">
               <input
                 type="text"
-                className="input flex-1"
-                placeholder="http://192.168.1.100:4000"
+                className="input flex-1 font-mono text-xs"
+                placeholder="http://192.168.1.100:4000 or https://your-app.onrender.com"
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
                 required
@@ -70,7 +70,7 @@ export const ServerSetupModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Enter the IP address of the designated server PC hosting PostgreSQL (e.g. http://172.20.10.2:4000).
+              Enter your local LAN Server IP (e.g. <code>http://192.168.1.10:4000</code>) or Cloud API URL (e.g. <code>https://ama-quotation.onrender.com</code>).
             </p>
           </div>
 

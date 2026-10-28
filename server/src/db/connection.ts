@@ -1,8 +1,28 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolConfig, PoolClient } from 'pg';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
-export const pool = new Pool(config.db);
+const poolConfig: PoolConfig = config.db.connectionString
+  ? {
+      connectionString: config.db.connectionString,
+      ssl: config.db.ssl,
+      max: config.db.max,
+      idleTimeoutMillis: config.db.idleTimeoutMillis,
+      connectionTimeoutMillis: config.db.connectionTimeoutMillis,
+    }
+  : {
+      host: config.db.host,
+      port: config.db.port,
+      database: config.db.database,
+      user: config.db.user,
+      password: config.db.password,
+      ssl: config.db.ssl,
+      max: config.db.max,
+      idleTimeoutMillis: config.db.idleTimeoutMillis,
+      connectionTimeoutMillis: config.db.connectionTimeoutMillis,
+    };
+
+export const pool = new Pool(poolConfig);
 
 pool.on('error', (err) => {
   logger.error('Unexpected error on idle PostgreSQL client', err);

@@ -8,45 +8,61 @@ import { ensureRolesSchema } from '../routes/roles';
 export async function initializeDatabase(): Promise<void> {
   logger.info('Initializing PostgreSQL database for AMA Quotations...');
 
-  // Step 1: Connect to the default 'postgres' database to verify/create 'ama_quotations'
-  const rootClient = new Client({
-    host: config.db.host,
-    port: config.db.port,
-    database: 'postgres',
-    user: config.db.user,
-    password: config.db.password,
-  });
+  // Step 1: If using local credentials (no connectionString), verify/create 'ama_quotations' database
+  if (!config.db.connectionString) {
+    const rootClient = new Client({
+      host: config.db.host,
+      port: config.db.port,
+      database: 'postgres',
+      user: config.db.user,
+      password: config.db.password,
+    });
 
-  try {
-    await rootClient.connect();
-    const checkDb = await rootClient.query(
-      `SELECT 1 FROM pg_database WHERE datname = $1`,
-      [config.db.database]
-    );
+    try {
+      await rootClient.connect();
+      const checkDb = await rootClient.query(
+        `SELECT 1 FROM pg_database WHERE datname = $1`,
+        [config.db.database]
+      );
 
-    if (checkDb.rows.length === 0) {
-      logger.info(`Database '${config.db.database}' does not exist. Creating...`);
-      await rootClient.query(`CREATE DATABASE "${config.db.database}"`);
-      logger.info(`Database '${config.db.database}' created successfully.`);
-    } else {
-      logger.info(`Database '${config.db.database}' already exists.`);
+      if (checkDb.rows.length === 0) {
+        logger.info(`Database '${config.db.database}' does not exist. Creating...`);
+        await rootClient.query(`CREATE DATABASE "${config.db.database}"`);
+        logger.info(`Database '${config.db.database}' created successfully.`);
+      } else {
+        logger.info(`Database '${config.db.database}' already exists.`);
+      }
+    } catch (err: any) {
+      logger.error('Error connecting to root postgres database:', err.message);
+      throw err;
+    } finally {
+      await rootClient.end();
     }
-  } catch (err: any) {
-    logger.error('Error connecting to root postgres database:', err.message);
-    throw err;
-  } finally {
-    await rootClient.end();
   }
 
-  // Step 2: Connect to 'ama_quotations' and apply schema
-  const dbClient = new Client(config.db);
+  // Step 2: Connect to target database and apply schema
+  const dbClient = new Client(
+    config.db.connectionString
+      ? { connectionString: config.db.connectionString, ssl: config.db.ssl }
+      : config.db
+  );
   try {
     await dbClient.connect();
-    const schemaSqlPath = path.join(__dirname, 'schema.sql');
-    const schemaSql = fs.readFileSync(schemaSqlPath, 'utf8');
+    const schemaSqlPath = [
+      path.join(__dirname, 'schema.sql'),
+      path.join(__dirname, 'db/schema.sql'),
+      path.join(__dirname, '../src/db/schema.sql'),
+      path.join(process.cwd(), 'src/db/schema.sql'),
+      path.join(process.cwd(), 'dist/db/schema.sql'),
+    ].find((p) => fs.existsSync(p));
 
-    logger.info('Applying schema.sql...');
-    await dbClient.query(schemaSql);
+    if (schemaSqlPath) {
+      const schemaSql = fs.readFileSync(schemaSqlPath, 'utf8');
+      logger.info(`Applying schema from ${schemaSqlPath}...`);
+      await dbClient.query(schemaSql);
+    } else {
+      logger.warn('Could not locate schema.sql file during database initialization.');
+    }
 
     // Apply incremental alterations if upgrading existing database
     await dbClient.query(`

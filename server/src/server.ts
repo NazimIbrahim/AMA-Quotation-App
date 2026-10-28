@@ -2,6 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import cors from 'cors';
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { testConnection, query } from './db/connection';
@@ -52,7 +54,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
   res.json({
     status: dbOk ? 'ok' : 'degraded',
     server: 'AMA Ceramics Quotation Central Server',
-    version: '2.4.10',
+    version: '2.4.11',
     dbConnected: dbOk,
     activeWsClients: getConnectedClientCount(),
     timestamp: new Date().toISOString(),
@@ -373,7 +375,32 @@ async function runAutoMigrations() {
 
 async function ensureBootstrapData() {
   try {
+    // 1. If core tables do not exist (e.g. fresh cloud database on Neon.tech), run schema.sql
+    const checkTable = await query<{ tbl: string | null }>("SELECT to_regclass('public.users') as tbl").catch(() => [{ tbl: null }]);
+    if (!checkTable || !checkTable[0] || !checkTable[0].tbl) {
+      logger.info('Fresh database detected (tables missing). Initializing base tables from schema.sql...');
+      const schemaPath = [
+        path.join(__dirname, 'db/schema.sql'),
+        path.join(__dirname, 'schema.sql'),
+        path.join(__dirname, '../src/db/schema.sql'),
+        path.join(process.cwd(), 'dist/db/schema.sql'),
+        path.join(process.cwd(), 'src/db/schema.sql'),
+      ].find((p) => fs.existsSync(p));
+
+      if (schemaPath) {
+        const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+        logger.info(`Applying base schema from ${schemaPath}...`);
+        await query(schemaSql);
+        logger.info('Base database schema created successfully.');
+      } else {
+        logger.error('Could not locate schema.sql to initialize fresh database!');
+      }
+    }
+
+    // 2. Run incremental migrations to guarantee all columns and extra tables exist
     await runAutoMigrations();
+
+    // 3. If users table has 0 users, seed default accounts and roles
     const userCount = await query('SELECT count(*) FROM users');
     if (parseInt(userCount[0]?.count || '0', 10) === 0) {
       logger.info('Fresh database detected (0 users). Seeding default admin, manager, accounts, and salesperson accounts...');

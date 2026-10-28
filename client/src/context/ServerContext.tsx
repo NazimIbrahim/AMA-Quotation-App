@@ -36,8 +36,9 @@ interface ServerContextType {
 const ServerContext = createContext<ServerContextType | undefined>(undefined);
 
 export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const defaultEnvUrl = (import.meta as any).env?.VITE_API_URL?.trim();
   const [serverUrl, setServerUrlState] = useState<string>(() => {
-    return localStorage.getItem('ama_server_url') || 'http://localhost:4000';
+    return localStorage.getItem('ama_server_url') || defaultEnvUrl || 'http://localhost:4000';
   });
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -48,17 +49,34 @@ export const ServerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const subscribersRef = useRef<Set<(event: any) => void>>(new Set());
   const reconnectTimeoutRef = useRef<any>(null);
 
-  // Auto-normalize user input (e.g., "192.168.1.100" -> "http://192.168.1.100:4000")
+  // Auto-normalize user input (supports LAN IP addresses and Cloud URLs like Render, Railway, etc.)
   const normalizeUrl = (input: string): string => {
     let clean = input.trim();
-    if (!clean) return 'http://localhost:4000';
+    if (!clean) return defaultEnvUrl || 'http://localhost:4000';
+
+    const isExplicitHttps = clean.startsWith('https://');
+    const withoutScheme = clean.replace(/^https?:\/\//, '');
+    const hostPart = withoutScheme.split('/')[0];
+    const isCloudDomain = /^[a-zA-Z0-9-]+\.(onrender\.com|vercel\.app|railway\.app|herokuapp\.com|cyclic\.app|fly\.dev|neon\.tech|[a-z]{2,})/i.test(
+      hostPart.split(':')[0]
+    );
+
     if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
-      clean = `http://${clean}`;
+      if (isCloudDomain) {
+        clean = `https://${clean}`;
+      } else {
+        clean = `http://${clean}`;
+      }
     }
-    const withoutProto = clean.replace(/^https?:\/\//, '');
-    if (!withoutProto.includes(':')) {
-      clean = `${clean}:4000`;
+
+    const currentUrlWithoutProto = clean.replace(/^https?:\/\//, '');
+    const currentHost = currentUrlWithoutProto.split('/')[0];
+
+    // Only append port 4000 if no port is specified and it's NOT an explicit https or cloud domain
+    if (!currentHost.includes(':') && !isExplicitHttps && !isCloudDomain) {
+      clean = clean.replace(currentHost, `${currentHost}:4000`);
     }
+
     return clean.replace(/\/$/, '');
   };
 
