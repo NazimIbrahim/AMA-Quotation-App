@@ -9,10 +9,17 @@ if (rawDbUrl && ((rawDbUrl.startsWith('"') && rawDbUrl.endsWith('"')) || (rawDbU
   rawDbUrl = rawDbUrl.slice(1, -1).trim();
 }
 
-// Strip sslmode from query string so pg connection parser doesn't overwrite rejectUnauthorized: false
+// Clean query parameters from connection string so pg does not overwrite rejectUnauthorized: false
 let sanitizedDbUrl = rawDbUrl;
 if (sanitizedDbUrl) {
-  sanitizedDbUrl = sanitizedDbUrl.replace(/([?&])sslmode=[^&]+(&|$)/i, '$1').replace(/[?&]$/, '');
+  try {
+    const parsed = new URL(sanitizedDbUrl);
+    parsed.searchParams.delete('sslmode');
+    parsed.searchParams.delete('channel_binding');
+    sanitizedDbUrl = parsed.toString();
+  } catch (_) {
+    // Keep raw if URL parser fails
+  }
 }
 
 const isCloudSsl = Boolean(
