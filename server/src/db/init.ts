@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { ensureRolesSchema } from '../routes/roles';
 
 export async function initializeDatabase(): Promise<void> {
   logger.info('Initializing PostgreSQL database for AMA Quotations...');
@@ -58,11 +59,28 @@ export async function initializeDatabase(): Promise<void> {
       ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00;
       CREATE INDEX IF NOT EXISTS idx_quotations_assisted_sales_person ON quotations (assisted_sales_person_id);
       ALTER TABLE quotations ADD COLUMN IF NOT EXISTS quotation_type VARCHAR(30) NOT NULL DEFAULT 'tiles';
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS product_type VARCHAR(30) NOT NULL DEFAULT 'box';
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS coverage_area NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS quantity_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS base_rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS quantity_boxes NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS base_rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00;
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_image TEXT;
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS mrp_price NUMERIC(12, 2) DEFAULT 0.00;
       ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS encrypted_code VARCHAR(100);
       CREATE INDEX IF NOT EXISTS idx_quotations_type ON quotations (quotation_type);
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_target NUMERIC(14, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(120);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 
       ALTER TABLE customers ADD COLUMN IF NOT EXISTS created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
       CREATE INDEX IF NOT EXISTS idx_customers_created_by ON customers (created_by_id);
@@ -162,6 +180,13 @@ export async function initializeDatabase(): Promise<void> {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_quotation_versions_unique ON quotation_versions (quotation_id, version_number);
       CREATE INDEX IF NOT EXISTS idx_quotation_versions_qid ON quotation_versions (quotation_id, version_number DESC);
     `);
+
+    // Ensure roles and permissions schema
+    try {
+      await ensureRolesSchema();
+    } catch (e: any) {
+      logger.warn('Roles schema init warning:', e.message);
+    }
 
     logger.info('Database schema applied successfully.');
   } catch (err: any) {

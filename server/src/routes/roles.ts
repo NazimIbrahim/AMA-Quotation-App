@@ -140,6 +140,7 @@ rolesRouter.use(authenticateToken);
 // List all roles with associated user counts
 rolesRouter.get('/', async (req: Request, res: Response) => {
   try {
+    await ensureRolesSchema();
     const rows = await query(`
       SELECT 
         r.id,

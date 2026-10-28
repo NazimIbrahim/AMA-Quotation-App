@@ -239,7 +239,7 @@ export const Login: React.FC<Props> = ({ onOpenServerSettings }) => {
 
         <div className="px-6 py-2.5 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-500 flex justify-between">
           <span>Security: Direct LAN Session</span>
-          <span>AMA Quotation System v2.4.9</span>
+          <span>AMA Quotation System v2.4.10</span>
         </div>
       </div>
     </div>

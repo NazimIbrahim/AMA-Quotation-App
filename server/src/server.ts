@@ -52,7 +52,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
   res.json({
     status: dbOk ? 'ok' : 'degraded',
     server: 'AMA Ceramics Quotation Central Server',
-    version: '2.4.9',
+    version: '2.4.10',
     dbConnected: dbOk,
     activeWsClients: getConnectedClientCount(),
     timestamp: new Date().toISOString(),
@@ -88,10 +88,79 @@ initWebSocketServer(server);
 
 // Automatically apply essential database migrations and constraints
 async function runAutoMigrations() {
-  try {
-    logger.info('Checking and applying automatic database schema migrations...');
+  logger.info('Checking and applying automatic database schema migrations...');
 
-    // 1. Ensure sanitary_catalog_items table exists with UNIQUE constraint on item_code
+  // Step 1: Ensure all missing columns exist on existing tables
+  try {
+    await query(`
+      -- quotation_items columns
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS product_type VARCHAR(30) NOT NULL DEFAULT 'box';
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS coverage_area NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS quantity_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS base_rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS rate_per_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS quantity_boxes NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS base_rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS rate_per_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_image TEXT;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS mrp_price NUMERIC(12, 2) DEFAULT 0.00;
+      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS encrypted_code VARCHAR(100);
+
+      -- quotations columns
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS sales_person_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_person_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_person_name VARCHAR(120);
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS split_share_type VARCHAR(20) DEFAULT 'percentage';
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS primary_sales_share_percent NUMERIC(5, 2) DEFAULT 100.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS primary_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_share_percent NUMERIC(5, 2) DEFAULT 0.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS project_name VARCHAR(150);
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS quotation_type VARCHAR(30) NOT NULL DEFAULT 'tiles';
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS manager_approval_note TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS approved_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS round_off NUMERIC(12, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS special_notes TEXT;
+      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+
+      -- users columns
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_target NUMERIC(14, 2) DEFAULT 0.00;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(120);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+
+      -- brand_size_coverages columns
+      ALTER TABLE brand_size_coverages ADD COLUMN IF NOT EXISTS product_type VARCHAR(30) NOT NULL DEFAULT 'box';
+      ALTER TABLE brand_size_coverages ADD COLUMN IF NOT EXISTS pieces_per_box INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE brand_size_coverages ADD COLUMN IF NOT EXISTS default_rate_sqft NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+      ALTER TABLE brand_size_coverages ADD COLUMN IF NOT EXISTS default_rate_box NUMERIC(10, 2) NOT NULL DEFAULT 0.00;
+
+      -- customers columns
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS created_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      CREATE INDEX IF NOT EXISTS idx_customers_created_by ON customers (created_by_id);
+      CREATE INDEX IF NOT EXISTS idx_quotations_type ON quotations (quotation_type);
+      CREATE INDEX IF NOT EXISTS idx_quotations_assisted_sales_person ON quotations (assisted_sales_person_id);
+    `);
+  } catch (err: any) {
+    logger.warn('Column additions migration warning:', err.message);
+  }
+
+  // Step 2: Ensure Roles and Permissions Schema exists early
+  try {
+    await ensureRolesSchema();
+  } catch (err: any) {
+    logger.warn('Roles schema migration warning:', err.message);
+  }
+
+  // Step 3: Ensure sanitary_catalog_items exists with UNIQUE constraint on item_code
+  try {
     await query(`
       CREATE TABLE IF NOT EXISTS sanitary_catalog_items (
         id SERIAL PRIMARY KEY,
@@ -108,7 +177,6 @@ async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- Deduplicate if any duplicates exist before adding UNIQUE constraint
       DELETE FROM sanitary_catalog_items a
       USING sanitary_catalog_items b
       WHERE a.item_code = b.item_code
@@ -131,27 +199,12 @@ async function runAutoMigrations() {
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_brand ON sanitary_catalog_items (brand);
       CREATE INDEX IF NOT EXISTS idx_sanitary_catalog_category ON sanitary_catalog_items (category);
     `);
+  } catch (err: any) {
+    logger.warn('Sanitary catalog migration warning:', err.message);
+  }
 
-    // 2. Ensure quotation columns and indexes exist
-    await query(`
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_person_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_person_name VARCHAR(120);
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS split_share_type VARCHAR(20) DEFAULT 'percentage';
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS primary_sales_share_percent NUMERIC(5, 2) DEFAULT 100.00;
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS primary_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00;
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_share_percent NUMERIC(5, 2) DEFAULT 0.00;
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS assisted_sales_share_amount NUMERIC(12, 2) DEFAULT 0.00;
-      CREATE INDEX IF NOT EXISTS idx_quotations_assisted_sales_person ON quotations (assisted_sales_person_id);
-      ALTER TABLE quotations ADD COLUMN IF NOT EXISTS quotation_type VARCHAR(30) NOT NULL DEFAULT 'tiles';
-      CREATE INDEX IF NOT EXISTS idx_quotations_type ON quotations (quotation_type);
-
-      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);
-      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS item_image TEXT;
-      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS mrp_price NUMERIC(12, 2) DEFAULT 0.00;
-      ALTER TABLE quotation_items ADD COLUMN IF NOT EXISTS encrypted_code VARCHAR(100);
-    `);
-
-    // 3. Ensure tile_catalog_items exists for autocomplete and item memory
+  // Step 4: Ensure tile_catalog_items exists for autocomplete and item memory
+  try {
     await query(`
       CREATE TABLE IF NOT EXISTS tile_catalog_items (
         id SERIAL PRIMARY KEY,
@@ -171,15 +224,20 @@ async function runAutoMigrations() {
       CREATE INDEX IF NOT EXISTS idx_tile_catalog_description ON tile_catalog_items (description);
       CREATE INDEX IF NOT EXISTS idx_tile_catalog_usage ON tile_catalog_items (usage_count DESC, last_used_at DESC);
 
-      -- Backfill from existing quotation items if available
       INSERT INTO tile_catalog_items (description, brand, size, product_type, coverage_area, base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box)
       SELECT DISTINCT ON (LOWER(TRIM(description))) 
-        TRIM(description), brand, size, product_type, coverage_area, base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box
+        TRIM(description), brand, size, COALESCE(product_type, 'box'), coverage_area, base_rate_per_sqft, rate_per_sqft, base_rate_per_box, rate_per_box
       FROM quotation_items
       WHERE description IS NOT NULL AND length(TRIM(description)) > 1
       ON CONFLICT (description) DO NOTHING;
+    `);
+  } catch (err: any) {
+    logger.warn('Tile catalog migration warning:', err.message);
+  }
 
-      -- 4. Ensure product_encrypted_codes exists for persistent 3-letter encrypted codes
+  // Step 5: Ensure product_encrypted_codes exists for persistent 3-letter encrypted codes
+  try {
+    await query(`
       CREATE TABLE IF NOT EXISTS product_encrypted_codes (
         id SERIAL PRIMARY KEY,
         item_name VARCHAR(255) NOT NULL,
@@ -190,8 +248,14 @@ async function runAutoMigrations() {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_product_encrypted_codes_norm ON product_encrypted_codes (normalized_name);
       CREATE INDEX IF NOT EXISTS idx_product_encrypted_codes_code ON product_encrypted_codes (encrypted_code);
+    `);
+  } catch (err: any) {
+    logger.warn('Product encrypted codes migration warning:', err.message);
+  }
 
-      -- 5. Ensure quotation_versions exists for full audit trail & historical version viewing
+  // Step 6: Ensure quotation_versions exists for full audit trail & historical version viewing
+  try {
+    await query(`
       CREATE TABLE IF NOT EXISTS quotation_versions (
         id SERIAL PRIMARY KEY,
         quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
@@ -211,7 +275,6 @@ async function runAutoMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_quotation_versions_unique ON quotation_versions (quotation_id, version_number);
       CREATE INDEX IF NOT EXISTS idx_quotation_versions_qid ON quotation_versions (quotation_id, version_number DESC);
 
-      -- Backfill any existing quotations that do not yet have an initial version archived
       INSERT INTO quotation_versions (
         quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
         snapshot_data, gross_total, discount_percent, discount_amount, taxable_amount,
@@ -257,7 +320,6 @@ async function runAutoMigrations() {
       )
       ON CONFLICT (quotation_id, version_number) DO NOTHING;
 
-      -- Ensure baseline version 1 exists for all quotations
       INSERT INTO quotation_versions (
         quotation_id, version_number, edited_by_id, edited_by_name, revision_summary,
         snapshot_data, gross_total, discount_percent, discount_amount, taxable_amount,
@@ -302,17 +364,13 @@ async function runAutoMigrations() {
       )
       ON CONFLICT (quotation_id, version_number) DO NOTHING;
     `);
-
-    // 6. Ensure roles table and permissions schema exist
-    await ensureRolesSchema();
-
-    logger.info('Database schema migrations applied successfully.');
   } catch (err: any) {
-    logger.warn('Auto migrations warning:', err.message);
+    logger.warn('Quotation versions migration warning:', err.message);
   }
+
+  logger.info('Database schema migrations applied successfully.');
 }
 
-// Ensure default users and company settings exist if database was just created
 async function ensureBootstrapData() {
   try {
     await runAutoMigrations();

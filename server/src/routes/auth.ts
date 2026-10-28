@@ -1,3 +1,4 @@
+import { ensureRolesSchema } from './roles';
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -56,15 +57,44 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     }
 
     const cleanUsername = String(username).trim();
-    const rows = await query(
-      `SELECT u.id, u.username, u.password_hash, u.full_name, u.role, u.email, u.phone, u.is_active,
-              COALESCE(r.permissions, '{}'::jsonb) as permissions
-       FROM users u
-       LEFT JOIN roles r ON r.name = u.role
-       WHERE LOWER(u.username) = LOWER($1) OR (u.email IS NOT NULL AND LOWER(u.email) = LOWER($1))
-       LIMIT 1`,
-      [cleanUsername]
-    );
+    let rows: any[];
+    try {
+      rows = await query(
+        `SELECT u.id, u.username, u.password_hash, u.full_name, u.role, u.email, u.phone, u.is_active,
+                COALESCE(r.permissions, '{}'::jsonb) as permissions
+         FROM users u
+         LEFT JOIN roles r ON r.name = u.role
+         WHERE LOWER(u.username) = LOWER($1) OR (u.email IS NOT NULL AND LOWER(u.email) = LOWER($1))
+         LIMIT 1`,
+        [cleanUsername]
+      );
+    } catch (dbErr: any) {
+      if (dbErr.message && dbErr.message.includes('roles')) {
+        await ensureRolesSchema().catch(() => {});
+        try {
+          rows = await query(
+            `SELECT u.id, u.username, u.password_hash, u.full_name, u.role, u.email, u.phone, u.is_active,
+                    COALESCE(r.permissions, '{}'::jsonb) as permissions
+             FROM users u
+             LEFT JOIN roles r ON r.name = u.role
+             WHERE LOWER(u.username) = LOWER($1) OR (u.email IS NOT NULL AND LOWER(u.email) = LOWER($1))
+             LIMIT 1`,
+            [cleanUsername]
+          );
+        } catch {
+          rows = await query(
+            `SELECT u.id, u.username, u.password_hash, u.full_name, u.role, u.email, u.phone, u.is_active,
+                    '{}'::jsonb as permissions
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1) OR (u.email IS NOT NULL AND LOWER(u.email) = LOWER($1))
+             LIMIT 1`,
+            [cleanUsername]
+          );
+        }
+      } else {
+        throw dbErr;
+      }
+    }
 
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid username or password' });
