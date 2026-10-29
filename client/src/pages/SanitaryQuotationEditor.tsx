@@ -1050,7 +1050,7 @@ export const SanitaryQuotationEditor: React.FC<Props> = ({
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Previous Quotes Version History */}
           {quotationId && (
             <button

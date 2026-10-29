@@ -1304,7 +1304,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
   return (
     <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0">
       {/* Top Action Header */}
-      <div className="card p-4 flex items-center justify-between">
+      <div className="card p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <button
             onClick={onBack}
@@ -1314,7 +1314,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
             <ArrowLeft size={16} />
           </button>
           <div>
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+            <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
               {quotationId ? `Edit Quotation (${quotationNumber})` : 'New Quotation Builder'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -1323,7 +1323,7 @@ export const QuotationEditor: React.FC<Props> = ({ quotationId, onBack, onSaved 
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           {quotationId && (
             <button
               type="button"

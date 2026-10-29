@@ -115,17 +115,17 @@ export const Dashboard: React.FC<Props> = ({ onSelectQuotation, onCreateQuotatio
   return (
     <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 lg:space-y-5 overflow-y-auto w-full min-w-0">
       {/* Top Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
             Dashboard Overview
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Logged in as <span className="font-semibold text-slate-800">{user?.full_name}</span> ({user?.role}) • Real-time LAN sync
+            Logged in as <span className="font-semibold text-slate-800">{user?.full_name}</span> ({user?.role})
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 shrink-0">
           <button
             onClick={loadDashboard}
             className="btn btn-secondary btn-sm"

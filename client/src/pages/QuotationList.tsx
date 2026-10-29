@@ -290,15 +290,15 @@ export const QuotationList: React.FC<Props> = ({
   return (
     <div className="flex-1 p-4 sm:p-5 lg:p-6 space-y-4 overflow-y-auto w-full min-w-0">
       {/* Top Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Quotations</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Quotations</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Total {summary.totalQuotations} records recorded • Total Value ₹ {formatCurrency(summary.totalAmount)}
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Export Register Dropdown */}
           <div className="relative group">
             <button

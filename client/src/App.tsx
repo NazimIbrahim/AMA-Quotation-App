@@ -33,6 +33,7 @@ const AppContent: React.FC = () => {
   const [isEditingQuotation, setIsEditingQuotation] = useState<boolean>(false);
   const [quotationType, setQuotationType] = useState<'tiles' | 'sanitary'>('tiles');
   const [showTypeModal, setShowTypeModal] = useState<boolean>(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
   if (isLoading) {
     return (
@@ -98,6 +99,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleNavTabChange = (tab: NavTab) => {
+    setIsMobileMenuOpen(false);
     if (tab === 'quotation-create-tiles') {
       setSelectedQuotationId(null);
       setQuotationType('tiles');
@@ -227,14 +229,23 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col app-liquid-bg overflow-hidden select-none">
-      <Header onOpenServerSettings={() => setOpenServerWizard(true)} />
+      <Header
+        onOpenServerSettings={() => setOpenServerWizard(true)}
+        onToggleSidebar={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        isSidebarOpen={isMobileMenuOpen}
+      />
 
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar activeTab={activeTab} setActiveTab={handleNavTabChange} />
+      <div className="flex-1 flex overflow-hidden relative">
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={handleNavTabChange}
+          isOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
+        />
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-transparent">
           <div
             key={activeTab + (selectedQuotationId ? `-${selectedQuotationId}` : '') + (isEditingQuotation ? '-edit' : '')}
-            className="flex-1 flex flex-col min-w-0 overflow-hidden animate-page-enter"
+            className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-transparent animate-page-enter"
           >
             {renderMainContent()}
           </div>
