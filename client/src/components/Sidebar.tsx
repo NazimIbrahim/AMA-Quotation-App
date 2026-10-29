@@ -328,18 +328,16 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab, isOpen = fal
   return (
     <>
       {/* Mobile Drawer Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 lg:hidden animate-fade-in transition-opacity"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      )}
+      <div
+        className={`mobile-drawer-backdrop ${isOpen ? 'drawer-open' : ''}`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
       {/* Mobile Slide-in Drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] glass-sidebar flex flex-col justify-between select-none text-[#E0E1DD] shadow-2xl transition-transform duration-300 ease-in-out lg:hidden ${
-          isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+        className={`mobile-drawer-aside glass-sidebar select-none text-[#E0E1DD] ${
+          isOpen ? 'drawer-open' : ''
         }`}
       >
         {/* Mobile Drawer Header */}
@@ -367,7 +365,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, setActiveTab, isOpen = fal
       </aside>
 
       {/* Desktop Permanent Docked Sidebar */}
-      <aside className="w-56 glass-sidebar hidden lg:flex flex-col justify-between shrink-0 select-none z-10 text-[#E0E1DD]">
+      <aside className="desktop-sidebar glass-sidebar flex-col justify-between shrink-0 select-none z-10 text-[#E0E1DD]">
         {renderNavBody()}
         {renderFooter()}
       </aside>

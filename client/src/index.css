@@ -908,6 +908,66 @@ table tbody tr:hover {
 }
 
 /* ==========================================================================
+   Responsive Mobile Drawer & Desktop Sidebar
+   ========================================================================== */
+.desktop-sidebar {
+  display: none !important;
+  width: 14rem !important;
+}
+
+.mobile-hamburger-btn {
+  display: flex !important;
+}
+
+.mobile-drawer-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  background-color: rgba(9, 19, 31, 0.72) !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1000 !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-in-out;
+}
+
+.mobile-drawer-backdrop.drawer-open {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.mobile-drawer-aside {
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 280px !important;
+  max-width: 85vw !important;
+  z-index: 1001 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  transform: translateX(-105%) !important;
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  box-shadow: 10px 0 36px rgba(0, 0, 0, 0.55);
+}
+
+.mobile-drawer-aside.drawer-open {
+  transform: translateX(0) !important;
+}
+
+@media (min-width: 1024px) {
+  .desktop-sidebar {
+    display: flex !important;
+  }
+  .mobile-hamburger-btn,
+  .mobile-drawer-backdrop,
+  .mobile-drawer-aside {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
    Comprehensive UI & Layout Utilities (Tailwind Polyfill for Custom CSS)
    ========================================================================== */
 

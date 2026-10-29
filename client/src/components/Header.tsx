@@ -22,7 +22,7 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings, onToggleSidebar,
           className="inline-flex items-center space-x-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-medium bg-emerald-50/80 backdrop-blur-md text-emerald-800 border border-emerald-300/70 hover:bg-emerald-100/90 shadow-xs transition-colors cursor-pointer"
         >
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-          <span className="font-semibold hidden xs:inline">Online</span>
+          <span className="font-semibold text-[11px] sm:text-xs">Online</span>
           {latencyMs !== null && (
             <span className="text-emerald-700/80 font-mono text-[10px] sm:text-[11px] hidden sm:inline">({latencyMs}ms)</span>
           )}
@@ -36,7 +36,7 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings, onToggleSidebar,
           className="inline-flex items-center space-x-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-medium bg-amber-50/80 backdrop-blur-md text-amber-900 border border-amber-300/70 cursor-pointer"
         >
           <RefreshCw size={11} className="animate-spin text-amber-600" />
-          <span className="hidden xs:inline">Connecting...</span>
+          <span className="text-[11px] sm:text-xs font-semibold">Connecting...</span>
         </button>
       );
     }
@@ -47,7 +47,7 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings, onToggleSidebar,
         className="inline-flex items-center space-x-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-medium bg-rose-50/80 backdrop-blur-md text-rose-800 border border-rose-300/70 hover:bg-rose-100 transition-colors cursor-pointer"
       >
         <WifiOff size={11} className="text-rose-500" />
-        <span className="hidden xs:inline">Offline</span>
+        <span className="text-[11px] sm:text-xs font-semibold">Offline</span>
       </button>
     );
   };
@@ -59,7 +59,7 @@ export const Header: React.FC<Props> = ({ onOpenServerSettings, onToggleSidebar,
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="lg:hidden p-1.5 -ml-1 text-[#0D1B2A] hover:bg-slate-200/70 active:bg-slate-300/70 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0"
+          className="mobile-hamburger-btn p-1.5 -ml-1 text-[#0D1B2A] hover:bg-slate-200/70 active:bg-slate-300/70 rounded-lg transition-colors cursor-pointer items-center justify-center shrink-0"
           aria-label="Toggle navigation menu"
         >
           {isSidebarOpen ? <X size={22} /> : <Menu size={22} />}
